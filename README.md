@@ -2,23 +2,26 @@
 
 A clickable, mobile-first prototype of an event operations web app for an annual corporate conference ("Impact"). Admins build the schedule and staff rooms; staff and contractors see their own assignments on a phone, acknowledge changes, and check in; admins see live room coverage.
 
-**Status:** Proof of concept. All data is fictional and held in browser memory. There is no backend, login, database, email, or push. Reloading the page resets everything.
+**Status:** Connected POC. With Supabase configured, emailed sign-in links identify provisioned users and scheduling data is saved in Postgres. Without configuration, the original fictional, in-memory demo runs. Notifications are in-app; assignment emails and push notifications are not implemented.
 
-**Agreed next phase (2026-10-13):** Evolve this repo step by step, with GitHub for collaboration, Vercel hosting, and an approved Supabase free-tier backend. Employees and contractors will use emailed sign-in links. The first connected slice is login, event setup, staff/rooms/activities, assignments, acknowledgment, check-in, and shared persistence. Authentication is not implemented yet. See `context.md` for the current decisions.
+**Direction:** Evolve this repo step by step, with GitHub for collaboration, Vercel hosting, and Supabase's free tier until POC approval. The connected slice includes login, event setup, people/rooms/activities, assignments, acknowledgment, check-in, contacts, schedule printing, and activity logging. Floorplans, incoming goods, and demo undo/reset remain in demo mode only. See `docs/SUPABASE.md` for setup and access provisioning.
 
 ## Run it
 
-No build step. It is plain HTML, CSS, and one JavaScript file that loads React, htm, and pdf.js from CDNs, so you need an internet connection.
+Use Node.js 22.12+ or 24+. Vite bundles React, htm, and the Supabase client. The optional demo PDF viewer and font still use CDNs.
 
 ```bash
-npm start            # serves on http://localhost:3000
-# or
-python3 -m http.server 3000
+npm ci
+npm start            # http://localhost:3000 (another port if occupied)
+npm test             # PostgreSQL behavior and permission tests
+npm run build        # production files in dist/
 ```
 
-Do not open `index.html` by double-clicking; serve it so the browser loads `src/` files normally.
+Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` in `.env.local` to enable the connected app. `.env.example` lists the variables. `.env.local` is ignored by Git. Never use a secret or service-role key. Vercel uses the same variables, build command `npm run build`, and output directory `dist`.
 
 ## Try the acceptance test
+
+This walkthrough applies to the unconfigured demo. For the connected app, use separate provisioned Admin and Staff accounts instead of the role switcher; create an event, person, room, activity, and assignment first. Reload to verify persistence, and use a second browser to verify shared changes.
 
 1. As **Admin**, open Schedule, Day 1, find "POS Lab: demo support" (Salon 3, 9:00-11:00 AM). Assign **Alex Rivera (Employee A)**.
 2. Switch to **Staff** (Alex is the default). See the new assignment and banner.
@@ -31,13 +34,19 @@ A full 10-minute walkthrough is in `docs/DEMO_SCRIPT.md`.
 ## Project layout
 
 ```
-index.html               page shell and CDN script tags
-src/app.js               the entire application (see context.md for a section map)
+index.html               page shell
+src/main.js              configuration and application entry point
+src/repository.js        Supabase Auth and RPC adapter
+src/connection.js        login, loading, refresh, and save flow
+src/app.js               existing scheduling UI and fictional demo
 src/styles.css           all styles, light and dark themes, print styles
 src/standalone-shim.js   browser-download fallback for file saves
 docs/PROJECT_SUMMARY.md  what the project is and everything built so far
 docs/PRD.md              product requirements (exported from the working doc)
 docs/DEMO_SCRIPT.md      stakeholder demo walkthrough
+docs/SUPABASE.md         schema, permissions, and account setup
+supabase/migrations/     versioned database schema and functions
+tests/                   PostgreSQL tests and browser verification
 context.md               context and conventions for developers and coding agents
 ```
 

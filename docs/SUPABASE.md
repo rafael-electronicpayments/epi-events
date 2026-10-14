@@ -1,0 +1,77 @@
+# Supabase Setup
+
+The scheduling slice uses normalized Postgres tables and two authenticated RPCs. The fictional demo is used only when both environment variables are absent. A partial configuration shows an error rather than silently opening the demo.
+
+## Configuration
+
+- Put the project URL and publishable key into `.env.local` using the variable names in `.env.example`. Never put secret/service-role keys into any `VITE_` variable.
+- Run `npm ci` and `npm start`. Open the URL printed by Vite.
+- In Supabase Authentication, enable email authentication and disable public signups. Use the default magic-link email template.
+- Set the Auth Site URL to `http://localhost:3000` during local development. Allow `http://localhost:3000/` as a redirect URL. If using a different host or port, explicitly allow that origin as well. Before deployment, set Site URL to the Vercel URL and retain approved development redirect URLs.
+- Configure an SMTP provider if Supabase's default email delivery does not support your testers' addresses. See [Supabase SMTP documentation](https://supabase.com/docs/guides/auth/auth-smtp).
+
+The initial schema migrations have been applied to the connected EPI Events Project. For another project, apply `supabase/migrations/*.sql` in filename order through Supabase CLI or SQL Editor. Keep migrations in Git; avoid editing live tables without a migration.
+
+## Accounts
+
+Database access requires a trusted profile; email login alone does not grant app access. Public browser clients cannot create or promote profiles or edit invitations.
+
+1. Add an administrator email to `access_invites` using SQL Editor. The initial owner's invitation has already been created in the connected project; personal addresses are not included in migration files.
+2. Create that email under Authentication > Users > Add user > Create new user, with email confirmation enabled. The account's initial password is not used by the app. The invitation trigger automatically creates the administrator profile.
+3. Open the app and request a sign-in link. If email delivery fails, inspect Auth configuration/SMTP; do not bypass authorization.
+4. Create an event, rooms, people, and activities through Setup. Assign people through Schedule.
+5. To give a roster person access, add their email and person ID to `access_invites` and then create the Auth user. The role must match the intended Staff or Contractor access.
+
+Example (replace placeholders locally, never commit personal information):
+
+```sql
+insert into public.access_invites(email,role,person_id)
+values ('person@example.com','staff',42);
+```
+
+If the Auth user already existed before the invitation, provision their profile from the trusted invitation:
+
+```sql
+insert into public.profiles(user_id,role,person_id)
+select u.id,i.role,i.person_id
+from auth.users u join public.access_invites i on i.email=lower(u.email)
+on conflict (user_id) do nothing;
+```
+
+Account creation currently uses the Supabase dashboard. Creating a roster person in the app does not create an Auth account or send email. Archiving a roster person disables their app access. Administrators are managed separately from the Staff/Contractor roster.
+
+## Data Structure
+
+| Table | Purpose |
+| --- | --- |
+| `people` | Shared roster, titles, contact numbers, map-access flags, archive state |
+| `profiles` | Auth user to trusted role and roster person mapping |
+| `access_invites` | Administrator-controlled email allowlist for provisioning |
+| `events` | Event names, dates, and duration |
+| `rooms` | Shared room directory |
+| `activities` | Event/day/room, time range, and staffing requirement |
+| `assignments` | Person/activity, acknowledgment, check-in, coordinator confirmation, calendar revision |
+| `notifications` | In-app assignment and cancellation notices |
+| `activity_log` | Database-generated action, actor, arguments, and timestamp |
+| `ops_state` | Revision counter to detect concurrent edits |
+
+Foreign keys and constraints reject orphaned assignments, duplicates, invalid times, and check-in before acknowledgment. API writes also validate event day bounds. Overlapping assignments remain allowed so the admin can decide how to handle a warning, matching the prototype.
+
+## Access and Writes
+
+All application tables have RLS. Anonymous clients have no table or RPC access. Admins can read the workspace; Staff and Contractors can read their own roster record, assignments, notifications, and the activities/events/rooms needed for their schedule. The snapshot omits phone numbers and the activity log for non-admins.
+
+`ops_snapshot` returns the authorized data in the existing UI's format. `ops_command` validates the caller's role and assignment ownership, applies one action, updates notifications, logs it, and advances the revision in one transaction. Direct browser table mutations are denied. The two RPCs intentionally use `SECURITY DEFINER` with a fixed empty search path and explicit authorization checks; Supabase's advisor may flag that privilege for review.
+
+Writes require the last loaded revision. If someone else has written since then, the command fails without partial changes; the UI reloads and asks the user to retry. It also prevents duplicate in-flight submissions. Other users' changes are refreshed every ten seconds and on window focus; this is polling, not Realtime subscriptions. Assignment changes and activity/time/date/room edits invalidate acknowledgment and check-in. Staff may acknowledge and check in only their own assignments.
+
+## Verification and Limits
+
+- `npm test` executes the actual migrations in PGlite (Postgres), testing role grants/RLS, own-schedule isolation, invite provisioning, invalid actions, acknowledgment/check-in, re-acknowledgment, archiving, and revision conflict rollback.
+- `npm run build` builds the production application with Vite.
+- `node tests/live-smoke.mjs` checks that the configured Supabase project is reachable and anonymous clients cannot read the snapshot or events table.
+- `node tests/browser.mjs` requires Playwright and Edge (or set `EVENT_OPS_BROWSER`). Set `EVENT_OPS_PLAYWRIGHT_PATH` when using a bundled Playwright installation. It checks login at desktop/mobile widths and setup/reload using mocked Supabase responses; it does not prove live email delivery or authenticated cloud round trips.
+- Verify live sign-in and persistence with provisioned Admin and Staff accounts before using real event data.
+- The cloud project starts empty; fictional demo data has not been imported automatically.
+- Floorplan/attachment storage, incoming goods persistence, expenses, shared undo, staff invitation UI, assignment emails, and push notifications are subsequent work. The demo still includes its original modules.
+- The schema currently serves one event-operations workspace. Separate organizations would need tenant isolation before sharing the same project.

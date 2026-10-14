@@ -1,4 +1,9 @@
+import { createConnection } from './connection.js';
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import htm from 'htm';
 const {useState,useRef,useEffect}=React, html=htm.bind(React.createElement);
+const CONNECTED=!!window.eventOpsRepository;
 const FN='Alex Priya Marcus Dana Jordan Sofia Ethan Maya Luis Hana Omar Chloe Ravi Nina Tomas Zoe Kwame Elena Ben Aisha Diego Leah Sam Mei Carlos'.split(' ');
 const LN='Rivera Shah Bell Okafor Lee Costa Nguyen Park Torres Ito Haddad Reed Patel Moore Silva Grant Mensah Rossi Cohen Khan Vega Stone Webb Chen Ortiz'.split(' ');
 const RL=['Demo Lead','Room Host','Registration','Hospitality','Room Host'];
@@ -148,7 +153,7 @@ function AdminSession({s,S,A}){
  ${!as.length&&html`<p className="mute">No one assigned yet.</p>`}
  <div className="acts"><select aria-label=${'Employee to assign to '+s.t} value=${pick} onChange=${e=>setPick(e.target.value)}><option value="">Choose employee…</option>
   ${free.map(e=>html`<option key=${e.id} value=${e.id}>${nm(e.id)}</option>`)}</select>
-  <button className="btn" disabled=${pick===''} onClick=${()=>{A.assign(+pick,s.id);setPick('')}}>Assign</button></div></div>`}
+  <button className="btn" disabled=${pick===''} onClick=${async()=>{const ok=await A.assign(+pick,s.id);if(ok!==false)setPick('')}}>Assign</button></div></div>`}
 function Coverage({list,S,A,coord}){
  return html`<div className="grid">${list.map(s=>{const c=cover(s,S.asg),wait=c.as.filter(x=>!x.in&&!x.conf);
  return html`<div className="card" key=${s.id}><${Head} s=${s} asg=${S.asg}/>
@@ -167,14 +172,15 @@ function Setup({S,A}){
  const ar=ROOMS.includes(p.ar)?p.ar:ROOMS[0], ad=+p.ad<DAYS.length?p.ad:0;
  const F=(l,c)=>html`<label>${l}<br/>${c}</label>`;
  const cnt=sid=>S.asg.filter(a=>a.s===sid).length;
- const Item=(key,label,warn,onEdit,onDel)=>html`<li key=${key}>${p.cf===key?html`<b>${warn}</b><div className="acts">${onDel&&html`<button className="btn" onClick=${()=>{onDel();setP(q=>({...q,cf:null}))}}>Confirm delete</button>`}<button className="btn ghost" onClick=${()=>setP(q=>({...q,cf:null}))}>${onDel?'Keep':'Close'}</button></div>`:html`${label}<div className="acts"><button className="btn ghost" onClick=${onEdit}>Edit</button><button className="btn ghost" onClick=${()=>setP(q=>({...q,cf:key}))}>Delete</button></div>`}</li>`;
+ const Item=(key,label,warn,onEdit,onDel)=>html`<li key=${key}>${p.cf===key?html`<b>${warn}</b><div className="acts">${onDel&&html`<button className="btn" onClick=${async()=>{if(await onDel()!==false)setP(q=>({...q,cf:null}))}}>Confirm delete</button>`}<button className="btn ghost" onClick=${()=>setP(q=>({...q,cf:null}))}>${onDel?'Keep':'Close'}</button></div>`:html`${label}<div className="acts"><button className="btn ghost" onClick=${()=>{onEdit();setP(q=>({...q,revision:S.revision}))}}>Edit</button><button className="btn ghost" onClick=${()=>setP(q=>({...q,cf:key}))}>Delete</button></div>`}</li>`;
+ const version={expectedRevision:p.revision};
  const Cancel=(k,extra)=>p[k]!==null&&html`<button className="btn ghost" onClick=${()=>setP(q=>({...q,[k]:null,...extra}))}>Cancel</button>`;
  return html`<div className="grid">
  <div className="card"><h3>${p.ev===null?'Create event':'Edit event'}</h3><div className="form">
   ${F('Event name',html`<input value=${p.en} onChange=${u('en')}/>`)}
   ${F('Start date',html`<input type="date" value=${p.eb} onChange=${u('eb')}/>`)}
   ${F('Number of days (1 to 14)',html`<input type="number" min="1" max="14" value=${p.ed} onChange=${u('ed')}/>`)}
-  <button className="btn" onClick=${()=>{const o={n:p.en.trim(),b:p.eb,d:+p.ed};const ok=p.ev===null?A.addEvent(o):A.editEvent(p.ev,o);ok&&setP(q=>({...q,en:'',eb:'',ed:3,ev:null}))}}>${p.ev===null?'Create event':'Save changes'}</button>${Cancel('ev',{en:'',eb:'',ed:3})}</div>
+  <button className="btn" onClick=${async()=>{const o={n:p.en.trim(),b:p.eb,d:+p.ed};const ok=await(p.ev===null?A.addEvent(o):A.editEvent(p.ev,o,version));ok&&setP(q=>({...q,en:'',eb:'',ed:3,ev:null}))}}>${p.ev===null?'Create event':'Save changes'}</button>${Cancel('ev',{en:'',eb:'',ed:3})}</div>
   <p className="mute">Use the Event menu in the top bar to switch between events. Rooms are shared across events.</p>
   <ul className="rows list">${EVS.map(e=>{const n=SESS.filter(x=>x.ev===e.id).length,[k,l]=evStatus(e);return Item('e'+e.id,html`<span><b>${e.name}</b> <${Pill} k=${k}>${l}<//> <span className="mute">· ${e.start} to ${evEnd(e)} · ${n} activities</span></span>`,EVS.length>1?'Delete '+e.name+'? Its '+n+' activities, floorplans, incoming goods and assignments will be removed.':'At least one event must remain.',()=>setP(q=>({...q,ev:e.id,en:e.name,eb:e.start,ed:e.days,cf:null})),EVS.length>1?()=>A.delEvent(e.id):null)})}</ul></div>
  <div className="card"><h3>${p.es===null?'Add person':'Edit person'}</h3><div className="form">
@@ -183,11 +189,11 @@ function Setup({S,A}){
   ${F('Type',html`<select value=${p.stp} onChange=${e=>{const v=e.target.value;setP(q=>({...q,stp:v,sm:v==='staff'}))}}><option value="staff">Staff</option><option value="contractor">Contractor</option></select>`)}
   ${F('Phone',html`<input value=${p.sp} onChange=${u('sp')}/>`)}
   <label className="chk"><input type="checkbox" checked=${p.sm} onChange=${e=>{const v=e.target.checked;setP(q=>({...q,sm:v}))}}/> Can view confidential venue map</label>
-  <button className="btn" onClick=${()=>{const o={n:p.sn.trim(),r:p.sr.trim(),acct:p.stp,phone:p.sp.trim(),map:p.sm};const ok=p.es===null?A.addStaff(o):A.editStaff(p.es,o);ok&&setP(q=>({...q,sn:'',sp:'',es:null}))}}>${p.es===null?'Add staff':'Save changes'}</button>${Cancel('es',{sn:''})}</div>
+  <button className="btn" onClick=${async()=>{const o={n:p.sn.trim(),r:p.sr.trim(),acct:p.stp,phone:p.sp.trim(),map:p.sm};const ok=await(p.es===null?A.addStaff(o):A.editStaff(p.es,o,version));ok&&setP(q=>({...q,sn:'',sp:'',es:null}))}}>${p.es===null?'Add staff':'Save changes'}</button>${Cancel('es',{sn:''})}</div>
   <ul className="rows list">${EMPS.filter(e=>!e.gone).map(e=>Item('s'+e.id,html`<span>${nm(e.id)} <span className="mute">· ${e.role}${e.map?'':' · no map access'}</span></span>`,'Delete '+e.name+'? '+S.asg.filter(a=>a.e===e.id).length+' assignment(s) will be cancelled.',()=>setP(q=>({...q,es:e.id,sn:e.name,sr:e.role,sp:e.phone||'',sm:!!e.map,stp:e.acct,cf:null})),()=>A.delStaff(e.id)))}</ul></div>
  <div className="card"><h3>${p.er===null?'Add room':'Rename room'}</h3><div className="form">
   ${F('Room name',html`<input value=${p.rn} onChange=${u('rn')}/>`)}
-  <button className="btn" onClick=${()=>{const ok=p.er===null?A.addRoom(p.rn.trim()):A.editRoom(p.er,p.rn.trim());ok&&setP(q=>({...q,rn:'',er:null}))}}>${p.er===null?'Add room':'Save changes'}</button>${Cancel('er',{rn:''})}</div>
+  <button className="btn" onClick=${async()=>{const ok=await(p.er===null?A.addRoom(p.rn.trim()):A.editRoom(p.er,p.rn.trim(),version));ok&&setP(q=>({...q,rn:'',er:null}))}}>${p.er===null?'Add room':'Save changes'}</button>${Cancel('er',{rn:''})}</div>
   <ul className="rows list">${ROOMS.map(r=>{const n=SESS.filter(s=>s.r===r).length;return Item('r'+r,html`<span>${r} <span className="mute">· ${n} activities</span></span>`,n?n+' activities still use '+r+'. Move or delete them first.':'Delete '+r+'?',()=>setP(q=>({...q,er:r,rn:r,cf:null})),n?null:()=>A.delRoom(r))})}</ul></div>
  <div className="card"><h3>${p.ea===null?'Create activity':'Edit activity'}</h3><div className="form">
   ${F('Activity name',html`<input value=${p.at} onChange=${u('at')}/>`)}
@@ -196,7 +202,7 @@ function Setup({S,A}){
   ${F('Start',html`<input type="time" value=${p.a1} onChange=${u('a1')}/>`)}
   ${F('End',html`<input type="time" value=${p.a2} onChange=${u('a2')}/>`)}
   ${F('Staff needed',html`<input type="number" min="1" value=${p.an} onChange=${u('an')}/>`)}
-  <button className="btn" onClick=${()=>{const a=[p.at.trim(),ar,ad,tm(p.a1),tm(p.a2),+p.an];const ok=p.ea===null?A.addSession(...a):A.editSession(p.ea,...a);ok&&setP(q=>({...q,at:'',ea:null}))}}>${p.ea===null?'Create activity':'Save changes'}</button>${Cancel('ea',{at:''})}</div>
+  <button className="btn" onClick=${async()=>{const a=[p.at.trim(),ar,ad,tm(p.a1),tm(p.a2),+p.an];const ok=await(p.ea===null?A.addSession(...a):A.editSession(p.ea,...a,version));ok&&setP(q=>({...q,at:'',ea:null}))}}>${p.ea===null?'Create activity':'Save changes'}</button>${Cancel('ea',{at:''})}</div>
   <p className="mute">Changing an activity's name, room, day or time asks its assigned staff to acknowledge again.</p>
   <ul className="rows list">${SESS.filter(s=>s.ev===CUR.id).sort((x,y)=>x.d-y.d||x.a-y.a).map(s=>Item('a'+s.id,html`<span>${s.t} <span className="mute">· ${s.r} · ${DAYS[s.d]} · ${span(s)} · ${cnt(s.id)} of ${s.n} staffed</span></span>`,'Delete '+s.t+'? '+cnt(s.id)+' assigned staff will be notified.',()=>setP(q=>({...q,ea:s.id,at:s.t,ar:s.r,ad:s.d,a1:tstr(s.a),a2:tstr(s.b),an:s.n,cf:null})),()=>A.delSession(s.id)))}</ul></div></div>`}
 const col=(e,al)=>`hsl(${(e*137.508)%360} 65% ${e%2?40:52}% / ${al})`;
@@ -240,7 +246,7 @@ function Admin({S,A}){
   <div className="stat"><b>${ES.filter((s,i)=>all[i].as.length<s.n).length}</b>understaffed sessions</div>
   <div className="stat"><b>${conf}</b>overlapping assignments</div>
   <div className="stat"><b>${unack}</b>awaiting acknowledgment</div></div>
- <div className="seg" style=${{marginBottom:12}}>${T('sched','Schedule')}${T('grid','Schedule grid')}${T('cov','Coverage')}${T('contacts','Contacts')}${T('plans','Floorplans')}${T('inv','Incoming goods')}${T('log','Activity log')}${T('setup','Setup')}</div>
+ <div className="seg" style=${{marginBottom:12}}>${T('sched','Schedule')}${T('grid','Schedule grid')}${T('cov','Coverage')}${T('contacts','Contacts')}${!CONNECTED&&html`${T('plans','Floorplans')}${T('inv','Incoming goods')}`}${T('log','Activity log')}${T('setup','Setup')}</div>
  ${v!=='log'&&v!=='setup'&&v!=='grid'&&v!=='contacts'&&v!=='plans'&&v!=='inv'&&html`<div className="seg" style=${{marginBottom:12}}>${DAYS.map((x,i)=>html`<button key=${i} aria-pressed=${d===i} onClick=${()=>setD(i)}>${x}</button>`)}</div>`}
  ${v==='sched'&&html`<div className="grid">${list.map(s=>html`<${AdminSession} key=${s.id} s=${s} S=${S} A=${A}/>`)}</div>`}
  ${v==='cov'&&html`<${Coverage} list=${list} S=${S} A=${A} coord=${true}/>`}
@@ -251,8 +257,9 @@ function Admin({S,A}){
  ${v==='inv'&&html`<${Incoming} A=${A}/>`}
  ${v==='setup'&&html`<${Setup} S=${S} A=${A}/>`}
  ${v==='log'&&html`<div className="card"><h3>Activity log</h3>${S.log.length?html`<ul className="rows">${S.log.map((l,i)=>html`<li key=${i}><span className="mute">${l.t}</span> ${l.x}</li>`)}</ul>`:html`<p className="mute">Changes you make will be recorded here.</p>`}</div>`}</div>`}
-function App(){
- const [S,setS]=useState(seed),[role,setRole]=useState('admin'),[me,setMe]=useState(0),[toast,setToast]=useState('');
+function App({connected}){
+ const [demoS,setS]=useState(()=>connected?connected.snapshot:seed()),[demoRole,setRole]=useState('admin'),[demoMe,setMe]=useState(0),[toast,setToast]=useState('');
+ const S=connected?connected.snapshot:demoS,role=connected?connected.snapshot.role:demoRole,me=connected?connected.snapshot.me:demoMe;
  const say=m=>{setToast(m);setTimeout(()=>setToast(''),3200)};
  const Lg=(s,x)=>({...s,log:[{t:new Date().toLocaleTimeString([], {hour:'numeric',minute:'2-digit',second:'2-digit'}),x},...s.log]});
  const L=(s,x)=>{const t=H[H.length-1];if(t&&!t.label)t.label=x;return Lg(s,x)};
@@ -295,14 +302,31 @@ function App(){
   setDays:n=>{n=Math.floor(+n);if(!(n>=1&&n<=14)){say('Enter 1 to 14 days');return false}if(n===DAYS.length){say('Already '+n+' days');return false}const bad=SESS.find(s=>s.d>=n);if(bad){say('Move or delete activities on '+DAYS[bad.d]+' first');return false}const was=DAYS.length;DAYS.length=0;for(let i=1;i<=n;i++)DAYS.push('Day '+i);setS(s=>L({...s},'Changed event length from '+was+' to '+n+' days'));say('Event is now '+n+' days');return true}};
  Object.keys(A).forEach(k=>{if(['dismiss','calAdd','calSkip','switchEv'].includes(k))return;const f=A[k];A[k]=(...a)=>{snap();const r=f(...a);if(r===false)H.pop();return r}});
  A.undo=()=>{const h=H.pop();if(!h)return;EMPS.length=0;EMPS.push(...h.emps);ROOMS.length=0;ROOMS.push(...h.rooms);SESS.length=0;SESS.push(...h.sess);Object.keys(SM).forEach(k=>delete SM[k]);SESS.forEach(o=>{SM[o.id]=o});EVS.length=0;EVS.push(...h.evs);CUR.id=h.cur;FP.length=0;FP.push(...h.fp);INV.length=0;INV.push(...h.inv);syncEv();setS(Lg(h.s,'Undid: '+h.label));say('Undid: '+h.label)};
+ if(connected)Object.keys(A).forEach(k=>{
+  if(k==='switchEv')return;
+  A[k]=async(...args)=>{
+   const options=args.at(-1);
+   const expectedRevision=k.startsWith('edit')&&options&&typeof options==='object'&&Object.hasOwn(options,'expectedRevision')?args.pop().expectedRevision:undefined;
+   if(k==='addSession')args.push(CUR.id);
+   return connected.command(k,args,expectedRevision);
+  };
+ });
  const ul=H.length?(H[H.length-1].label||'last change'):'';
  const R=[['admin','Admin'],['staff','Staff'],['contractor','Contractor']];
- return html`<div><header className="top"><h1>Event Ops <span className="mute">Stage 1 demo</span></h1>
+ return html`<div><header className="top"><h1>Event Ops <span className="mute">${connected?role:'Stage 1 demo'}</span></h1>
   <label>Event <select aria-label="Event" value=${CUR.id} onChange=${e=>A.switchEv(+e.target.value)}>${EVS.map(e=>html`<option key=${e.id} value=${e.id}>${e.name}</option>`)}</select></label>
-  <button className="btn ghost" disabled=${!H.length} aria-label=${H.length?'Undo: '+ul:'Nothing to undo'} title=${ul} onClick=${A.undo}>${H.length?'Undo: '+(ul.length>24?ul.slice(0,24)+'…':ul):'Undo'}</button>
-  <div className="seg" role="group" aria-label="Demo role">${R.map(([k,l])=>html`<button key=${k} aria-pressed=${role===k} onClick=${()=>{setRole(k);const f=EMPS.find(e=>!e.gone&&e.acct===k);if(f)setMe(f.id)}}>${l}</button>`)}</div></header>
- ${role!=='admin'&&html`<div className="wrap m" style=${{paddingBottom:0}}><label>Viewing as <select value=${me} onChange=${e=>setMe(+e.target.value)}>${EMPS.filter(e=>!e.gone&&e.acct===role).map(e=>html`<option key=${e.id} value=${e.id}>${nm(e.id)}</option>`)}</select></label></div>`}
+  ${!connected&&html`<button className="btn ghost" disabled=${!H.length} aria-label=${H.length?'Undo: '+ul:'Nothing to undo'} title=${ul} onClick=${A.undo}>${H.length?'Undo: '+(ul.length>24?ul.slice(0,24)+'…':ul):'Undo'}</button>
+  <div className="seg" role="group" aria-label="Demo role">${R.map(([k,l])=>html`<button key=${k} aria-pressed=${role===k} onClick=${()=>{setRole(k);const f=EMPS.find(e=>!e.gone&&e.acct===k);if(f)setMe(f.id)}}>${l}</button>`)}</div>`}</header>
+ ${!connected&&role!=='admin'&&html`<div className="wrap m" style=${{paddingBottom:0}}><label>Viewing as <select value=${me} onChange=${e=>setMe(+e.target.value)}>${EMPS.filter(e=>!e.gone&&e.acct===role).map(e=>html`<option key=${e.id} value=${e.id}>${nm(e.id)}</option>`)}</select></label></div>`}
  ${role!=='admin'&&html`<${Staff} S=${S} A=${A} me=${me}/>`}${role==='admin'&&html`<${Admin} S=${S} A=${A}/>`}
- <div className="wrap"><p className="foot">Simulated: fictional staff, in-memory data, notifications shown in the app only. Everything resets on reload. <button className="btn ghost" onClick=${()=>{H.length=0;setS(seed());say('Demo reset')}}>Reset demo</button></p></div>
+ ${!connected&&html`<div className="wrap"><p className="foot">Simulated: fictional staff, in-memory data, notifications shown in the app only. Everything resets on reload. <button className="btn ghost" onClick=${()=>{H.length=0;setS(seed());say('Demo reset')}}>Reset demo</button></p></div>`}
  ${toast&&html`<div className="toast" role="status">${toast}</div>`}</div>`}
-ReactDOM.createRoot(document.getElementById('root')).render(html`<${App}/>`);
+function hydrate(data){
+ EMPS.length=0;data.people.forEach(e=>{EMPS[e.id]=e});
+ EVS.splice(0,EVS.length,...data.events);ROOMS.splice(0,ROOMS.length,...data.rooms);
+ SESS.splice(0,SESS.length,...data.activities);Object.keys(SM).forEach(k=>delete SM[k]);SESS.forEach(s=>{SM[s.id]=s});
+ FP.length=0;INV.length=0;H.length=0;
+ if(EVS.length){if(!evOf(CUR.id))CUR.id=EVS[0].id;syncEv()}
+}
+const Root=CONNECTED?createConnection(React,html,window.eventOpsRepository,App,hydrate):App;
+ReactDOM.createRoot(document.getElementById('root')).render(html`<${Root}/>`);

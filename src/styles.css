@@ -44,3 +44,9 @@ select,input{min-height:44px;border-radius:10px;border:1px solid var(--line);bac
 .sg th[scope=row]{width:26%}.sg tr{break-inside:avoid}.chip{font-size:9px;padding:2px 4px}.tgl{min-height:0;font-size:10px}}
 .ln{border:1px solid var(--line);border-radius:10px;padding:10px;margin:8px 0}
 .foot{font-size:.85rem;color:var(--mute);margin-top:20px}
+.workspace{border:0;margin:0;padding:0;min-width:0}
+.connection-status{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
+.connection-status p{flex-basis:100%;margin:0}.connection-status span{overflow-wrap:anywhere}
+.connection-error{color:var(--bad);overflow-wrap:anywhere}
+.auth{padding-top:64px}.auth h1{font-size:1.5rem}.auth form{display:grid;gap:16px}
+.auth label{display:grid;gap:6px}.auth input{width:100%}

@@ -1,23 +1,23 @@
-# CLAUDE.md
+# Project Context
 
-Guidance for Claude Code and developers working in this repo.
+Guidance for coding agents and developers working in this repo.
 
 ## What this project is
-A clickable proof of concept for an event operations web app (staff scheduling, room coverage, acknowledgments, check-in, floorplans, incoming goods) for an annual corporate conference. The product owner (Jack, a PM, not a developer) will present it to Marketing, then a developer will build the production version on internal AWS. Read `docs/PROJECT_SUMMARY.md` first, then `docs/PRD.md`.
+A proof of concept for an event operations web app (staff scheduling, room coverage, acknowledgments, check-in, floorplans, incoming goods) for an annual corporate conference. The connected scheduling slice uses Vercel and Supabase; the fictional demo remains available without configuration. Read `README.md` and `docs/SUPABASE.md` for the current setup; summaries and PRD include historical proposals.
 
 ## Ground rules
 - The current app is a **prototype** with simulated data and in-memory state. The owner has authorized evolving this repo step by step into a connected POC using Supabase and Vercel; real authentication and persistence are now in scope. Preserve the existing workflows as they are migrated.
 - Scope follows the PRD. Do not add features the owner has not asked for.
 - Roles are **Admin, Staff, Contractor**. Contractors see only their own schedule. Only admins see the phone list. Venue floorplan access is a per-person flag (`map`).
 - Changes to assignments must notify the affected person and require re-acknowledgment; check-in requires acknowledgment first.
-- All actions must be undoable and logged (see below). New admin actions go through the same wrapper.
+- Demo actions are undoable and logged (see below). Connected mutations use the transactional `ops_command` RPC and are logged by the database; demo undo is disabled for shared data until a compensating-action design is implemented.
 - Keep UI touch-friendly (44px targets), accessible, and working in light/dark and at phone width. Staff view is phone-first; admin is laptop/tablet.
 - Never put real staff data, phone numbers, receipts, or expense data in this repo.
 
 ## How to run and verify
-`npm start` (or `python3 -m http.server`), open the page, run the acceptance test in `README.md`. There are no automated tests yet. `node --check src/app.js` catches syntax errors only. Adding tests for conflict detection, coverage, permissions, and totals is a good first task (the pure helpers `clash`, `cover`, `lext`, `ltot`, `lwt`, `sbn`, `icsDate` are easy to extract).
+`npm ci`, `npm start`, then run the acceptance test in `README.md`. `npm test` runs PostgreSQL behavior and permissions tests using PGlite; `npm run build` verifies the Vite production bundle. `tests/browser.mjs` verifies login layouts and the connected setup flow with mocked API responses. See `docs/SUPABASE.md` for its prerequisites and live verification limits.
 
-## Architecture of src/app.js (single file, React 18 UMD + htm, no JSX, no build)
+## Architecture of src/app.js (React 18 + htm, Vite, no JSX)
 Order in the file:
 1. **Data/model:** `EMPS` (people: id, name, role, `acct` staff|contractor, phone, `map` 0|1, `gone`), `DAYS`, `EVS` (events), `CUR` (current event id), `FP` (floorplan PDFs, bytes in memory), `INV` (incoming goods), `SESS`/`SM` (activities and lookup by id; each has `ev`, `d` day index, `a`/`b` minutes from midnight, `n` staff required), `ROOMS` (names), `SEED` (assignments).
 2. **Helpers:** formatting (`fmt`, `span`), `clash` (overlap within same event/day), `cover` (covered/partial/not), `st` (status label), `ntext` (notification text), `seed()` (initial React state).
@@ -25,7 +25,7 @@ Order in the file:
 4. **`App`** holds React state `S = {asg, log, notes}` plus the actions object `A`.
 
 ### Things to know before changing it
-- **Mutable module-level data.** People, rooms, activities, events, floorplans, and incoming goods are module arrays mutated in place; only assignments, notifications, and the log live in React state `S`. Mutations then call `setS(...)` to trigger a re-render. This was a prototype shortcut; a production app should use a real store/database.
+- **Mutable module-level data.** The original demo mutates module arrays and React state. In connected mode, `hydrate` replaces the arrays with an authorized database snapshot, and actions are routed to Supabase instead of running demo mutations. `src/connection.js` manages sessions, snapshots, write errors, and periodic refresh. Never serialize an entire browser snapshot back to the database.
 - **Undo.** `snap()` pushes a snapshot to `H` before every action. Every function in `A` (except `dismiss`, `calAdd`, `calSkip`, `switchEv`) is wrapped to snapshot first and pop the snapshot if the action returns `false` (validation failure). New actions must return `true`/`false` accordingly and call `L(state, text)` to log (which also labels the undo entry). Add new module-level arrays to `snap()` and the undo handler.
 - **Assignments** are `{id, e (person), s (activity), ack, in (checked in), conf (coordinator-confirmed), tag, seq, cal, pc}`. `seq` increments when an assignment changes so calendar entries can be updated; `cal` is the seq last added to a calendar; `pc` means "prompt for calendar".
 - **Events.** Activities carry `ev`. Views filter by `CUR.id`. `syncEv()` updates `DAYS` and the calendar start date from the current event.

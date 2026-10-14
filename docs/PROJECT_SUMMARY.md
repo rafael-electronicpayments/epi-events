@@ -1,5 +1,7 @@
 # Project Summary: Impact Event Ops
 
+**Connected POC update (2026-10-13):** Scheduling now has Supabase tables and transactional API functions, email-link authentication, administrator-assigned roles, and Vite build tooling. The connected project starts without fictional demo records. Floorplans, incoming goods, and demo undo/reset have not been migrated. Current setup and verification are in `README.md` and `docs/SUPABASE.md`; the remaining sections describe the original prototype.
+
 **Current owner decisions (2026-10-13):** Evolve this repo step by step. Use GitHub, Vercel, and an approved Supabase free-tier account until POC approval. Employees and contractors will sign in through emailed links, with administrator-assigned access. First implement authentication, event setup, assignments, acknowledgment, check-in, and shared persistence. The AWS proposal below is historical and superseded. These decisions are recorded in `context.md`; the current code is still the in-memory prototype.
 
 Written 2026-10-13 so a new reader (human or Claude) can understand what this project is, what has been built, what has been decided, and what is next.
