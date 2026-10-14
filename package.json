@@ -1,0 +1,9 @@
+{
+  "name": "impact-event-ops",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Clickable proof of concept for an event operations app (staff scheduling, coverage, floorplans, incoming goods).",
+  "scripts": {
+    "start": "npx --yes serve . -l 3000"
+  }
+}
