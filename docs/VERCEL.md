@@ -2,13 +2,15 @@
 
 Production URL: [https://epi-events-three.vercel.app](https://epi-events-three.vercel.app)
 
+Staging URL: [https://staging-epi-events.vercel.app](https://staging-epi-events.vercel.app). Separate project `staging-epi-events`, tracking `staging`, with the same Vite build settings. The owner approved public URL access without Vercel login; the app still requires a provisioned Supabase login.
+
 Project name: `epi-events`. Framework: Vite. Node.js: 24. Install command: `npm ci`. Build command: `npm run build`. Output directory: `dist`. These settings are recorded in `vercel.json` and `package.json`.
 
 The production app has been deployed and verified from an anonymous browser at desktop and mobile widths. Vercel's production alias opens without a Vercel account. Access to event data still requires a provisioned Supabase login and profile.
 
 ## Environment
 
-Vercel has `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` configured for Production, Preview, and Development. They currently point to the same POC database. Only public client credentials belong in these variables; never use a secret/service-role key. Builds fail if configuration is missing or a privileged key is supplied.
+The production Vercel project has `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` restricted to Production; preview builds are disabled. The separate `staging-epi-events` project uses the staging database in its Production, Preview, and Development scopes. This checkout's local Vercel link and `.env.local` also target staging. See `docs/ENVIRONMENTS.md` for project IDs and verification status. Only public client credentials belong in these variables; never use a secret/service-role key. Builds fail if configuration is missing, privileged, or points to the wrong database for either known Vercel project.
 
 `.env.local` and `.vercel/` are local-only and excluded from Git. Vercel CLI may add an OIDC token to `.env.local`; do not publish that file or share the token.
 
@@ -16,13 +18,9 @@ Vercel has `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` configured fo
 
 The project is connected to `rafael-electronicpayments/epi-events`, with `main` as the production branch. The first release was deployed with Vercel CLI; subsequent pushes use the GitHub integration.
 
-Pushes to `main` trigger production deployments and pull requests create previews. Routine development now uses `staging`; do not push directly to `main`. Keep `epi-events` for production. A second staging project and separate database are planned but not yet provisioned; see `docs/ENVIRONMENTS.md` before testing any preview. If GitHub access is revoked, restore the GitHub login connection and the Vercel GitHub App's repository access, then reconnect under Settings > Git.
+Pushes to `main` trigger production deployments on `epi-events`. Pushes to `staging` deploy the separate `staging-epi-events` site. Preview deployments, when enabled on the staging project, use staging data; previews on the production project are disabled. Routine development uses `staging`; do not push directly to `main`. If GitHub access is revoked, restore the GitHub login connection and the Vercel GitHub App's repository access, then reconnect under Settings > Git.
 
-For an explicitly approved production release only, from an approved `main` checkout already linked with Vercel CLI (never from `staging`):
-
-```bash
-vercel deploy --prod
-```
+Prefer the Git integration for releases. A manual production deployment requires explicit release approval and a separate approved `main` checkout whose Vercel link has been verified as `epi-events`; this checkout is linked to staging. Do not treat `--prod` alone as selecting the app's production project.
 
 ## Email Login and Team Access
 

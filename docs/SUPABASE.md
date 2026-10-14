@@ -4,13 +4,15 @@ The scheduling slice uses normalized Postgres tables and two authenticated RPCs.
 
 ## Configuration
 
+Use staging project `bqdpskxaongqrqmgnzir` for local development and `staging-epi-events.vercel.app`. Production project `nrzyqctclteswzsvxifo` belongs only to `epi-events-three.vercel.app`. Both have the four repository migrations; staging was seeded from the fictional mock, not copied from production. Login accounts and Auth settings are independent. Staging Site URL is `https://staging-epi-events.vercel.app`, with its trailing-slash URL and `http://localhost:3000/` allowed as redirects (owner-confirmed). Keep that Site URL when working locally; do not change the shared project's Site URL to localhost. See `docs/ENVIRONMENTS.md` for release steps.
+
 - Put the project URL and publishable key into `.env.local` using the variable names in `.env.example`. Never put secret/service-role keys into any `VITE_` variable.
 - Run `npm ci` and `npm start`. Open the URL printed by Vite.
 - In Supabase Authentication, enable email authentication and disable public signups. Use the default magic-link email template.
-- Set the Auth Site URL to `http://localhost:3000` during local development. Allow `http://localhost:3000/` as a redirect URL. If using a different host or port, explicitly allow that origin as well. Before deployment, set Site URL to the Vercel URL and retain approved development redirect URLs.
+- Set each shared project's Auth Site URL to its own Vercel URL. Allow `http://localhost:3000/` as a redirect on staging for local development. If using a different host or port, explicitly allow that origin as well; do not replace a shared Site URL with localhost.
 - Configure an SMTP provider if Supabase's default email delivery does not support your testers' addresses. See [Supabase SMTP documentation](https://supabase.com/docs/guides/auth/auth-smtp).
 
-The public Vercel app is `https://epi-events-three.vercel.app`. Use it as Site URL and allow `https://epi-events-three.vercel.app/` as an email redirect, retaining the local redirect for development. See `docs/VERCEL.md` (relative to the repository root) for hosting details.
+For production only, the public Vercel app is `https://epi-events-three.vercel.app`. Use it as the production Site URL and allow `https://epi-events-three.vercel.app/` as an email redirect. Use the separate staging URL above for staging. See `docs/VERCEL.md` (relative to the repository root) for hosting details.
 
 The initial schema migrations have been applied to the connected EPI Events Project. For another project, apply `supabase/migrations/*.sql` in filename order through Supabase CLI or SQL Editor. Keep migrations in Git; avoid editing live tables without a migration.
 

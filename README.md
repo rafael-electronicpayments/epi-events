@@ -4,6 +4,8 @@ A clickable, mobile-first prototype of an event operations web app for an annual
 
 **Public app:** [epi-events-three.vercel.app](https://epi-events-three.vercel.app). The URL is public; application data requires a provisioned email login. See `docs/VERCEL.md` for hosting and team access.
 
+**Staging:** [staging-epi-events.vercel.app](https://staging-epi-events.vercel.app), with an independent Supabase database and login accounts. Use staging for team testing.
+
 **Status:** Connected POC. With Supabase configured, emailed sign-in links identify provisioned users and scheduling data is saved in Postgres. Without configuration, the original fictional, in-memory demo runs. Notifications are in-app; assignment emails and push notifications are not implemented.
 
 **Direction:** Evolve this repo step by step, with GitHub for collaboration, Vercel hosting, and Supabase's free tier until POC approval. The connected slice includes login, event setup, people/rooms/activities, assignments, acknowledgment, check-in, contacts, schedule printing, and activity logging. Floorplans, incoming goods, and demo undo/reset remain in demo mode only. See `docs/SUPABASE.md` for setup and access provisioning.
@@ -14,7 +16,7 @@ The full-width workspace uses a unified event/account header and left navigation
 
 ## Run it
 
-**Branch workflow:** Work from `staging` and push changes there. `main` is reserved for approved production releases via pull request. Separate staging database/hosting setup is pending; see [environment status and rollout steps](docs/ENVIRONMENTS.md). Existing Preview settings are not yet database-isolated.
+**Branch workflow:** Work from `staging` and push changes there. `main` is reserved for approved production releases via pull request. This checkout's local Vercel link and `.env.local` now target staging; see [environment status and release steps](docs/ENVIRONMENTS.md). Never use production database credentials for local testing.
 
 Use Node.js 24. Vite bundles React, htm, and the Supabase client. The optional demo PDF viewer and font still use CDNs.
 
