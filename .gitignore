@@ -7,4 +7,5 @@ dist/
 !.env.example
 .vercel/
 .supabase/
+supabase/.temp/
 coverage/

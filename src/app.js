@@ -166,7 +166,8 @@ const bump=(s,sid,from)=>{const ids=s.asg.filter(a=>a.s===sid).map(a=>a.id);
  return {...s,asg:s.asg.map(a=>ids.includes(a.id)?{...a,ack:0,in:0,conf:0,tag:'changed',seq:(a.seq||0)+1,pc:0}:a),
  notes:[...s.notes.filter(n=>!ids.includes(n.aid)),...s.asg.filter(a=>ids.includes(a.id)).map(a=>({id:++uid,e:a.e,aid:a.id,done:0,x:ntext(a,'Changed assignment'),from}))]}};
 function Setup({S,A}){
- const [p,setP]=useState({en:'',eb:'',ed:3,ev:null,dn:'',sp:'',sm:true,stp:'staff',sn:'',sr:'Room Host',rn:'',at:'',ar:'',ad:0,a1:'09:00',a2:'10:00',an:2,es:null,er:null,ea:null,cf:null});
+ const [p,setP]=useState({en:'',eb:'',ed:3,ev:null,dn:'',sp:'',se:'',sm:true,stp:'staff',sn:'',sr:'Room Host',rn:'',at:'',ar:'',ad:0,a1:'09:00',a2:'10:00',an:2,es:null,er:null,ea:null,cf:null});
+ const emailField=useRef(null);
  const u=k=>e=>{const v=e.target.value;setP(q=>({...q,[k]:v}))};
  const tm=t=>{const [h,m]=t.split(':');return +h*60+ +m};
  const ar=ROOMS.includes(p.ar)?p.ar:ROOMS[0], ad=+p.ad<DAYS.length?p.ad:0;
@@ -185,12 +186,13 @@ function Setup({S,A}){
   <ul className="rows list">${EVS.map(e=>{const n=SESS.filter(x=>x.ev===e.id).length,[k,l]=evStatus(e);return Item('e'+e.id,html`<span><b>${e.name}</b> <${Pill} k=${k}>${l}<//> <span className="mute">· ${e.start} to ${evEnd(e)} · ${n} activities</span></span>`,EVS.length>1?'Delete '+e.name+'? Its '+n+' activities, floorplans, incoming goods and assignments will be removed.':'At least one event must remain.',()=>setP(q=>({...q,ev:e.id,en:e.name,eb:e.start,ed:e.days,cf:null})),EVS.length>1?()=>A.delEvent(e.id):null)})}</ul></div>
  <div className="card"><h3>${p.es===null?'Add person':'Edit person'}</h3><div className="form">
   ${F('Name',html`<input value=${p.sn} onChange=${u('sn')}/>`)}
+  ${F('Email',html`<input type="email" autoComplete="off" ref=${emailField} value=${p.se} onChange=${u('se')}/>`)}
   ${F('Role or title',html`<input value=${p.sr} onChange=${u('sr')}/>`)}
   ${F('Type',html`<select value=${p.stp} onChange=${e=>{const v=e.target.value;setP(q=>({...q,stp:v,sm:v==='staff'}))}}><option value="staff">Staff</option><option value="contractor">Contractor</option></select>`)}
   ${F('Phone',html`<input value=${p.sp} onChange=${u('sp')}/>`)}
   <label className="chk"><input type="checkbox" checked=${p.sm} onChange=${e=>{const v=e.target.checked;setP(q=>({...q,sm:v}))}}/> Can view confidential venue map</label>
-  <button className="btn" onClick=${async()=>{const o={n:p.sn.trim(),r:p.sr.trim(),acct:p.stp,phone:p.sp.trim(),map:p.sm};const ok=await(p.es===null?A.addStaff(o):A.editStaff(p.es,o,version));ok&&setP(q=>({...q,sn:'',sp:'',es:null}))}}>${p.es===null?'Add staff':'Save changes'}</button>${Cancel('es',{sn:''})}</div>
-  <ul className="rows list">${EMPS.filter(e=>!e.gone).map(e=>Item('s'+e.id,html`<span>${nm(e.id)} <span className="mute">· ${e.role}${e.map?'':' · no map access'}</span></span>`,'Delete '+e.name+'? '+S.asg.filter(a=>a.e===e.id).length+' assignment(s) will be cancelled.',()=>setP(q=>({...q,es:e.id,sn:e.name,sr:e.role,sp:e.phone||'',sm:!!e.map,stp:e.acct,cf:null})),()=>A.delStaff(e.id)))}</ul></div>
+  <button className="btn" onClick=${async()=>{if(!emailField.current.reportValidity())return;const o={n:p.sn.trim(),email:p.se.trim().toLowerCase(),r:p.sr.trim(),acct:p.stp,phone:p.sp.trim(),map:p.sm};const ok=await(p.es===null?A.addStaff(o):A.editStaff(p.es,o,version));ok&&setP(q=>({...q,sn:'',sp:'',se:'',es:null}))}}>${p.es===null?'Add staff':'Save changes'}</button>${Cancel('es',{sn:'',se:'',sp:''})}</div>
+  <ul className="rows list">${EMPS.filter(e=>!e.gone).map(e=>Item('s'+e.id,html`<span>${nm(e.id)} <span className="mute">· ${e.role}${e.map?'':' · no map access'}${e.email?' · '+e.email:''}</span>${CONNECTED&&html` <${Pill} k=${e.login?'ok':''}>${e.login?'Login active':e.email?'Login pending':'No email'}<//>`}</span>`,'Delete '+e.name+'? '+S.asg.filter(a=>a.e===e.id).length+' assignment(s) will be cancelled.',()=>setP(q=>({...q,es:e.id,sn:e.name,se:e.email||'',sr:e.role,sp:e.phone||'',sm:!!e.map,stp:e.acct,cf:null})),()=>A.delStaff(e.id)))}</ul></div>
  <div className="card"><h3>${p.er===null?'Add room':'Rename room'}</h3><div className="form">
   ${F('Room name',html`<input value=${p.rn} onChange=${u('rn')}/>`)}
   <button className="btn" onClick=${async()=>{const ok=await(p.er===null?A.addRoom(p.rn.trim()):A.editRoom(p.er,p.rn.trim(),version));ok&&setP(q=>({...q,rn:'',er:null}))}}>${p.er===null?'Add room':'Save changes'}</button>${Cancel('er',{rn:''})}</div>
@@ -277,10 +279,10 @@ function App({connected}){
   dismiss:id=>setS(s=>({...s,notes:s.notes.map(n=>n.id===id?{...n,done:1}:n)})),
   checkIn:id=>{setS(s=>{const o=s.asg.find(a=>a.id===id);return L({...s,asg:s.asg.map(a=>a.id===id?{...a,in:1}:a)},EMPS[o.e].name+' checked in to '+SM[o.s].r)});say('Checked in')},
   confirm:id=>{setS(s=>{const o=s.asg.find(a=>a.id===id);return L({...s,asg:s.asg.map(a=>a.id===id?{...a,conf:1}:a)},'Coordinator confirmed '+EMPS[o.e].name+' present in '+SM[o.s].r)});say('Attendance confirmed')},
-  addStaff:o=>{if(!o.n){say('Enter a name');return false}EMPS.push({id:EMPS.length,name:o.n,role:o.r,acct:o.acct,phone:o.phone,map:o.map?1:0});setS(s=>L({...s},'Added '+o.acct+' '+o.n+' ('+o.r+')'));say(o.n+' added');return true},
+  addStaff:o=>{if(!o.n){say('Enter a name');return false}EMPS.push({id:EMPS.length,name:o.n,email:o.email,role:o.r,acct:o.acct,phone:o.phone,map:o.map?1:0});setS(s=>L({...s},'Added '+o.acct+' '+o.n+' ('+o.r+')'));say(o.n+' added');return true},
   addRoom:n=>{if(!n||ROOMS.includes(n)){say(n?'That room already exists':'Enter a room name');return false}ROOMS.push(n);setS(s=>L({...s},'Added room '+n));say(n+' added');return true},
   addSession:(t,r,d,a,b,n)=>{if(!t){say('Enter an activity name');return false}if(!(b>a)){say('End time must be after start time');return false}if(!(n>=1)){say('Staff needed must be at least 1');return false}const o={id:Math.max(0,...SESS.map(x=>x.id))+1,ev:CUR.id,d:+d,t,r,a,b,n};SESS.push(o);SM[o.id]=o;setS(s=>L({...s},'Created activity '+t+' in '+r+', '+DAYS[o.d]+', '+span(o)));say(t+' created');return true},
-  editStaff:(id,o)=>{if(!o.n){say('Enter a name');return false}Object.assign(EMPS[id],{name:o.n,role:o.r,acct:o.acct,phone:o.phone,map:o.map?1:0});setS(s=>L({...s},'Updated '+o.n+' ('+o.r+', '+o.acct+', map access '+(o.map?'on':'off')+')'));say('Saved');return true},
+  editStaff:(id,o)=>{if(!o.n){say('Enter a name');return false}Object.assign(EMPS[id],{name:o.n,email:o.email,role:o.r,acct:o.acct,phone:o.phone,map:o.map?1:0});setS(s=>L({...s},'Updated '+o.n+' ('+o.r+', '+o.acct+', map access '+(o.map?'on':'off')+')'));say('Saved');return true},
   delStaff:id=>{const n=EMPS[id].name;EMPS[id].gone=1;if(me===id)setMe(EMPS.find(e=>!e.gone).id);setS(s=>L({...s,asg:s.asg.filter(a=>a.e!==id),notes:s.notes.filter(x=>x.e!==id)},'Deleted staff member '+n+' and cancelled their assignments'));say(n+' deleted');return true},
   editRoom:(o,n)=>{if(!n||(n!==o&&ROOMS.includes(n))){say(n?'That room already exists':'Enter a room name');return false}const ss=SESS.filter(s=>s.r===o).map(s=>[s.id,desc(s)]);ROOMS[ROOMS.indexOf(o)]=n;ss.forEach(([id])=>{SM[id].r=n});setS(s=>L(ss.reduce((x,[id,f])=>bump(x,id,f),s),'Renamed room '+o+' to '+n));say('Saved');return true},
   delRoom:r=>{if(SESS.some(s=>s.r===r)){say('Move or delete its activities first');return false}ROOMS.splice(ROOMS.indexOf(r),1);setS(s=>L({...s},'Deleted room '+r));say(r+' deleted');return true},

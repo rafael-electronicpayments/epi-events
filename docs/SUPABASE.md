@@ -16,15 +16,15 @@ The initial schema migrations have been applied to the connected EPI Events Proj
 
 ## Accounts
 
-Database access requires a trusted profile; email login alone does not grant app access. Public browser clients cannot create or promote profiles or edit invitations.
+Database access requires a trusted profile; email login alone does not grant app access. Ordinary users cannot edit invitations or promote themselves. Administrators can prepare Staff/Contractor access through Setup using the authorized `ops_save_person` RPC.
 
 1. Add an administrator email to `access_invites` using SQL Editor. The initial owner's invitation has already been created in the connected project; personal addresses are not included in migration files.
 2. Create that email under Authentication > Users > Add user > Create new user, with email confirmation enabled. The account's initial password is not used by the app. The invitation trigger automatically creates the administrator profile.
 3. Open the app and request a sign-in link. If email delivery fails, inspect Auth configuration/SMTP; do not bypass authorization.
 4. Create an event, rooms, people, and activities through Setup. Assign people through Schedule.
-5. To give a roster person access, add their email and person ID to `access_invites` and then create the Auth user. The role must match the intended Staff or Contractor access.
+5. To give a roster person access, add or edit the person in Setup and enter their Email. Saving prepares `access_invites` with the person's Staff or Contractor type. If that email already has an Auth user, its profile is linked immediately. Otherwise create the matching Auth user through the dashboard; the invitation trigger attaches its role automatically.
 
-Example (replace placeholders locally, never commit personal information):
+Manual invitation fallback (Setup handles this for Staff/Contractors; replace placeholders locally and never commit personal information):
 
 ```sql
 insert into public.access_invites(email,role,person_id)
@@ -40,7 +40,7 @@ from auth.users u join public.access_invites i on i.email=lower(u.email)
 on conflict (user_id) do nothing;
 ```
 
-Account creation currently uses the Supabase dashboard. Creating a roster person in the app does not create an Auth account or send email. Archiving a roster person disables their app access. Administrators are managed separately from the Staff/Contractor roster.
+Account creation currently uses the Supabase dashboard. Saving an email in Setup prepares app access but does not create an Auth account or send email. Setup shows No email, Login pending, or Login active. Changing/removing an email revokes that roster person's previous non-admin profile and invitation; existing administrator accounts cannot be reassigned through this form. Archiving a roster person disables their app access. Administrators are managed separately from the Staff/Contractor roster.
 
 ## Data Structure
 
@@ -63,7 +63,7 @@ Foreign keys and constraints reject orphaned assignments, duplicates, invalid ti
 
 All application tables have RLS. Anonymous clients have no table or RPC access. Admins can read the workspace; Staff and Contractors can read their own roster record, assignments, notifications, and the activities/events/rooms needed for their schedule. The snapshot omits phone numbers and the activity log for non-admins.
 
-`ops_snapshot` returns the authorized data in the existing UI's format. `ops_command` validates the caller's role and assignment ownership, applies one action, updates notifications, logs it, and advances the revision in one transaction. Direct browser table mutations are denied. The two RPCs intentionally use `SECURITY DEFINER` with a fixed empty search path and explicit authorization checks; Supabase's advisor may flag that privilege for review.
+`ops_snapshot` returns the authorized data in the existing UI's format, including roster emails and login status. `ops_command` validates the caller's role and assignment ownership, applies one action, updates notifications, logs it, and advances the revision in one transaction. `ops_save_person` handles roster and access-list changes atomically, including email uniqueness, role checks, existing-login linkage, and revision protection. Direct browser table mutations are denied. These RPCs intentionally use `SECURITY DEFINER` with a fixed empty search path and explicit authorization checks; Supabase's advisor may flag that privilege for review. The original snapshot implementation is an unexposed helper in `ops_private` with no client execution grant.
 
 Writes require the last loaded revision. If someone else has written since then, the command fails without partial changes; the UI reloads and asks the user to retry. It also prevents duplicate in-flight submissions. Other users' changes are refreshed every ten seconds and on window focus; this is polling, not Realtime subscriptions. Assignment changes and activity/time/date/room edits invalidate acknowledgment and check-in. Staff may acknowledge and check in only their own assignments.
 

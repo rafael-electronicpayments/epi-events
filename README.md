@@ -8,6 +8,8 @@ A clickable, mobile-first prototype of an event operations web app for an annual
 
 **Direction:** Evolve this repo step by step, with GitHub for collaboration, Vercel hosting, and Supabase's free tier until POC approval. The connected slice includes login, event setup, people/rooms/activities, assignments, acknowledgment, check-in, contacts, schedule printing, and activity logging. Floorplans, incoming goods, and demo undo/reset remain in demo mode only. See `docs/SUPABASE.md` for setup and access provisioning.
 
+Setup's Add/Edit person form includes Email and prepares Staff/Contractor access when saved. Existing login users are linked automatically; new login accounts still need to be created through Supabase Authentication.
+
 ## Run it
 
 Use Node.js 24. Vite bundles React, htm, and the Supabase client. The optional demo PDF viewer and font still use CDNs.

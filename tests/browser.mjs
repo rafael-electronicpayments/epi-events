@@ -23,6 +23,14 @@ try {
     const request = route.request();
     if (request.url().includes('/auth/v1/user')) return route.fulfill({ json: user });
     if (request.url().includes('/rest/v1/rpc/ops_snapshot')) return route.fulfill({ json: data });
+    if (request.url().includes('/rest/v1/rpc/ops_save_person')) {
+      const {target_person_id,person,expected_revision}=request.postDataJSON();
+      if(expected_revision!==data.revision)return route.fulfill({status:409,json:{code:'40001',message:'Stale edit'}});
+      const row={id:target_person_id??0,name:person.n,role:person.r,acct:person.acct,phone:person.phone,email:person.email,map:1,gone:0,login:false};
+      if(target_person_id===null)data.people.push(row);else data.people=data.people.map(p=>p.id===target_person_id?row:p);
+      data.revision++;
+      return route.fulfill({json:data});
+    }
     if (request.url().includes('/rest/v1/rpc/ops_command')) {
       const { action, args, expected_revision } = request.postDataJSON();
       if(expected_revision !== data.revision) return route.fulfill({ status: 409, json: { code: '40001', message: 'Another user changed the data.' } });
@@ -52,7 +60,10 @@ try {
   await page.getByLabel('Room name', { exact: true }).fill('Ballroom');
   await page.getByRole('button', { name: 'Add room', exact: true }).click();
   await page.getByLabel('Name', { exact: true }).fill('Alex');
+  await page.getByLabel('Email', { exact: true }).fill('Alex@example.test');
   await page.getByRole('button', { name: 'Add staff', exact: true }).click();
+  await page.locator('li').filter({hasText:'alex@example.test'}).waitFor();
+  assert.equal(data.people[0].email,'alex@example.test');
   await page.getByLabel('Activity name', { exact: true }).fill('Keynote');
   await page.getByRole('button', { name: 'Create activity', exact: true }).click();
   await page.getByRole('button', { name: 'Schedule', exact: true }).click();
@@ -62,6 +73,11 @@ try {
   assert.equal(await page.getByRole('group', { name: 'Demo role' }).count(), 0);
   assert.equal(await page.getByRole('button', { name: 'Incoming goods', exact: true }).count(), 0);
   await page.getByRole('button', { name: 'Setup', exact: true }).click();
+  await page.locator('li').filter({hasText:'alex@example.test'}).getByRole('button',{name:'Edit',exact:true}).click();
+  assert.equal(await page.getByLabel('Email',{exact:true}).inputValue(),'alex@example.test');
+  await page.getByLabel('Email',{exact:true}).fill('alex.updated@example.test');
+  await page.getByRole('heading',{name:'Edit person',exact:true}).locator('..').getByRole('button',{name:'Save changes',exact:true}).click();
+  await page.locator('li').filter({hasText:'alex.updated@example.test'}).waitFor();
   await page.locator('li').filter({ hasText: 'Keynote' }).getByRole('button', { name: 'Edit', exact: true }).click();
   await page.getByLabel('Activity name', { exact: true }).fill('Stale edit');
   data = { ...data, revision: data.revision + 1 };

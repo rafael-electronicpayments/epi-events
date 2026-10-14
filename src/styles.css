@@ -18,7 +18,7 @@ h2{font-size:1.25rem;margin:4px 0 10px}h3{font-size:1.05rem;margin:0}.mute{color
 select,input{min-height:44px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);font:inherit;padding:0 8px;max-width:100%}
 .pill{display:inline-block;padding:2px 10px;border-radius:99px;font-size:.82rem;font-weight:600;background:var(--inf);color:var(--ink)}
 .pill.ok{background:var(--okb);color:var(--ok)}.pill.warn{background:var(--warnb);color:var(--warn)}.pill.bad{background:var(--badb);color:var(--bad)}
-.rows{list-style:none;padding:0;margin:8px 0}.rows li{padding:8px 0;border-top:1px solid var(--line)}
+.rows{list-style:none;padding:0;margin:8px 0}.rows li{padding:8px 0;border-top:1px solid var(--line);overflow-wrap:anywhere}
 .acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}.stats{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
 .stat{flex:1 1 140px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 14px}.stat b{font-size:1.6rem;display:block}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;max-width:90%;z-index:9}
