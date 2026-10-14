@@ -16,6 +16,8 @@ For production only, the public Vercel app is `https://epi-events-three.vercel.a
 
 The initial schema migrations have been applied to the connected EPI Events Project. For another project, apply `supabase/migrations/*.sql` in filename order through Supabase CLI or SQL Editor. Keep migrations in Git; avoid editing live tables without a migration.
 
+After changing Auth URLs, run `tests/auth-redirects.mjs` with `EVENT_OPS_TEST_URL` set to the hosted app URL and local Supabase configuration targeting that same environment. This checks the live default, hosted, localhost, and unapproved redirect destinations with an invalid token, without sending email or using a real login token. Save Site URL and Redirect URLs separately in the dashboard. Existing email links may still contain their old destination; request a fresh link from the hosted app after verification passes.
+
 ## Accounts
 
 Database access requires a trusted profile; email login alone does not grant app access. Ordinary users cannot edit invitations or promote themselves. Administrators can prepare Staff/Contractor access through People using the authorized `ops_save_person` RPC.
