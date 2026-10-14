@@ -74,6 +74,12 @@ Writes require the last loaded revision. If someone else has written since then,
 - `node tests/live-smoke.mjs` checks that the configured Supabase project is reachable and anonymous clients cannot read the snapshot or events table.
 - `node tests/browser.mjs` requires Playwright and Edge (or set `EVENT_OPS_BROWSER`). Set `EVENT_OPS_PLAYWRIGHT_PATH` when using a bundled Playwright installation. It checks login at desktop/mobile widths and setup/reload using mocked Supabase responses; it does not prove live email delivery or authenticated cloud round trips.
 - Verify live sign-in and persistence with provisioned Admin and Staff accounts before using real event data.
-- The cloud project starts empty; fictional demo data has not been imported automatically.
+- The connected POC includes the original fictional mock schedules: IMPACT27 (12 activities, 29 people, 8 rooms, 32 assignments) and the empty IMPACT26 event. Original acknowledgment and check-in states are preserved. Mock roster people do not receive login accounts automatically.
 - Floorplan/attachment storage, incoming goods persistence, expenses, shared undo, staff invitation UI, assignment emails, and push notifications are subsequent work. The demo still includes its original modules.
 - The schema currently serves one event-operations workspace. Separate organizations would need tenant isolation before sharing the same project.
+
+## Original Mock Data
+
+`supabase/seed-mock.sql` imports the original scheduling example into an empty scheduling workspace. It runs in one transaction, uses generated record IDs, records the import in the activity log, and advances the shared revision so active clients refresh. It leaves Auth users, administrator profiles, and access invitations unchanged.
+
+The seed was applied to the connected POC on 2026-10-13. It skips repeat runs after a successful import and refuses to replace existing scheduling data. It is an optional data seed, not an automatic deployment migration; do not run it as a reset. Floorplans and incoming goods remain outside the connected scheduling slice.
