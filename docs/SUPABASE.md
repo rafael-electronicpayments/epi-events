@@ -10,6 +10,8 @@ The scheduling slice uses normalized Postgres tables and two authenticated RPCs.
 - Set the Auth Site URL to `http://localhost:3000` during local development. Allow `http://localhost:3000/` as a redirect URL. If using a different host or port, explicitly allow that origin as well. Before deployment, set Site URL to the Vercel URL and retain approved development redirect URLs.
 - Configure an SMTP provider if Supabase's default email delivery does not support your testers' addresses. See [Supabase SMTP documentation](https://supabase.com/docs/guides/auth/auth-smtp).
 
+The public Vercel app is `https://epi-events-three.vercel.app`. Use it as Site URL and allow `https://epi-events-three.vercel.app/` as an email redirect, retaining the local redirect for development. See `docs/VERCEL.md` (relative to the repository root) for hosting details.
+
 The initial schema migrations have been applied to the connected EPI Events Project. For another project, apply `supabase/migrations/*.sql` in filename order through Supabase CLI or SQL Editor. Keep migrations in Git; avoid editing live tables without a migration.
 
 ## Accounts

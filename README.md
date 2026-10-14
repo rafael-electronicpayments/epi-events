@@ -2,6 +2,8 @@
 
 A clickable, mobile-first prototype of an event operations web app for an annual corporate conference ("Impact"). Admins build the schedule and staff rooms; staff and contractors see their own assignments on a phone, acknowledge changes, and check in; admins see live room coverage.
 
+**Public app:** [epi-events-three.vercel.app](https://epi-events-three.vercel.app). The URL is public; application data requires a provisioned email login. See `docs/VERCEL.md` for hosting and team access.
+
 **Status:** Connected POC. With Supabase configured, emailed sign-in links identify provisioned users and scheduling data is saved in Postgres. Without configuration, the original fictional, in-memory demo runs. Notifications are in-app; assignment emails and push notifications are not implemented.
 
 **Direction:** Evolve this repo step by step, with GitHub for collaboration, Vercel hosting, and Supabase's free tier until POC approval. The connected slice includes login, event setup, people/rooms/activities, assignments, acknowledgment, check-in, contacts, schedule printing, and activity logging. Floorplans, incoming goods, and demo undo/reset remain in demo mode only. See `docs/SUPABASE.md` for setup and access provisioning.
