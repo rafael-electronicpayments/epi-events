@@ -14,9 +14,9 @@ Vercel has `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` configured fo
 
 ## GitHub Updates
 
-The intended repository is `rafael-electronicpayments/epi-events`, with `main` as the production branch. The first release was deployed with Vercel CLI. GitHub linking requires both a GitHub login connection in the Vercel account and the Vercel GitHub App with access to this repository.
+The project is connected to `rafael-electronicpayments/epi-events`, with `main` as the production branch. The first release was deployed with Vercel CLI; subsequent pushes use the GitHub integration.
 
-After that access is granted, connect the existing `epi-events` project under Settings > Git. Reuse this project; do not create another hosting project. Once linked, pushes to `main` should create production deployments and pull requests should create previews. Confirm the Git connection and first automatic build in Vercel before relying on automatic updates.
+Pushes to `main` trigger production deployments and pull requests create previews. Reuse the existing `epi-events` project for future work. If GitHub access is revoked, restore the GitHub login connection and the Vercel GitHub App's repository access, then reconnect under Settings > Git.
 
 For a manual deployment from a checkout already linked with Vercel CLI:
 
@@ -31,6 +31,8 @@ In [Supabase Auth URL Configuration](https://supabase.com/dashboard/project/nrzy
 - Site URL: `https://epi-events-three.vercel.app`
 - Production redirect URL: `https://epi-events-three.vercel.app/`
 - Local redirect URL: `http://localhost:3000/`
+
+The owner confirmed that the production Site URL and redirect settings were saved on 2026-10-13.
 
 Retain additional approved local URLs as needed. Add preview redirect URLs only when testers need to sign into previews. A public URL does not automatically create accounts: provision each teammate through the trusted invitation/profile workflow in `docs/SUPABASE.md`. SMTP may be required for Supabase to deliver email to all teammates.
 
