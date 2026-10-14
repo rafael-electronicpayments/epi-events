@@ -9,7 +9,9 @@ try {
   const page = await browser.newPage();
   page.on('pageerror', e => errors.push(e.message));
   await page.goto(origin);
-  await page.getByRole('button', { name: 'Send sign-in link' }).waitFor();
+  await page.getByRole('button', { name: 'Sign in',exact:true }).waitFor();
+  assert.equal(await page.getByRole('navigation',{name:'Main navigation'}).count(),0);
+  await page.getByLabel('Password',{exact:true}).waitFor();
   for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
     await page.setViewportSize(viewport);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
@@ -19,8 +21,27 @@ try {
   const user = { id: '00000000-0000-0000-0000-000000000001', email: 'admin@example.test' };
   const session = { access_token: 'test', refresh_token: 'test', expires_at: Math.floor(Date.now()/1000)+3600, expires_in: 3600, token_type: 'bearer', user };
   let data = { revision: 0, role: 'admin', me: null, people: [], events: [], rooms: [], activities: [], asg: [], notes: [], log: [] };
+  let passwordVersion=1;
+  const testCredentials=()=>({status:'ready',email:data.people[0].email,password:'Fixture-only-password-'+passwordVersion});
+  await page.route('**/api/test-logins',route=>{
+    assert.equal(route.request().headers().authorization,'Bearer test');
+    if(data.role!=='admin')return route.fulfill({status:403,json:{error:'Administrator access required.'}});
+    const body=route.request().postDataJSON();
+    if(body.action==='credentials')return route.fulfill({json:data.people[0].login?testCredentials():{status:'pending'}});
+    if(body.action==='reset'){data.people[0].login=true;passwordVersion++;return route.fulfill({json:testCredentials()});}
+    const created=data.people.filter(p=>!p.login).length;
+    data.people.forEach(p=>p.login=true);
+    return route.fulfill({json:{created,ready:data.people.length-created,skipped:0,errors:[]}});
+  });
   await page.route('**/*supabase.co/**', route => {
     const request = route.request();
+    if(request.url().includes('/auth/v1/recover'))return route.fulfill({json:{}});
+    if(request.url().includes('/auth/v1/token')){
+      const payload=request.postDataJSON();
+      assert.equal(payload.email,'admin@example.test');
+      return payload.password==='test-password' ? route.fulfill({json:session})
+        : route.fulfill({status:400,json:{code:'invalid_credentials',message:'Invalid login credentials'}});
+    }
     if (request.url().includes('/auth/v1/user')) return route.fulfill({ json: user });
     if (request.url().includes('/rest/v1/rpc/ops_snapshot')) return route.fulfill({ json: data });
     if (request.url().includes('/rest/v1/rpc/ops_save_person')) {
@@ -47,15 +68,20 @@ try {
     }
     return route.abort();
   });
-  // The storage key follows the observed project URL in the repository adapter.
-  const projectRef = await page.evaluate(() => {
-    const entries = Object.keys(localStorage).filter(k => /^sb-.*-auth-token$/.test(k));
-    return entries[0];
-  });
-  const source = await (await page.request.get(origin + '/src/main.js')).text();
-  const project = source.match(/https:\/\/([a-z]+)\.supabase\.co/)[1];
-  await page.evaluate(({ key, session }) => localStorage.setItem(key, JSON.stringify(session)), { key: projectRef || `sb-${project}-auth-token`, session });
-  await page.reload();
+  await page.getByRole('button',{name:'Forgot password?',exact:true}).click();
+  await page.getByLabel('Email address').fill('admin@example.test');
+  await page.getByRole('button',{name:'Send reset link',exact:true}).click();
+  await page.getByRole('status').filter({hasText:'password reset link has been sent'}).waitFor();
+  await page.getByRole('button',{name:'Back to sign in',exact:true}).click();
+  await page.getByLabel('Password',{exact:true}).fill('wrong-password');
+  await page.getByRole('button',{name:'Sign in',exact:true}).click();
+  await page.getByRole('alert').filter({hasText:'Unable to sign in'}).waitFor();
+  assert.equal(await page.getByRole('navigation',{name:'Main navigation'}).count(),0);
+  await page.getByLabel('Password',{exact:true}).fill('test-password');
+  await page.getByRole('button',{name:'Show password',exact:true}).click();
+  assert.equal(await page.getByLabel('Password',{exact:true}).getAttribute('type'),'text');
+  await page.getByRole('button',{name:'Hide password',exact:true}).click();
+  await page.getByRole('button',{name:'Sign in',exact:true}).click();
   await page.getByRole('heading', { name: 'Create your first event' }).waitFor();
   await page.getByLabel('Event name', { exact: true }).fill('Test Event');
   await page.getByLabel('Start date', { exact: true }).fill('2027-03-02');
@@ -68,10 +94,32 @@ try {
   await page.getByRole('button', { name: 'People', exact: true }).click();
   await page.getByRole('button', { name: 'Add person', exact: true }).click();
   await page.getByLabel('Name', { exact: true }).fill('Alex');
-  await page.getByLabel('Email', { exact: true }).fill('Alex@example.test');
+  await page.getByLabel('Email', { exact: true }).fill('Alex@epieventstest.com');
   await page.getByRole('dialog').getByRole('button', { name: 'Add person', exact: true }).click();
-  await page.getByText('alex@example.test',{exact:true}).waitFor();
-  assert.equal(data.people[0].email,'alex@example.test');
+  await page.getByText('alex@epieventstest.com',{exact:true}).waitFor();
+  assert.equal(data.people[0].email,'alex@epieventstest.com');
+  await page.setViewportSize({width:1440,height:900});
+  await page.getByRole('button',{name:'Edit Alex',exact:true}).click();
+  await page.getByRole('button',{name:'Create test login',exact:true}).click();
+  await page.getByLabel('Temporary password',{exact:true}).waitFor();
+  assert.equal(await page.getByLabel('Temporary password',{exact:true}).getAttribute('type'),'password');
+  await page.getByRole('button',{name:'Show temporary password',exact:true}).click();
+  assert.equal(await page.getByLabel('Temporary password',{exact:true}).getAttribute('type'),'text');
+  assert.equal(await page.getByLabel('Temporary password',{exact:true}).inputValue(),'Fixture-only-password-2');
+  await page.getByRole('button',{name:'Hide temporary password',exact:true}).click();
+  await page.getByRole('button',{name:'Reset temporary password',exact:true}).click();
+  await page.getByRole('button',{name:'Confirm password reset',exact:true}).click();
+  await page.waitForFunction(()=>document.querySelector('input[aria-label="Temporary password"]')?.value==='Fixture-only-password-3');
+  assert.equal(await page.getByLabel('Temporary password',{exact:true}).inputValue(),'Fixture-only-password-3');
+  await page.screenshot({path:`${process.env.TEMP}/event-ops-test-login-desktop.png`,fullPage:true});
+  await page.setViewportSize({width:320,height:844});
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'Test credential dialog overflow');
+  await page.screenshot({path:`${process.env.TEMP}/event-ops-test-login-mobile.png`,fullPage:true});
+  await page.setViewportSize({width:1440,height:900});
+  await page.getByRole('button',{name:'Close dialog',exact:true}).click();
+  await page.getByText('Login active',{exact:true}).waitFor();
+  await page.getByRole('button',{name:'Create test logins',exact:true}).click();
+  await page.getByRole('status').filter({hasText:'0 created'}).waitFor();
   await page.getByRole('button', { name: 'Schedule', exact: true }).click();
   await page.getByRole('button', { name: 'New activity', exact: true }).click();
   await page.getByLabel('Activity name', { exact: true }).fill('Keynote');
@@ -96,7 +144,7 @@ try {
   await page.setViewportSize({width:1440,height:900});
   await page.getByRole('button', { name: 'People', exact: true }).click();
   await page.getByRole('button',{name:'Edit Alex',exact:true}).click();
-  assert.equal(await page.getByLabel('Email',{exact:true}).inputValue(),'alex@example.test');
+  assert.equal(await page.getByLabel('Email',{exact:true}).inputValue(),'alex@epieventstest.com');
   await page.getByLabel('Email',{exact:true}).fill('alex.updated@example.test');
   await page.getByRole('dialog').getByRole('button',{name:'Save changes',exact:true}).click();
   await page.getByText('alex.updated@example.test',{exact:true}).waitFor();
@@ -120,6 +168,7 @@ try {
     await page.setViewportSize({width:390,height:844});
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   }
+  if(['localhost','127.0.0.1'].includes(new URL(origin).hostname)){
   const demo=await browser.newPage({viewport:{width:1440,height:1000}});
   demo.on('pageerror',e=>errors.push(e.message));
   await demo.route('**/src/main.js*',route=>route.fulfill({contentType:'text/javascript',body:"import '/src/standalone-shim.js'; import '/src/app.js';"}));
@@ -157,6 +206,7 @@ try {
   await demo.getByLabel('Search people').fill('not-a-person');
   await demo.getByText('No records found.',{exact:true}).waitFor();
   await demo.close();
+  }
   assert.deepEqual(errors, []);
   console.log('Login, setup dialogs, people email editing, assignment/coverage, responsive workspace, staff/contractor access, and stale edit protection passed.');
 } finally { await browser.close(); }

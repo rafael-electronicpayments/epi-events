@@ -23,6 +23,8 @@ The second Vercel project uses `staging` as its production branch; Vercel callin
 
 ## Verification and Remaining Setup
 
+- Staging now supports password login and a server-only, admin-authorized synthetic test-account tool. Production login is unchanged. See `docs/TEST_LOGINS.md` for private environment variables, provisioning, verification limits, and retirement requirements. This introduces no schema migration or production account changes.
+
 - `npm test` includes database permissions, mock import, roster access, and both directions of deployment/database mix-up rejection. `scripts/validate-config.mjs` checks the expected Supabase host for both known Vercel project IDs.
 - The live staging anonymous-access check passed. An authenticated staging RPC write was verified under the real administrator's database role and rolled back, leaving no test record.
 - The security advisor reports three expected warnings for authenticated SECURITY DEFINER RPCs (`ops_snapshot`, `ops_command`, `ops_save_person`). These are intentional, role-checked entry points; the underlying tables remain restricted. See [advisor explanation](https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable). No anonymous function-execution warning was reported.

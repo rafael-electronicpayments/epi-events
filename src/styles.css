@@ -50,6 +50,30 @@ select,input{min-height:44px;border-radius:10px;border:1px solid var(--line);bac
 .connection-error{color:var(--bad);overflow-wrap:anywhere}
 .auth{padding-top:64px}.auth h1{font-size:1.5rem}.auth form{display:grid;gap:16px}
 .auth label{display:grid;gap:6px}.auth input{width:100%}
+.auth-screen{min-height:100dvh;background:var(--bg);display:grid;place-items:center;padding:32px 20px}
+.auth-panel{width:100%;max-width:430px;padding:32px;background:var(--card);border:1px solid var(--line);border-radius:8px}
+.auth-brand{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:30px}
+.auth-brand h1{font-size:20px;margin:0;font-weight:750}.auth-brand>.pill{margin-left:auto}
+.auth-panel h2{font-size:22px;margin:0 0 24px}.auth-panel form{display:grid;gap:20px}
+.auth-panel label{display:grid;gap:8px;font-size:13px;font-weight:600}
+.auth-panel input{width:100%;min-height:44px;font-weight:400}
+.password-control{display:flex;align-items:center;border:1px solid var(--line);border-radius:6px;background:var(--card);min-width:0;padding-right:3px}
+.password-control:focus-within{outline:2px solid var(--acc);outline-offset:2px}
+.password-control input{width:100%;min-width:0;border:0;outline:0;background:transparent}
+.password-control input:focus-visible{outline:0}
+.password-control .icon-button{flex-shrink:0}
+.auth-submit{width:100%;min-height:44px!important;justify-content:space-between!important}
+.auth-panel .connection-error,.auth-message{margin:0;font-size:13px;line-height:1.5}
+.text-button{font:inherit;font-size:13px;color:var(--acc);border:0;background:transparent;padding:8px 0;min-height:44px;cursor:pointer}
+.auth-panel>.text-button{margin-top:12px}.text-button:hover{text-decoration:underline}
+.test-login-toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:20px}
+.test-login-toolbar .mute{font-size:12px}.test-login-toolbar .connection-error{flex-basis:100%;margin:0}
+.test-login-panel{border-top:1px solid var(--line);margin-top:24px;padding-top:20px;display:grid;gap:12px}
+.test-login-panel h3{display:flex;align-items:center;gap:8px;font-size:14px}
+.test-login-panel>label{display:grid;gap:8px;font-size:12px;font-weight:600}
+.test-login-panel .password-control input{font-family:ui-monospace,monospace;font-size:13px}
+.test-login-panel p{font-size:12px;margin:0}
+@media(max-width:480px){.auth-panel{padding:26px 22px}.auth-brand{gap:8px}.auth-brand h1{font-size:18px}}
 
 /* Shared controls and the full-width operations workspace. */
 body{font-size:14px;letter-spacing:0;background:var(--card)}

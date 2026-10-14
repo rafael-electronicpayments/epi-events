@@ -6,11 +6,11 @@ A clickable, mobile-first prototype of an event operations web app for an annual
 
 **Staging:** [staging-epi-events.vercel.app](https://staging-epi-events.vercel.app), with an independent Supabase database and login accounts. Use staging for team testing.
 
-**Status:** Connected POC. With Supabase configured, emailed sign-in links identify provisioned users and scheduling data is saved in Postgres. Without configuration, the original fictional, in-memory demo runs. Notifications are in-app; assignment emails and push notifications are not implemented.
+**Status:** Connected POC. The `staging` branch uses email/password login with an admin-only temporary-login tool for synthetic staging accounts; see [testing credentials](docs/TEST_LOGINS.md). The unchanged production release still uses emailed sign-in links until a release is approved. Scheduling data is saved in Postgres. Without configuration, the original fictional, in-memory demo runs. Notifications are in-app; assignment emails and push notifications are not implemented.
 
 **Direction:** Evolve this repo step by step, with GitHub for collaboration, Vercel hosting, and Supabase's free tier until POC approval. The connected slice includes login, event setup, people/rooms/activities, assignments, acknowledgment, check-in, contacts, schedule printing, and activity logging. Floorplans, incoming goods, and demo undo/reset remain in demo mode only. See `docs/SUPABASE.md` for setup and access provisioning.
 
-People's Add/Edit person dialog includes Email and prepares Staff/Contractor access when saved. Existing login users are linked automatically; new login accounts still need to be created through Supabase Authentication.
+People's Add/Edit person dialog includes Email and prepares Staff/Contractor access when saved. Existing login users are linked automatically. In staging, Create test logins provisions synthetic roster accounts and the editor can reveal/reset their temporary passwords. Real accounts and administrators remain separately provisioned; their existing passwords are never displayed.
 
 The full-width workspace uses a unified event/account header and left navigation. Schedule opens as a table with assignment details on selection; its grid view retains printable schedules. Coverage prioritizes staffing gaps. People has search and type filtering; Event setup separates events, rooms, and activities into tabs with add/edit dialogs. Staff and contractors retain their focused phone-friendly schedule.
 
@@ -27,7 +27,7 @@ npm test             # PostgreSQL behavior and permission tests
 npm run build        # production files in dist/
 ```
 
-Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` in `.env.local` to enable the connected app. `.env.example` lists the variables. `.env.local` is ignored by Git. Never use a secret or service-role key. Vercel uses the same variables, build command `npm run build`, and output directory `dist`.
+Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` in `.env.local` to enable the connected app. `.env.example` lists the browser variables. `.env.local` is ignored by Git. Never use a secret/service-role key in browser configuration. The staging test-account API uses separately protected server-only variables documented in `docs/TEST_LOGINS.md`. Vercel uses build command `npm run build` and output directory `dist`.
 
 `vercel.json` defines the deployment settings. Production builds require Supabase configuration and reject secret/service-role keys. GitHub pushes to `main` deploy to production once the repository is linked in Vercel. Production email links also require the deployed URL in Supabase's Auth URL Configuration.
 
