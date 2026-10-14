@@ -124,6 +124,22 @@ try {
   await page.getByRole('button', { name: 'New activity', exact: true }).click();
   await page.getByLabel('Activity name', { exact: true }).fill('Keynote');
   await page.getByRole('button', { name: 'Create activity', exact: true }).click();
+  await page.getByRole('button', { name: 'Event setup', exact: true }).click();
+  for (const [tab, name] of [['Event details','Test Event'],['Rooms','Ballroom'],['Activities','Keynote']]) {
+    await page.getByRole('button', { name: tab, exact: true }).click();
+    const row = page.getByRole('row').filter({has:page.getByRole('button',{name:'Edit '+name,exact:true})});
+    assert.equal(await row.getByRole('cell').first().getByRole('button',{name:'Edit '+name,exact:true}).count(),1);
+    assert.equal(await row.getByRole('cell').first().getByRole('button',{name:'Delete '+name,exact:true}).count(),1);
+    for (const width of [1440,390]) {
+      await page.setViewportSize({width,height:900});
+      const edit=await row.getByRole('button',{name:'Edit '+name,exact:true}).boundingBox();
+      const label=await row.getByRole('cell').nth(1).boundingBox();
+      assert.ok(edit.x+edit.width<=label.x,'Setup controls precede record details');
+      await page.screenshot({path:`${process.env.TEMP}/event-ops-setup-${tab.replaceAll(' ','-')}-${width}.png`,fullPage:true});
+    }
+  }
+  await page.setViewportSize({width:1440,height:900});
+  await page.getByRole('button', { name: 'Schedule', exact: true }).click();
   await page.getByRole('button', { name: 'Manage Keynote', exact: true }).click();
   await page.getByLabel('Employee to assign to Keynote').selectOption('0');
   await page.getByRole('button',{name:'Assign',exact:true}).click();

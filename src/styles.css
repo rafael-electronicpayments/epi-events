@@ -140,6 +140,10 @@ input[type=checkbox]{accent-color:var(--acc)}
 .cell-secondary{display:block;font-size:12px;color:var(--mute);margin-top:5px}
 .data-table td:first-child>.pill{margin-left:10px}
 .row-actions{display:flex;align-items:center;gap:2px}
+.data-table th.setup-actions,.data-table td.setup-actions{width:1%;min-width:0;white-space:nowrap}
+.setup-actions .row-actions{flex-wrap:nowrap}
+.data-table td.setup-actions+td{min-width:115px}
+.data-table td.setup-actions+td>.pill{margin-left:10px}
 .activity-link{display:grid;gap:5px;text-align:left;background:none;border:0;padding:2px 0;color:var(--ink);font:inherit;cursor:pointer}
 .activity-link:hover b{color:var(--acc)}.activity-link .mute{font-size:12px;margin:0}
 .inline-warning{display:inline-flex;align-items:center;gap:4px;color:var(--warn);font-size:11px;margin-top:5px}
