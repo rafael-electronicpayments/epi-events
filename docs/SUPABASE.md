@@ -16,15 +16,15 @@ The initial schema migrations have been applied to the connected EPI Events Proj
 
 ## Accounts
 
-Database access requires a trusted profile; email login alone does not grant app access. Ordinary users cannot edit invitations or promote themselves. Administrators can prepare Staff/Contractor access through Setup using the authorized `ops_save_person` RPC.
+Database access requires a trusted profile; email login alone does not grant app access. Ordinary users cannot edit invitations or promote themselves. Administrators can prepare Staff/Contractor access through People using the authorized `ops_save_person` RPC.
 
 1. Add an administrator email to `access_invites` using SQL Editor. The initial owner's invitation has already been created in the connected project; personal addresses are not included in migration files.
 2. Create that email under Authentication > Users > Add user > Create new user, with email confirmation enabled. The account's initial password is not used by the app. The invitation trigger automatically creates the administrator profile.
 3. Open the app and request a sign-in link. If email delivery fails, inspect Auth configuration/SMTP; do not bypass authorization.
-4. Create an event, rooms, people, and activities through Setup. Assign people through Schedule.
-5. To give a roster person access, add or edit the person in Setup and enter their Email. Saving prepares `access_invites` with the person's Staff or Contractor type. If that email already has an Auth user, its profile is linked immediately. Otherwise create the matching Auth user through the dashboard; the invitation trigger attaches its role automatically.
+4. Create events, rooms, and activities through Event setup. Add staff and contractors through People. Assign people through Schedule by selecting an activity.
+5. To give a roster person access, add or edit the person in People and enter their Email. Saving prepares `access_invites` with the person's Staff or Contractor type. If that email already has an Auth user, its profile is linked immediately. Otherwise create the matching Auth user through the dashboard; the invitation trigger attaches its role automatically.
 
-Manual invitation fallback (Setup handles this for Staff/Contractors; replace placeholders locally and never commit personal information):
+Manual invitation fallback (People handles this for Staff/Contractors; replace placeholders locally and never commit personal information):
 
 ```sql
 insert into public.access_invites(email,role,person_id)
@@ -40,7 +40,7 @@ from auth.users u join public.access_invites i on i.email=lower(u.email)
 on conflict (user_id) do nothing;
 ```
 
-Account creation currently uses the Supabase dashboard. Saving an email in Setup prepares app access but does not create an Auth account or send email. Setup shows No email, Login pending, or Login active. Changing/removing an email revokes that roster person's previous non-admin profile and invitation; existing administrator accounts cannot be reassigned through this form. Archiving a roster person disables their app access. Administrators are managed separately from the Staff/Contractor roster.
+Account creation currently uses the Supabase dashboard. Saving an email in People prepares app access but does not create an Auth account or send email. People shows No email, Login pending, or Login active. Changing/removing an email revokes that roster person's previous non-admin profile and invitation; existing administrator accounts cannot be reassigned through this form. Archiving a roster person disables their app access. Administrators are managed separately from the Staff/Contractor roster.
 
 ## Data Structure
 

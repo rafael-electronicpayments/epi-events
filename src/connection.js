@@ -1,3 +1,5 @@
+import { AppHeader } from './ui.js';
+
 export function createConnection(React, html, repository, App, hydrate) {
   const { useState, useEffect, useRef } = React;
   return function Connection() {
@@ -81,10 +83,9 @@ export function createConnection(React, html, repository, App, hydrate) {
       }}><label>Email address<input type="email" autoComplete="email" required value=${email} onChange=${e => setEmail(e.target.value)}/></label>
       <button className="btn" disabled=${busy}>${busy ? 'Sending...' : 'Send sign-in link'}</button></form>
       ${message && html`<p role="status">${message}</p>`}${error && html`<p className="connection-error" role="alert">${error}</p>`}</main>`;
-    const banner = html`<div className="wrap connection-status">${error && html`<p className="connection-error" role="alert">${error}</p>`}
-      <span>${busy ? 'Saving...' : session.user.email}</span><div className="acts"><button className="btn ghost" disabled=${busy} onClick=${refresh}>Refresh</button><button className="btn ghost" disabled=${busy} onClick=${signOut}>Sign out</button></div></div>`;
-    if (!snapshot) return html`<main><header className="top"><h1>Impact Event Ops</h1></header>${banner}${!error && html`<p className="wrap" role="status">Loading...</p>`}</main>`;
-    if (!snapshot.events.length) return html`<main><header className="top"><h1>Impact Event Ops</h1></header>${banner}
+    const banner = html`<${AppHeader} email=${session.user.email} role=${snapshot?.role||'admin'} busy=${busy} onRefresh=${refresh} onSignOut=${signOut}/>${error&&html`<p className="app-error connection-error" role="alert">${error}</p>`}`;
+    if (!snapshot) return html`<main>${banner}${!error && html`<p className="wrap" role="status">Loading...</p>`}</main>`;
+    if (!snapshot.events.length) return html`<main>${banner}
       <div className="wrap m">${snapshot.role === 'admin' ? html`<h2>Create your first event</h2><form className="form" onSubmit=${async e => {
         e.preventDefault(); await command('addEvent', [{ n: eventName.trim(), b: start, d: Number(days) }]);
       }}><label>Event name<input required value=${eventName} onChange=${e => setEventName(e.target.value)}/></label>
@@ -92,6 +93,6 @@ export function createConnection(React, html, repository, App, hydrate) {
       <label>Days<input type="number" min="1" max="14" required value=${days} onChange=${e => setDays(e.target.value)}/></label>
       <button className="btn" disabled=${busy}>Create event</button></form>` : html`<h2>No assignments yet</h2>
       ${snapshot.notes.filter(n=>!n.done).map(n=>html`<div className="card note" key=${n.id}><p>${n.x}</p><button className="btn" disabled=${busy} onClick=${()=>command('dismiss',[n.id])}>Got it</button></div>`)}`}</div></main>`;
-    return html`<div>${banner}<fieldset className="workspace" disabled=${busy}><${App} connected=${{ snapshot, command }}/></fieldset></div>`;
+    return html`<${App} connected=${{snapshot,command,email:session.user.email,busy,refresh,signOut,error}}/>`;
   };
 }

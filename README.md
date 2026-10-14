@@ -8,7 +8,9 @@ A clickable, mobile-first prototype of an event operations web app for an annual
 
 **Direction:** Evolve this repo step by step, with GitHub for collaboration, Vercel hosting, and Supabase's free tier until POC approval. The connected slice includes login, event setup, people/rooms/activities, assignments, acknowledgment, check-in, contacts, schedule printing, and activity logging. Floorplans, incoming goods, and demo undo/reset remain in demo mode only. See `docs/SUPABASE.md` for setup and access provisioning.
 
-Setup's Add/Edit person form includes Email and prepares Staff/Contractor access when saved. Existing login users are linked automatically; new login accounts still need to be created through Supabase Authentication.
+People's Add/Edit person dialog includes Email and prepares Staff/Contractor access when saved. Existing login users are linked automatically; new login accounts still need to be created through Supabase Authentication.
+
+The full-width workspace uses a unified event/account header and left navigation. Schedule opens as a table with assignment details on selection; its grid view retains printable schedules. Coverage prioritizes staffing gaps. People has search and type filtering; Event setup separates events, rooms, and activities into tabs with add/edit dialogs. Staff and contractors retain their focused phone-friendly schedule.
 
 ## Run it
 
@@ -45,6 +47,8 @@ src/main.js              configuration and application entry point
 src/repository.js        Supabase Auth and RPC adapter
 src/connection.js        login, loading, refresh, and save flow
 src/app.js               existing scheduling UI and fictional demo
+src/admin-workspace.js   admin navigation, tables, assignment detail, edit dialogs
+src/ui.js                shared header, accessible dialogs, Lucide icon controls
 src/styles.css           all styles, light and dark themes, print styles
 src/standalone-shim.js   browser-download fallback for file saves
 docs/PROJECT_SUMMARY.md  what the project is and everything built so far

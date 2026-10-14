@@ -21,7 +21,7 @@ A proof of concept for an event operations web app (staff scheduling, room cover
 Order in the file:
 1. **Data/model:** `EMPS` (people: id, name, role, `acct` staff|contractor, phone, `map` 0|1, `gone`), `DAYS`, `EVS` (events), `CUR` (current event id), `FP` (floorplan PDFs, bytes in memory), `INV` (incoming goods), `SESS`/`SM` (activities and lookup by id; each has `ev`, `d` day index, `a`/`b` minutes from midnight, `n` staff required), `ROOMS` (names), `SEED` (assignments).
 2. **Helpers:** formatting (`fmt`, `span`), `clash` (overlap within same event/day), `cover` (covered/partial/not), `st` (status label), `ntext` (notification text), `seed()` (initial React state).
-3. **Components:** `Head`, `Incoming`/`AttView` (incoming goods), `PdfView` (pdf.js), `Floorplans`, calendar helpers (`ics`, `icsDate`), `Staff` (staff and contractor view), `AdminSession`, `Coverage`, `Setup`, `Grid` + `schedDoc` (schedule grid and printable HTML), `Contacts`, `Admin`, `App`.
+3. **Components:** `Head`, `Incoming`/`AttView` (incoming goods), `PdfView` (pdf.js), `Floorplans`, calendar helpers (`ics`, `icsDate`), `Staff` (staff and contractor view), `AdminSession`, `Grid` + `schedDoc` (schedule grid and printable HTML), `Admin`, `App`. `Admin` is created by `src/admin-workspace.js` using the existing model and action API. `src/ui.js` supplies the shared header, modal, and Lucide icon controls.
 4. **`App`** holds React state `S = {asg, log, notes}` plus the actions object `A`.
 
 ### Things to know before changing it
@@ -44,4 +44,6 @@ Order in the file:
 - Supabase project URL and publishable key, redirect URLs, and initial administrator provisioning are required before live authentication can be verified.
 
 ## Roadmap after the POC (owner's order)
+The approved Workspace UI (2026-10-14) uses a unified header, full-width content, sidebar navigation, table-based schedule with assignment details, gap-prioritized Coverage, searchable People, and Event setup tabs. Add/edit forms are dialogs capturing the revision when opened; preserve this stale-edit guard. No footer. Phone layouts retain times and all navigation; Staff/Contractor remain focused on their own schedule.
+
 contacts, manifest, roster, meals, pre-con presentation, expenses (staff enter before/during event; admin approval tick; admins print PDF for HR), attire. Also: run of show, sessions agenda, venue map details, a phone-friendly schedule grid, customs-oriented export of incoming goods.

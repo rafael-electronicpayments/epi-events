@@ -1,4 +1,6 @@
 import { createConnection } from './connection.js';
+import { createAdminWorkspace } from './admin-workspace.js';
+import { AppHeader, IconButton } from './ui.js';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import htm from 'htm';
@@ -141,72 +143,24 @@ function Staff({S,A,me}){
  <h2>My schedule</h2><div className="seg" style=${{marginBottom:12}}>${DAYS.map((x,i)=>html`<button key=${i} aria-pressed=${d===i} onClick=${()=>setD(i)}>${x}</button>`)}</div>
  ${mine.filter(a=>SM[a.s].d===d).map(a=>html`<${Card} key=${a.id} a=${a}/>`)}
  ${!mine.some(a=>SM[a.s].d===d)&&html`<p className="mute">No assignments on ${DAYS[d]}.</p>`}</div>`}
-function AdminSession({s,S,A}){
+function AdminSession({s,S,A,coordinator=false}){
  const [pick,setPick]=useState('');
  const as=S.asg.filter(x=>x.s===s.id), free=EMPS.filter(e=>!e.gone&&!as.some(x=>x.e===e.id)), same=SESS.filter(o=>o.ev===s.ev&&o.d===s.d&&o.id!==s.id);
- return html`<div className="card"><${Head} s=${s} asg=${S.asg}/>
+ return html`<div className="session-panel"><${Head} s=${s} asg=${S.asg}/>
  <ul className="rows">${as.map(a=>{const c=clash(S.asg,a),[k,l]=st(a);return html`<li key=${a.id}>
   <div><b>${nm(a.e)}</b> <${Pill} k=${k}>${l}<//> ${c.length>0&&html`<${Pill} k="bad">Overlaps ${c.map(o=>o.t).join(', ')}<//>`}</div>
   <div className="acts"><select aria-label=${'Move '+EMPS[a.e].name} value="" onChange=${ev=>ev.target.value&&A.move(a.id,+ev.target.value)}>
    <option value="">Move to…</option>${same.map(o=>html`<option key=${o.id} value=${o.id}>${o.r}, ${span(o)}, ${o.t}</option>`)}</select>
-  <button className="btn ghost" onClick=${()=>A.remove(a.id)}>Remove</button></div></li>`})}</ul>
+  <${IconButton} name="delete" label=${'Remove '+EMPS[a.e].name} onClick=${()=>A.remove(a.id)}/>
+  ${coordinator&&html`<button className="btn ghost" disabled=${!!a.in||!!a.conf} onClick=${()=>A.confirm(a.id)}>Confirm present</button>`}</div></li>`})}</ul>
  ${!as.length&&html`<p className="mute">No one assigned yet.</p>`}
  <div className="acts"><select aria-label=${'Employee to assign to '+s.t} value=${pick} onChange=${e=>setPick(e.target.value)}><option value="">Choose employee…</option>
   ${free.map(e=>html`<option key=${e.id} value=${e.id}>${nm(e.id)}</option>`)}</select>
   <button className="btn" disabled=${pick===''} onClick=${async()=>{const ok=await A.assign(+pick,s.id);if(ok!==false)setPick('')}}>Assign</button></div></div>`}
-function Coverage({list,S,A,coord}){
- return html`<div className="grid">${list.map(s=>{const c=cover(s,S.asg),wait=c.as.filter(x=>!x.in&&!x.conf);
- return html`<div className="card" key=${s.id}><${Head} s=${s} asg=${S.asg}/>
-  ${!coord&&wait.length>0&&html`<p className="mute">Waiting on: ${wait.map(x=>EMPS[x.e].name).join(', ')}</p>`}
-  ${coord&&html`<ul className="rows">${c.as.map(a=>html`<li key=${a.id}>${nm(a.e)} <${Pill} k=${st(a)[0]}>${st(a)[1]}<//>
-   <div className="acts"><button className="btn ghost" disabled=${!!a.in||!!a.conf} onClick=${()=>A.confirm(a.id)}>Confirm present</button></div></li>`)}</ul>`}</div>`})}</div>`}
-const tstr=m=>String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
 const desc=s=>'Was '+s.t+', '+s.r+', '+span(s)+' (Day '+(s.d+1)+')';
 const bump=(s,sid,from)=>{const ids=s.asg.filter(a=>a.s===sid).map(a=>a.id);
  return {...s,asg:s.asg.map(a=>ids.includes(a.id)?{...a,ack:0,in:0,conf:0,tag:'changed',seq:(a.seq||0)+1,pc:0}:a),
  notes:[...s.notes.filter(n=>!ids.includes(n.aid)),...s.asg.filter(a=>ids.includes(a.id)).map(a=>({id:++uid,e:a.e,aid:a.id,done:0,x:ntext(a,'Changed assignment'),from}))]}};
-function Setup({S,A}){
- const [p,setP]=useState({en:'',eb:'',ed:3,ev:null,dn:'',sp:'',se:'',sm:true,stp:'staff',sn:'',sr:'Room Host',rn:'',at:'',ar:'',ad:0,a1:'09:00',a2:'10:00',an:2,es:null,er:null,ea:null,cf:null});
- const emailField=useRef(null);
- const u=k=>e=>{const v=e.target.value;setP(q=>({...q,[k]:v}))};
- const tm=t=>{const [h,m]=t.split(':');return +h*60+ +m};
- const ar=ROOMS.includes(p.ar)?p.ar:ROOMS[0], ad=+p.ad<DAYS.length?p.ad:0;
- const F=(l,c)=>html`<label>${l}<br/>${c}</label>`;
- const cnt=sid=>S.asg.filter(a=>a.s===sid).length;
- const Item=(key,label,warn,onEdit,onDel)=>html`<li key=${key}>${p.cf===key?html`<b>${warn}</b><div className="acts">${onDel&&html`<button className="btn" onClick=${async()=>{if(await onDel()!==false)setP(q=>({...q,cf:null}))}}>Confirm delete</button>`}<button className="btn ghost" onClick=${()=>setP(q=>({...q,cf:null}))}>${onDel?'Keep':'Close'}</button></div>`:html`${label}<div className="acts"><button className="btn ghost" onClick=${()=>{onEdit();setP(q=>({...q,revision:S.revision}))}}>Edit</button><button className="btn ghost" onClick=${()=>setP(q=>({...q,cf:key}))}>Delete</button></div>`}</li>`;
- const version={expectedRevision:p.revision};
- const Cancel=(k,extra)=>p[k]!==null&&html`<button className="btn ghost" onClick=${()=>setP(q=>({...q,[k]:null,...extra}))}>Cancel</button>`;
- return html`<div className="grid">
- <div className="card"><h3>${p.ev===null?'Create event':'Edit event'}</h3><div className="form">
-  ${F('Event name',html`<input value=${p.en} onChange=${u('en')}/>`)}
-  ${F('Start date',html`<input type="date" value=${p.eb} onChange=${u('eb')}/>`)}
-  ${F('Number of days (1 to 14)',html`<input type="number" min="1" max="14" value=${p.ed} onChange=${u('ed')}/>`)}
-  <button className="btn" onClick=${async()=>{const o={n:p.en.trim(),b:p.eb,d:+p.ed};const ok=await(p.ev===null?A.addEvent(o):A.editEvent(p.ev,o,version));ok&&setP(q=>({...q,en:'',eb:'',ed:3,ev:null}))}}>${p.ev===null?'Create event':'Save changes'}</button>${Cancel('ev',{en:'',eb:'',ed:3})}</div>
-  <p className="mute">Use the Event menu in the top bar to switch between events. Rooms are shared across events.</p>
-  <ul className="rows list">${EVS.map(e=>{const n=SESS.filter(x=>x.ev===e.id).length,[k,l]=evStatus(e);return Item('e'+e.id,html`<span><b>${e.name}</b> <${Pill} k=${k}>${l}<//> <span className="mute">· ${e.start} to ${evEnd(e)} · ${n} activities</span></span>`,EVS.length>1?'Delete '+e.name+'? Its '+n+' activities, floorplans, incoming goods and assignments will be removed.':'At least one event must remain.',()=>setP(q=>({...q,ev:e.id,en:e.name,eb:e.start,ed:e.days,cf:null})),EVS.length>1?()=>A.delEvent(e.id):null)})}</ul></div>
- <div className="card"><h3>${p.es===null?'Add person':'Edit person'}</h3><div className="form">
-  ${F('Name',html`<input value=${p.sn} onChange=${u('sn')}/>`)}
-  ${F('Email',html`<input type="email" autoComplete="off" ref=${emailField} value=${p.se} onChange=${u('se')}/>`)}
-  ${F('Role or title',html`<input value=${p.sr} onChange=${u('sr')}/>`)}
-  ${F('Type',html`<select value=${p.stp} onChange=${e=>{const v=e.target.value;setP(q=>({...q,stp:v,sm:v==='staff'}))}}><option value="staff">Staff</option><option value="contractor">Contractor</option></select>`)}
-  ${F('Phone',html`<input value=${p.sp} onChange=${u('sp')}/>`)}
-  <label className="chk"><input type="checkbox" checked=${p.sm} onChange=${e=>{const v=e.target.checked;setP(q=>({...q,sm:v}))}}/> Can view confidential venue map</label>
-  <button className="btn" onClick=${async()=>{if(!emailField.current.reportValidity())return;const o={n:p.sn.trim(),email:p.se.trim().toLowerCase(),r:p.sr.trim(),acct:p.stp,phone:p.sp.trim(),map:p.sm};const ok=await(p.es===null?A.addStaff(o):A.editStaff(p.es,o,version));ok&&setP(q=>({...q,sn:'',sp:'',se:'',es:null}))}}>${p.es===null?'Add staff':'Save changes'}</button>${Cancel('es',{sn:'',se:'',sp:''})}</div>
-  <ul className="rows list">${EMPS.filter(e=>!e.gone).map(e=>Item('s'+e.id,html`<span>${nm(e.id)} <span className="mute">· ${e.role}${e.map?'':' · no map access'}${e.email?' · '+e.email:''}</span>${CONNECTED&&html` <${Pill} k=${e.login?'ok':''}>${e.login?'Login active':e.email?'Login pending':'No email'}<//>`}</span>`,'Delete '+e.name+'? '+S.asg.filter(a=>a.e===e.id).length+' assignment(s) will be cancelled.',()=>setP(q=>({...q,es:e.id,sn:e.name,se:e.email||'',sr:e.role,sp:e.phone||'',sm:!!e.map,stp:e.acct,cf:null})),()=>A.delStaff(e.id)))}</ul></div>
- <div className="card"><h3>${p.er===null?'Add room':'Rename room'}</h3><div className="form">
-  ${F('Room name',html`<input value=${p.rn} onChange=${u('rn')}/>`)}
-  <button className="btn" onClick=${async()=>{const ok=await(p.er===null?A.addRoom(p.rn.trim()):A.editRoom(p.er,p.rn.trim(),version));ok&&setP(q=>({...q,rn:'',er:null}))}}>${p.er===null?'Add room':'Save changes'}</button>${Cancel('er',{rn:''})}</div>
-  <ul className="rows list">${ROOMS.map(r=>{const n=SESS.filter(s=>s.r===r).length;return Item('r'+r,html`<span>${r} <span className="mute">· ${n} activities</span></span>`,n?n+' activities still use '+r+'. Move or delete them first.':'Delete '+r+'?',()=>setP(q=>({...q,er:r,rn:r,cf:null})),n?null:()=>A.delRoom(r))})}</ul></div>
- <div className="card"><h3>${p.ea===null?'Create activity':'Edit activity'}</h3><div className="form">
-  ${F('Activity name',html`<input value=${p.at} onChange=${u('at')}/>`)}
-  ${F('Room',html`<select value=${ar} onChange=${u('ar')}>${ROOMS.map(r=>html`<option key=${r}>${r}</option>`)}</select>`)}
-  ${F('Day',html`<select value=${ad} onChange=${u('ad')}>${DAYS.map((x,i)=>html`<option key=${i} value=${i}>${x}</option>`)}</select>`)}
-  ${F('Start',html`<input type="time" value=${p.a1} onChange=${u('a1')}/>`)}
-  ${F('End',html`<input type="time" value=${p.a2} onChange=${u('a2')}/>`)}
-  ${F('Staff needed',html`<input type="number" min="1" value=${p.an} onChange=${u('an')}/>`)}
-  <button className="btn" onClick=${async()=>{const a=[p.at.trim(),ar,ad,tm(p.a1),tm(p.a2),+p.an];const ok=await(p.ea===null?A.addSession(...a):A.editSession(p.ea,...a,version));ok&&setP(q=>({...q,at:'',ea:null}))}}>${p.ea===null?'Create activity':'Save changes'}</button>${Cancel('ea',{at:''})}</div>
-  <p className="mute">Changing an activity's name, room, day or time asks its assigned staff to acknowledge again.</p>
-  <ul className="rows list">${SESS.filter(s=>s.ev===CUR.id).sort((x,y)=>x.d-y.d||x.a-y.a).map(s=>Item('a'+s.id,html`<span>${s.t} <span className="mute">· ${s.r} · ${DAYS[s.d]} · ${span(s)} · ${cnt(s.id)} of ${s.n} staffed</span></span>`,'Delete '+s.t+'? '+cnt(s.id)+' assigned staff will be notified.',()=>setP(q=>({...q,ea:s.id,at:s.t,ar:s.r,ad:s.d,a1:tstr(s.a),a2:tstr(s.b),an:s.n,cf:null})),()=>A.delSession(s.id)))}</ul></div></div>`}
 const col=(e,al)=>`hsl(${(e*137.508)%360} 65% ${e%2?40:52}% / ${al})`;
 const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 function schedDoc(S){
@@ -229,36 +183,9 @@ function Grid({S}){
   ${open&&c.as.map(a=>{const l=st(a)[1],cl=clash(S.asg,a);return html`<tr key=${a.id}><th scope="row" className="kid"><i className="sw" style=${{background:col(a.e,1)}}></i>${nm(a.e)}</th>
    ${DAYS.map((_,d)=>html`<td key=${d}>${d===s.d&&html`<div className="chip" style=${{background:col(a.e,.22),borderLeftColor:col(a.e,1)}}>${l}${cl.length>0&&' · Overlap'}</div>`}</td>`)}</tr>`})}
  <//>`})}</tbody></table></div>
- ${!rows.length&&html`<p className="mute">No activities yet for this event. Add them in Setup.</p>`}
+ ${!rows.length&&html`<p className="mute">No activities yet for this event.</p>`}
  <h3 style=${{marginTop:16}}>Staff colors</h3><div className="legend">${used.map(e=>html`<span key=${e}><i className="sw" style=${{background:col(e,1)}}></i>${EMPS[e].name}</span>`)}</div></div>`}
-function Contacts(){
- const [q,setQ]=useState('');
- const list=EMPS.filter(e=>!e.gone&&(e.name+' '+e.role).toLowerCase().includes(q.toLowerCase()));
- return html`<div className="card"><h3>Contact phone list</h3><p className="mute">Only admins see this list. Staff and contractors see their own schedule.</p>
- <label>Search <input value=${q} onChange=${e=>setQ(e.target.value)}/></label>
- <div className="gridwrap" style=${{marginTop:12}}><table className="sg"><thead><tr><th scope="col">Name</th><th scope="col">Role</th><th scope="col">Type</th><th scope="col">Phone</th><th scope="col">Map access</th></tr></thead>
- <tbody>${list.map(e=>html`<tr key=${e.id}><td>${e.name}</td><td>${e.role}</td><td>${e.acct==='contractor'?'Contractor':'Staff'}</td><td>${e.phone||'Not provided'}</td><td>${e.map?'Yes':'No'}</td></tr>`)}</tbody></table></div></div>`}
-function Admin({S,A}){
- const [v,setV]=useState('sched'),[d0,setD]=useState(0),d=Math.min(d0,DAYS.length-1);
- const ES=SESS.filter(s=>s.ev===CUR.id),EA=S.asg.filter(a=>SM[a.s].ev===CUR.id),list=ES.filter(s=>s.d===d).sort((x,y)=>x.a-y.a);
- const all=ES.map(s=>cover(s,S.asg)), conf=EA.filter(a=>clash(S.asg,a).length).length, unack=EA.filter(a=>!a.ack).length;
- const T=(k,l)=>html`<button aria-pressed=${v===k} onClick=${()=>setV(k)}>${l}</button>`;
- return html`<div className="wrap"><div className="stats">
-  <div className="stat"><b>${all.filter(c=>c.k==='ok').length} of ${ES.length}</b>sessions fully covered</div>
-  <div className="stat"><b>${ES.filter((s,i)=>all[i].as.length<s.n).length}</b>understaffed sessions</div>
-  <div className="stat"><b>${conf}</b>overlapping assignments</div>
-  <div className="stat"><b>${unack}</b>awaiting acknowledgment</div></div>
- <div className="seg" style=${{marginBottom:12}}>${T('sched','Schedule')}${T('grid','Schedule grid')}${T('cov','Coverage')}${T('contacts','Contacts')}${!CONNECTED&&html`${T('plans','Floorplans')}${T('inv','Incoming goods')}`}${T('log','Activity log')}${T('setup','Setup')}</div>
- ${v!=='log'&&v!=='setup'&&v!=='grid'&&v!=='contacts'&&v!=='plans'&&v!=='inv'&&html`<div className="seg" style=${{marginBottom:12}}>${DAYS.map((x,i)=>html`<button key=${i} aria-pressed=${d===i} onClick=${()=>setD(i)}>${x}</button>`)}</div>`}
- ${v==='sched'&&html`<div className="grid">${list.map(s=>html`<${AdminSession} key=${s.id} s=${s} S=${S} A=${A}/>`)}</div>`}
- ${v==='cov'&&html`<${Coverage} list=${list} S=${S} A=${A} coord=${true}/>`}
- ${(v==='sched'||v==='cov')&&!list.length&&html`<p className="mute">No activities on this day. Add them in Setup.</p>`}
- ${v==='grid'&&html`<${Grid} S=${S}/>`}
- ${v==='contacts'&&html`<${Contacts}/>`}
- ${v==='plans'&&html`<${Floorplans} A=${A}/>`}
- ${v==='inv'&&html`<${Incoming} A=${A}/>`}
- ${v==='setup'&&html`<${Setup} S=${S} A=${A}/>`}
- ${v==='log'&&html`<div className="card"><h3>Activity log</h3>${S.log.length?html`<ul className="rows">${S.log.map((l,i)=>html`<li key=${i}><span className="mute">${l.t}</span> ${l.x}</li>`)}</ul>`:html`<p className="mute">Changes you make will be recorded here.</p>`}</div>`}</div>`}
+const Admin=createAdminWorkspace({people:EMPS,events:EVS,rooms:ROOMS,activities:SESS,current:CUR,days:DAYS,cover,clash,span,evEnd,evStatus,connected:CONNECTED},{AdminSession,Grid,Floorplans,Incoming});
 function App({connected}){
  const [demoS,setS]=useState(()=>connected?connected.snapshot:seed()),[demoRole,setRole]=useState('admin'),[demoMe,setMe]=useState(0),[toast,setToast]=useState('');
  const S=connected?connected.snapshot:demoS,role=connected?connected.snapshot.role:demoRole,me=connected?connected.snapshot.me:demoMe;
@@ -315,13 +242,13 @@ function App({connected}){
  });
  const ul=H.length?(H[H.length-1].label||'last change'):'';
  const R=[['admin','Admin'],['staff','Staff'],['contractor','Contractor']];
- return html`<div><header className="top"><h1>Event Ops <span className="mute">${connected?role:'Stage 1 demo'}</span></h1>
-  <label>Event <select aria-label="Event" value=${CUR.id} onChange=${e=>A.switchEv(+e.target.value)}>${EVS.map(e=>html`<option key=${e.id} value=${e.id}>${e.name}</option>`)}</select></label>
-  ${!connected&&html`<button className="btn ghost" disabled=${!H.length} aria-label=${H.length?'Undo: '+ul:'Nothing to undo'} title=${ul} onClick=${A.undo}>${H.length?'Undo: '+(ul.length>24?ul.slice(0,24)+'…':ul):'Undo'}</button>
-  <div className="seg" role="group" aria-label="Demo role">${R.map(([k,l])=>html`<button key=${k} aria-pressed=${role===k} onClick=${()=>{setRole(k);const f=EMPS.find(e=>!e.gone&&e.acct===k);if(f)setMe(f.id)}}>${l}</button>`)}</div>`}</header>
+ return html`<div><${AppHeader} events=${EVS} current=${CUR.id} onEventChange=${A.switchEv} email=${connected?.email} role=${role} busy=${connected?.busy} error=${connected?.error} onRefresh=${connected?.refresh} onSignOut=${connected?.signOut}>
+  ${!connected&&html`<${IconButton} name="undo" label=${H.length?'Undo: '+ul:'Nothing to undo'} disabled=${!H.length} onClick=${A.undo}/>
+  <div className="seg" role="group" aria-label="Demo role">${R.map(([k,l])=>html`<button key=${k} aria-pressed=${role===k} onClick=${()=>{setRole(k);const f=EMPS.find(e=>!e.gone&&e.acct===k);if(f)setMe(f.id)}}>${l}</button>`)}</div><${IconButton} name="reset" label="Reset demo" onClick=${()=>{H.length=0;setS(seed());say('Demo reset')}}/>`}
+ <//>
+ ${connected?.error&&html`<p className="app-error connection-error" role="alert">${connected.error}</p>`}
  ${!connected&&role!=='admin'&&html`<div className="wrap m" style=${{paddingBottom:0}}><label>Viewing as <select value=${me} onChange=${e=>setMe(+e.target.value)}>${EMPS.filter(e=>!e.gone&&e.acct===role).map(e=>html`<option key=${e.id} value=${e.id}>${nm(e.id)}</option>`)}</select></label></div>`}
- ${role!=='admin'&&html`<${Staff} S=${S} A=${A} me=${me}/>`}${role==='admin'&&html`<${Admin} S=${S} A=${A}/>`}
- ${!connected&&html`<div className="wrap"><p className="foot">Simulated: fictional staff, in-memory data, notifications shown in the app only. Everything resets on reload. <button className="btn ghost" onClick=${()=>{H.length=0;setS(seed());say('Demo reset')}}>Reset demo</button></p></div>`}
+ <fieldset className="workspace" disabled=${!!connected?.busy}>${role!=='admin'&&html`<${Staff} S=${S} A=${A} me=${me}/>`}${role==='admin'&&html`<${Admin} S=${S} A=${A} error=${connected?.error}/>`}</fieldset>
  ${toast&&html`<div className="toast" role="status">${toast}</div>`}</div>`}
 function hydrate(data){
  EMPS.length=0;data.people.forEach(e=>{EMPS[e.id]=e});
