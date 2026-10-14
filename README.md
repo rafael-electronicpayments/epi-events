@@ -8,7 +8,7 @@ A clickable, mobile-first prototype of an event operations web app for an annual
 
 ## Run it
 
-Use Node.js 22.12+ or 24+. Vite bundles React, htm, and the Supabase client. The optional demo PDF viewer and font still use CDNs.
+Use Node.js 24. Vite bundles React, htm, and the Supabase client. The optional demo PDF viewer and font still use CDNs.
 
 ```bash
 npm ci
@@ -18,6 +18,8 @@ npm run build        # production files in dist/
 ```
 
 Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` in `.env.local` to enable the connected app. `.env.example` lists the variables. `.env.local` is ignored by Git. Never use a secret or service-role key. Vercel uses the same variables, build command `npm run build`, and output directory `dist`.
+
+`vercel.json` defines the deployment settings. Production builds require Supabase configuration and reject secret/service-role keys. GitHub pushes to `main` deploy to production once the repository is linked in Vercel. Production email links also require the deployed URL in Supabase's Auth URL Configuration.
 
 ## Try the acceptance test
 
