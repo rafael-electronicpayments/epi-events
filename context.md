@@ -6,6 +6,7 @@ Guidance for coding agents and developers working in this repo.
 A proof of concept for an event operations web app (staff scheduling, room coverage, acknowledgments, check-in, floorplans, incoming goods) for an annual corporate conference. The connected scheduling slice uses Vercel and Supabase; the fictional demo remains available without configuration. Read `README.md` and `docs/SUPABASE.md` for the current setup; summaries and PRD include historical proposals.
 
 ## Ground rules
+- Use `staging` for ongoing development and pushes. `main` is production; release through an approved pull request from `staging`, not direct pushes. See `AGENTS.md` and `docs/ENVIRONMENTS.md`. Database/site isolation is pending: existing Preview/Development credentials still point to production, so do not use previews for test writes yet.
 - The current app is a **prototype** with simulated data and in-memory state. The owner has authorized evolving this repo step by step into a connected POC using Supabase and Vercel; real authentication and persistence are now in scope. Preserve the existing workflows as they are migrated.
 - Scope follows the PRD. Do not add features the owner has not asked for.
 - Roles are **Admin, Staff, Contractor**. Contractors see only their own schedule. Only admins see the phone list. Venue floorplan access is a per-person flag (`map`).

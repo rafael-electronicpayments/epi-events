@@ -16,9 +16,9 @@ Vercel has `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` configured fo
 
 The project is connected to `rafael-electronicpayments/epi-events`, with `main` as the production branch. The first release was deployed with Vercel CLI; subsequent pushes use the GitHub integration.
 
-Pushes to `main` trigger production deployments and pull requests create previews. Reuse the existing `epi-events` project for future work. If GitHub access is revoked, restore the GitHub login connection and the Vercel GitHub App's repository access, then reconnect under Settings > Git.
+Pushes to `main` trigger production deployments and pull requests create previews. Routine development now uses `staging`; do not push directly to `main`. Keep `epi-events` for production. A second staging project and separate database are planned but not yet provisioned; see `docs/ENVIRONMENTS.md` before testing any preview. If GitHub access is revoked, restore the GitHub login connection and the Vercel GitHub App's repository access, then reconnect under Settings > Git.
 
-For a manual deployment from a checkout already linked with Vercel CLI:
+For an explicitly approved production release only, from an approved `main` checkout already linked with Vercel CLI (never from `staging`):
 
 ```bash
 vercel deploy --prod

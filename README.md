@@ -14,6 +14,8 @@ The full-width workspace uses a unified event/account header and left navigation
 
 ## Run it
 
+**Branch workflow:** Work from `staging` and push changes there. `main` is reserved for approved production releases via pull request. Separate staging database/hosting setup is pending; see [environment status and rollout steps](docs/ENVIRONMENTS.md). Existing Preview settings are not yet database-isolated.
+
 Use Node.js 24. Vite bundles React, htm, and the Supabase client. The optional demo PDF viewer and font still use CDNs.
 
 ```bash
