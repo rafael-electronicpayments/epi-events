@@ -20,7 +20,7 @@ After changing Auth URLs, run `tests/auth-redirects.mjs` with `EVENT_OPS_TEST_UR
 
 ## Accounts
 
-On the current staging branch, the app uses email/password sign-in. Existing administrator accounts use their configured password or Forgot password recovery. The admin-only staging test-login API can provision synthetic roster accounts and reveal/reset temporary passwords; see `docs/TEST_LOGINS.md`. This supersedes the email-link steps below for staging; the production release remains unchanged.
+The app uses email/password sign-in in both environments. Existing administrator accounts use their configured password or Forgot password recovery. The admin-only staging test-login API can provision synthetic roster accounts and reveal/reset temporary passwords; see `docs/TEST_LOGINS.md`. This supersedes the historical email-link steps below; production has no test-login controls.
 
 The owner approved adding synthetic test roster emails to both staging and production on 2026-10-14. `supabase/backfill-test-emails.sql` fills missing emails as first initial + last name at `epieventstest.com`, ignoring common name titles. It preserves existing emails, skips archived people, aborts atomically on address/login collisions, logs the batch, and increments the shared revision. It was verified on staging before being applied to production: 29 unique addresses in each. This is an optional, manually run POC data script, not an automatic schema migration. It creates no Auth accounts or mailboxes and sends no emails; do not assume the addresses are deliverable. Future production runs require explicit approval.
 

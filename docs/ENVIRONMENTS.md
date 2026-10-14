@@ -23,7 +23,7 @@ The second Vercel project uses `staging` as its production branch; Vercel callin
 
 ## Verification and Remaining Setup
 
-- Staging now supports password login and a server-only, admin-authorized synthetic test-account tool. Production login is unchanged. See `docs/TEST_LOGINS.md` for private environment variables, provisioning, verification limits, and retirement requirements. This introduces no schema migration or production account changes.
+- The owner approved promoting password login to production on 2026-10-14. Both production administrators were verified confirmed with existing passwords. This release needs no schema migration or account copying. The server-only, admin-authorized synthetic test-account tool remains staging-only. See `docs/TEST_LOGINS.md` for private environment variables, provisioning, verification limits, and retirement requirements.
 
 - `npm test` includes database permissions, mock import, roster access, and both directions of deployment/database mix-up rejection. `scripts/validate-config.mjs` checks the expected Supabase host for both known Vercel project IDs.
 - The live staging anonymous-access check passed. An authenticated staging RPC write was verified under the real administrator's database role and rolled back, leaving no test record.
