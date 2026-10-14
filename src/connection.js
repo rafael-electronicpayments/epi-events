@@ -1,12 +1,12 @@
 import { AppHeader } from './ui.js';
+import { AuthScreen } from './auth.js';
 
 export function createConnection(React, html, repository, App, hydrate) {
   const { useState, useEffect, useRef } = React;
   return function Connection() {
     const [session, setSession] = useState(undefined);
     const [snapshot, setSnapshot] = useState(null);
-    const [email, setEmail] = useState('');
-    const [message, setMessage] = useState('');
+    const [recovery, setRecovery] = useState(repository.passwordRecovery);
     const [error, setError] = useState('');
     const [busy, setBusy] = useState(false);
     const [eventName, setEventName] = useState('');
@@ -28,7 +28,9 @@ export function createConnection(React, html, repository, App, hydrate) {
       repository.session().then(s => active && setSession(s)).catch(e => {
         if (active) { setError(e.message); setSession(null); }
       });
-      const unsubscribe = repository.subscribe(s => {
+      const unsubscribe = repository.subscribe((s, event) => {
+        if (event === 'PASSWORD_RECOVERY') setRecovery(true);
+        if (!s) setRecovery(false);
         if (userId.current === (s?.user.id || null)) { setSession(s); return; }
         userId.current = s?.user.id || null;
         generation.current++;
@@ -75,14 +77,7 @@ export function createConnection(React, html, repository, App, hydrate) {
       try { await repository.signOut(); } catch (e) { setError(e.message); }
     };
     if (session === undefined) return html`<main className="wrap m"><h1>Impact Event Ops</h1><p role="status">Connecting...</p></main>`;
-    if (!session) return html`<main className="wrap m auth"><h1>Impact Event Ops</h1>
-      <form onSubmit=${async e => {
-        e.preventDefault(); setBusy(true); setMessage(''); setError('');
-        try { await repository.signIn(email.trim()); setMessage('Check your email for your sign-in link.'); }
-        catch (e) { setError(e.message); } finally { setBusy(false); }
-      }}><label>Email address<input type="email" autoComplete="email" required value=${email} onChange=${e => setEmail(e.target.value)}/></label>
-      <button className="btn" disabled=${busy}>${busy ? 'Sending...' : 'Send sign-in link'}</button></form>
-      ${message && html`<p role="status">${message}</p>`}${error && html`<p className="connection-error" role="alert">${error}</p>`}</main>`;
+    if (!session || recovery) return html`<${AuthScreen} repository=${repository} recovery=${!!session && recovery} onRecovered=${() => setRecovery(false)} connectionError=${error}/>`;
     const banner = html`<${AppHeader} email=${session.user.email} role=${snapshot?.role||'admin'} busy=${busy} onRefresh=${refresh} onSignOut=${signOut}/>${error&&html`<p className="app-error connection-error" role="alert">${error}</p>`}`;
     if (!snapshot) return html`<main>${banner}${!error && html`<p className="wrap" role="status">Loading...</p>`}</main>`;
     if (!snapshot.events.length) return html`<main>${banner}
@@ -93,6 +88,7 @@ export function createConnection(React, html, repository, App, hydrate) {
       <label>Days<input type="number" min="1" max="14" required value=${days} onChange=${e => setDays(e.target.value)}/></label>
       <button className="btn" disabled=${busy}>Create event</button></form>` : html`<h2>No assignments yet</h2>
       ${snapshot.notes.filter(n=>!n.done).map(n=>html`<div className="card note" key=${n.id}><p>${n.x}</p><button className="btn" disabled=${busy} onClick=${()=>command('dismiss',[n.id])}>Got it</button></div>`)}`}</div></main>`;
-    return html`<${App} connected=${{snapshot,command,email:session.user.email,busy,refresh,signOut,error}}/>`;
+    const testLogins = repository.testLoginsEnabled ? { call: repository.testLogins, refresh } : null;
+    return html`<${App} connected=${{snapshot,command,email:session.user.email,busy,refresh,signOut,error,testLogins}}/>`;
   };
 }

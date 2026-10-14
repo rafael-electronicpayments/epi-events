@@ -4,17 +4,25 @@ The scheduling slice uses normalized Postgres tables and two authenticated RPCs.
 
 ## Configuration
 
+Use staging project `bqdpskxaongqrqmgnzir` for local development and `staging-epi-events.vercel.app`. Production project `nrzyqctclteswzsvxifo` belongs only to `epi-events-three.vercel.app`. Both have the four repository migrations; staging was seeded from the fictional mock, not copied from production. Login accounts and Auth settings are independent. Staging Site URL is `https://staging-epi-events.vercel.app`, with its trailing-slash URL and `http://localhost:3000/` allowed as redirects (owner-confirmed). Keep that Site URL when working locally; do not change the shared project's Site URL to localhost. See `docs/ENVIRONMENTS.md` for release steps.
+
 - Put the project URL and publishable key into `.env.local` using the variable names in `.env.example`. Never put secret/service-role keys into any `VITE_` variable.
 - Run `npm ci` and `npm start`. Open the URL printed by Vite.
 - In Supabase Authentication, enable email authentication and disable public signups. Use the default magic-link email template.
-- Set the Auth Site URL to `http://localhost:3000` during local development. Allow `http://localhost:3000/` as a redirect URL. If using a different host or port, explicitly allow that origin as well. Before deployment, set Site URL to the Vercel URL and retain approved development redirect URLs.
+- Set each shared project's Auth Site URL to its own Vercel URL. Allow `http://localhost:3000/` as a redirect on staging for local development. If using a different host or port, explicitly allow that origin as well; do not replace a shared Site URL with localhost.
 - Configure an SMTP provider if Supabase's default email delivery does not support your testers' addresses. See [Supabase SMTP documentation](https://supabase.com/docs/guides/auth/auth-smtp).
 
-The public Vercel app is `https://epi-events-three.vercel.app`. Use it as Site URL and allow `https://epi-events-three.vercel.app/` as an email redirect, retaining the local redirect for development. See `docs/VERCEL.md` (relative to the repository root) for hosting details.
+For production only, the public Vercel app is `https://epi-events-three.vercel.app`. Use it as the production Site URL and allow `https://epi-events-three.vercel.app/` as an email redirect. Use the separate staging URL above for staging. See `docs/VERCEL.md` (relative to the repository root) for hosting details.
 
 The initial schema migrations have been applied to the connected EPI Events Project. For another project, apply `supabase/migrations/*.sql` in filename order through Supabase CLI or SQL Editor. Keep migrations in Git; avoid editing live tables without a migration.
 
+After changing Auth URLs, run `tests/auth-redirects.mjs` with `EVENT_OPS_TEST_URL` set to the hosted app URL and local Supabase configuration targeting that same environment. This checks the live default, hosted, localhost, and unapproved redirect destinations with an invalid token, without sending email or using a real login token. Save Site URL and Redirect URLs separately in the dashboard. Existing email links may still contain their old destination; request a fresh link from the hosted app after verification passes.
+
 ## Accounts
+
+The app uses email/password sign-in in both environments. Existing administrator accounts use their configured password or Forgot password recovery. The admin-only staging test-login API can provision synthetic roster accounts and reveal/reset temporary passwords; see `docs/TEST_LOGINS.md`. This supersedes the historical email-link steps below; production has no test-login controls.
+
+The owner approved adding synthetic test roster emails to both staging and production on 2026-10-14. `supabase/backfill-test-emails.sql` fills missing emails as first initial + last name at `epieventstest.com`, ignoring common name titles. It preserves existing emails, skips archived people, aborts atomically on address/login collisions, logs the batch, and increments the shared revision. It was verified on staging before being applied to production: 29 unique addresses in each. This is an optional, manually run POC data script, not an automatic schema migration. It creates no Auth accounts or mailboxes and sends no emails; do not assume the addresses are deliverable. Future production runs require explicit approval.
 
 Database access requires a trusted profile; email login alone does not grant app access. Ordinary users cannot edit invitations or promote themselves. Administrators can prepare Staff/Contractor access through People using the authorized `ops_save_person` RPC.
 

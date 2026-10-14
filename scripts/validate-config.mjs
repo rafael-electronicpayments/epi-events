@@ -17,4 +17,12 @@ if (!publicKey) {
   } catch { publicKey = false; }
 }
 if (!publicKey) throw new Error('Use a publishable or legacy anon key, never a secret or service-role key.');
-console.log('Production Supabase configuration is present.');
+const targets = {
+  prj_j0AEJWN4XY9XA3BXAsFJxApuDBkn: 'nrzyqctclteswzsvxifo.supabase.co',
+  prj_36zGiz2IizVqaJxASaPogsmURU0H: 'bqdpskxaongqrqmgnzir.supabase.co'
+};
+const expectedHost = targets[process.env.VERCEL_PROJECT_ID];
+if (expectedHost && project.hostname !== expectedHost) {
+  throw new Error('Supabase project does not match the target Vercel environment. Deployment stopped.');
+}
+console.log('Deployment Supabase configuration is present and target checks passed.');

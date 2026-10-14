@@ -1,6 +1,7 @@
 import React from 'react';
 import htm from 'htm';
 import { Icon, IconButton, Modal } from './ui.js';
+import { BulkTestLogins, TestLoginPanel } from './test-logins.js';
 
 const html=htm.bind(React.createElement);
 const {useState,useEffect,useRef}=React;
@@ -15,7 +16,7 @@ export function createAdminWorkspace(m,components){
  const login=p=>p.login?['ok','Login active']:p.email?['warn','Login pending']:['','No email'];
  const Badge=({kind='',children})=>html`<span className=${'pill '+kind}>${children}</span>`;
 
- function Editor({editor,A,error,onClose}){
+ function Editor({editor,A,error,onClose,testLogins}){
   const [draft,setDraft]=useState(editor.draft),[failed,setFailed]=useState(false);
   const editing=editor.id!=null,version={expectedRevision:editor.revision};
   const set=key=>e=>setDraft(d=>({...d,[key]:e.target.type==='checkbox'?e.target.checked:e.target.value}));
@@ -55,12 +56,13 @@ export function createAdminWorkspace(m,components){
      ${field('End time',html`<input type="time" required value=${draft.end} onChange=${set('end')}/> `)}
      ${field('Staff needed',html`<input type="number" required min="1" value=${draft.needed} onChange=${set('needed')}/> `)}`}
    </div>`}
+   ${!editor.remove&&editing&&editor.type==='person'&&testLogins&&editor.draft.email.endsWith('@epieventstest.com')&&html`<${TestLoginPanel} personId=${editor.id} api=${testLogins} dirty=${draft.email.trim().toLowerCase()!==editor.draft.email||draft.type!==editor.draft.type}/>`}
    ${(failed||error)&&html`<p className="connection-error editor-error" role="alert">${error||'Could not save. Check the values and try again.'}</p>`}
    <div className="dialog-actions"><button type="button" className="btn ghost" onClick=${onClose}>Cancel</button><button type="submit" className=${'btn '+(editor.remove?'danger':'')}>${editor.remove?'Confirm delete':editing?'Save changes':editor.type==='person'?'Add person':editor.type==='event'?'Create event':editor.type==='room'?'Add room':'Create activity'}</button></div>
   </form><//>`;
  }
 
- return function AdminWorkspace({S,A,error=''}){
+ return function AdminWorkspace({S,A,error='',testLogins}){
   const [view,setView]=useState('schedule'),[day,setDay]=useState(0),[mode,setMode]=useState('list'),[filter,setFilter]=useState('all');
   const [selected,setSelected]=useState(null),[query,setQuery]=useState(''),[type,setType]=useState('all'),[tab,setTab]=useState('events'),[editor,setEditor]=useState(null);
   const detail=useRef(null);
@@ -95,6 +97,7 @@ export function createAdminWorkspace(m,components){
    ${view==='people'&&html`<button className="btn" onClick=${()=>open('person')}><${Icon} name="plus"/>Add person</button>`}
    ${view==='setup'&&html`<button className="btn" onClick=${()=>open(tab==='events'?'event':tab==='rooms'?'room':'activity')} disabled=${tab==='activities'&&!rooms.length}><${Icon} name="plus"/>${tab==='events'?'Add event':tab==='rooms'?'Add room':'New activity'}</button>`}
   </div>
+  ${view==='people'&&testLogins&&html`<${BulkTestLogins} api=${testLogins}/>`}
   ${['schedule','coverage'].includes(view)&&html`
    <div className="summary-strip" aria-label="Daily schedule status">
     <button aria-pressed=${filter==='all'} onClick=${()=>setFilter('all')}><b>${today.length}</b>activities today</button>
@@ -126,6 +129,6 @@ export function createAdminWorkspace(m,components){
    return html`<tr key=${i}><td>${Number.isNaN(date.valueOf())?entry.t:date.toLocaleString()}</td><td>${names[entry.x]||entry.x}</td><td>${description}</td></tr>`;
   }))}
   ${view==='plans'&&html`<${Floorplans} A=${A}/>`}${view==='incoming'&&html`<${Incoming} A=${A}/>`}
-  </main>${editor&&html`<${Editor} key=${editor.type+'-'+editor.id} editor=${editor} A=${A} error=${error} onClose=${()=>setEditor(null)}/>`}</div>`;
+  </main>${editor&&html`<${Editor} key=${editor.type+'-'+editor.id} editor=${editor} A=${A} error=${error} testLogins=${testLogins} onClose=${()=>setEditor(null)}/>`}</div>`;
  };
 }

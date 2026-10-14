@@ -248,7 +248,7 @@ function App({connected}){
  <//>
  ${connected?.error&&html`<p className="app-error connection-error" role="alert">${connected.error}</p>`}
  ${!connected&&role!=='admin'&&html`<div className="wrap m" style=${{paddingBottom:0}}><label>Viewing as <select value=${me} onChange=${e=>setMe(+e.target.value)}>${EMPS.filter(e=>!e.gone&&e.acct===role).map(e=>html`<option key=${e.id} value=${e.id}>${nm(e.id)}</option>`)}</select></label></div>`}
- <fieldset className="workspace" disabled=${!!connected?.busy}>${role!=='admin'&&html`<${Staff} S=${S} A=${A} me=${me}/>`}${role==='admin'&&html`<${Admin} S=${S} A=${A} error=${connected?.error}/>`}</fieldset>
+ <fieldset className="workspace" disabled=${!!connected?.busy}>${role!=='admin'&&html`<${Staff} S=${S} A=${A} me=${me}/>`}${role==='admin'&&html`<${Admin} S=${S} A=${A} error=${connected?.error} testLogins=${connected?.testLogins}/>`}</fieldset>
  ${toast&&html`<div className="toast" role="status">${toast}</div>`}</div>`}
 function hydrate(data){
  EMPS.length=0;data.people.forEach(e=>{EMPS[e.id]=e});

@@ -11,7 +11,10 @@ try {
   page.on('pageerror', error => errors.push(error.message));
   const response = await page.goto(origin);
   assert.equal(response.status(), 200, 'Production must be accessible without Vercel authentication');
-  await page.getByRole('button', { name: 'Send sign-in link' }).waitFor();
+  if(process.env.EVENT_OPS_EXPECT_PASSWORD==='true'){
+    await page.getByRole('button',{name:'Sign in',exact:true}).waitFor();
+    await page.getByLabel('Password',{exact:true}).waitFor();
+  }else await page.getByRole('button',{name:/^(Sign in|Send sign-in link)$/}).waitFor();
   assert.equal(await page.getByRole('group', { name: 'Demo role' }).count(), 0);
   for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
     await page.setViewportSize(viewport);
