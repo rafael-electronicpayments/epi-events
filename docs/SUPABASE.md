@@ -20,6 +20,8 @@ After changing Auth URLs, run `tests/auth-redirects.mjs` with `EVENT_OPS_TEST_UR
 
 ## Accounts
 
+The owner approved adding synthetic test roster emails to both staging and production on 2026-10-14. `supabase/backfill-test-emails.sql` fills missing emails as first initial + last name at `epieventstest.com`, ignoring common name titles. It preserves existing emails, skips archived people, aborts atomically on address/login collisions, logs the batch, and increments the shared revision. It was verified on staging before being applied to production: 29 unique addresses in each. This is an optional, manually run POC data script, not an automatic schema migration. It creates no Auth accounts or mailboxes and sends no emails; do not assume the addresses are deliverable. Future production runs require explicit approval.
+
 Database access requires a trusted profile; email login alone does not grant app access. Ordinary users cannot edit invitations or promote themselves. Administrators can prepare Staff/Contractor access through People using the authorized `ops_save_person` RPC.
 
 1. Add an administrator email to `access_invites` using SQL Editor. The initial owner's invitation has already been created in the connected project; personal addresses are not included in migration files.
