@@ -4,7 +4,7 @@ The scheduling slice uses normalized Postgres tables and two authenticated RPCs.
 
 ## Configuration
 
-Use staging project `bqdpskxaongqrqmgnzir` for local development and `staging-epi-events.vercel.app`. Production project `nrzyqctclteswzsvxifo` belongs only to `epi-events-three.vercel.app`. Both have the four repository migrations; staging was seeded from the fictional mock, not copied from production. Login accounts and Auth settings are independent. Staging Site URL is `https://staging-epi-events.vercel.app`, with its trailing-slash URL and `http://localhost:3000/` allowed as redirects (owner-confirmed). Keep that Site URL when working locally; do not change the shared project's Site URL to localhost. See `docs/ENVIRONMENTS.md` for release steps.
+Use staging project `bqdpskxaongqrqmgnzir` for local development and `staging-epi-events.vercel.app`. Production project `nrzyqctclteswzsvxifo` belongs only to `epi-events-three.vercel.app`. Both have the first four repository migrations; `20261016120000_admin_people_staff_schedule.sql` (Admin people type, staff full-schedule view, dated notifications) must be applied to staging first and to production only as an approved release step; staging was seeded from the fictional mock, not copied from production. Login accounts and Auth settings are independent. Staging Site URL is `https://staging-epi-events.vercel.app`, with its trailing-slash URL and `http://localhost:3000/` allowed as redirects (owner-confirmed). Keep that Site URL when working locally; do not change the shared project's Site URL to localhost. See `docs/ENVIRONMENTS.md` for release steps.
 
 - Put the project URL and publishable key into `.env.local` using the variable names in `.env.example`. Never put secret/service-role keys into any `VITE_` variable.
 - Run `npm ci` and `npm start`. Open the URL printed by Vite.
@@ -48,7 +48,7 @@ from auth.users u join public.access_invites i on i.email=lower(u.email)
 on conflict (user_id) do nothing;
 ```
 
-Account creation currently uses the Supabase dashboard. Saving an email in People prepares app access but does not create an Auth account or send email. People shows No email, Login pending, or Login active. Changing/removing an email revokes that roster person's previous non-admin profile and invitation; existing administrator accounts cannot be reassigned through this form. Archiving a roster person disables their app access. Administrators are managed separately from the Staff/Contractor roster.
+Account creation currently uses the Supabase dashboard. Saving an email in People prepares app access but does not create an Auth account or send email. People shows No email, Login pending, or Login active. Changing/removing an email revokes that roster person's previous profile and invitation. People can be typed Admin, Staff, or Contractor; an Admin roster person receives the full administrator role. An existing administrator login that is not yet on the roster can be linked by adding them in People as type Admin. Administrators cannot remove their own admin access or archive themselves. Archiving a roster person disables their app access, and archiving an Admin person removes their administrator role.
 
 ## Data Structure
 
@@ -69,7 +69,7 @@ Foreign keys and constraints reject orphaned assignments, duplicates, invalid ti
 
 ## Access and Writes
 
-All application tables have RLS. Anonymous clients have no table or RPC access. Admins can read the workspace; Staff and Contractors can read their own roster record, assignments, notifications, and the activities/events/rooms needed for their schedule. The snapshot omits phone numbers and the activity log for non-admins.
+All application tables have RLS. Anonymous clients have no table or RPC access. Admins can read the workspace. Contractors receive their own roster record, assignments, notifications, and the activities/events/rooms needed for their schedule. Staff additionally receive every event, room, activity, and assignment plus active roster names and types so they can view the full schedule. The snapshot omits phone numbers, other people's emails and login status, other people's notifications, and the activity log for non-admins. Direct table RLS policies are unchanged; the app reads only through `ops_snapshot`.
 
 `ops_snapshot` returns the authorized data in the existing UI's format, including roster emails and login status. `ops_command` validates the caller's role and assignment ownership, applies one action, updates notifications, logs it, and advances the revision in one transaction. `ops_save_person` handles roster and access-list changes atomically, including email uniqueness, role checks, existing-login linkage, and revision protection. Direct browser table mutations are denied. These RPCs intentionally use `SECURITY DEFINER` with a fixed empty search path and explicit authorization checks; Supabase's advisor may flag that privilege for review. The original snapshot implementation is an unexposed helper in `ops_private` with no client execution grant.
 

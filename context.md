@@ -10,11 +10,13 @@ A proof of concept for an event operations web app (staff scheduling, room cover
 - Use `staging` for ongoing development and pushes. `main` is production; release through an approved pull request from `staging`, not direct pushes. See `AGENTS.md` and `docs/ENVIRONMENTS.md`. Staging Vercel and local development use Supabase `bqdpskxaongqrqmgnzir`; production alone uses `nrzyqctclteswzsvxifo`. Production preview builds are disabled and its credentials are Production-only. Deployment builds validate the Vercel project's expected database host.
 - The current app is a **prototype** with simulated data and in-memory state. The owner has authorized evolving this repo step by step into a connected POC using Supabase and Vercel; real authentication and persistence are now in scope. Preserve the existing workflows as they are migrated.
 - Scope follows the PRD. Do not add features the owner has not asked for.
-- Roles are **Admin, Staff, Contractor**. Contractors see only their own schedule. Only admins see the phone list. Venue floorplan access is a per-person flag (`map`).
+- Roles are **Admin, Staff, Contractor**, and People can be typed as any of the three (2026-10-16). Admin roster people have full access to the entire system. Staff can switch between their own schedule and the full event schedule, for one day or all days; contractors see only their own schedule (one day or all days). Only admins see the phone list and other people's emails. Venue floorplan access is a per-person flag (`map`).
 - Changes to assignments must notify the affected person and require re-acknowledgment; check-in requires acknowledgment first.
 - Demo actions are undoable and logged (see below). Connected mutations use the transactional `ops_command` RPC and are logged by the database; demo undo is disabled for shared data until a compensating-action design is implemented.
 - Keep UI touch-friendly (44px targets), accessible, and working in light/dark and at phone width. Staff view is phone-first; admin is laptop/tablet.
 - Never put real staff data, phone numbers, receipts, or expense data in this repo.
+- Days display as weekday and date (e.g. "Saturday, Nov 7"; "Sat, Nov 7" on compact tabs), never "Day 1". Activities still store a zero-based day index.
+- Desktop record actions (edit/delete/remove icons) sit in the first column, on the left beside the navigation, not at the right edge.
 
 ## How to run and verify
 `npm ci`, `npm start`, then run the acceptance test in `README.md`. `npm test` runs PostgreSQL behavior and permissions tests using PGlite; `npm run build` verifies the Vite production bundle. `tests/browser.mjs` verifies login layouts and the connected setup flow with mocked API responses. See `docs/SUPABASE.md` for its prerequisites and live verification limits.

@@ -12,7 +12,10 @@ const RL=['Demo Lead','Room Host','Registration','Hospitality','Room Host'];
 const EMPS=FN.map((f,i)=>({id:i,name:f+' '+LN[i],role:RL[i%5],acct:'staff',phone:'555-01'+(10+i),map:1}));
 [['Pat Quinn','AV Technician (Encore AV)'],['Dr. Lena Ford','Speaker'],['Vic Mercer','Entertainment'],['Jo Adler','AV Technician (Encore AV)']].forEach(([n,r])=>EMPS.push({id:EMPS.length,name:n,role:r,acct:'contractor',phone:'555-01'+(60+EMPS.length),map:0}));
 const nm=e=>EMPS[e].name+(e===0?' (Employee A)':'')+(EMPS[e].acct==='contractor'?' (contractor)':'');
-const DAYS=['Day 1','Day 2','Day 3'];
+const DAYS=[],DAYS_SHORT=[];
+// Day labels show the weekday and date, e.g. "Saturday, Nov 7" (short: "Sat, Nov 7").
+const dayDate=(start,i,short)=>{const [y,m,d]=String(start).split('-').map(Number);return new Date(Date.UTC(y,m-1,d+i)).toLocaleDateString('en-US',{weekday:short?'short':'long',month:'short',day:'numeric',timeZone:'UTC'})};
+const fillDays=(start,n)=>{DAYS.length=0;DAYS_SHORT.length=0;for(let i=0;i<n;i++){DAYS.push(dayDate(start,i));DAYS_SHORT.push(dayDate(start,i,true))}};
 const EVS=[{id:1,name:'IMPACT27',start:'2027-03-02',days:3},{id:2,name:'IMPACT26',start:'2026-11-07',days:6}];
 const CUR={id:1};
 const FP=[];
@@ -29,7 +32,7 @@ const ROOMS=['Grand Ballroom',...[1,2,3,4,5,6,7].map(n=>'Salon '+n)];
 const SEED=[[1,1,1,0,''],[2,1,1,0,''],[3,2,0,0,'changed'],[4,3,1,1,''],[5,3,1,1,''],[6,3,1,0,''],[2,3,1,0,''],[0,4,1,0,''],[9,4,1,0,''],[9,5,1,0,''],[10,5,0,0,'new'],[11,6,1,0,''],[8,6,1,0,''],[12,7,1,0,''],[13,7,1,0,''],[14,7,1,0,''],[15,7,1,0,''],[16,8,1,0,''],[20,8,1,0,''],[17,9,1,0,''],[18,9,1,0,''],[19,10,1,0,''],[20,10,1,0,''],[21,11,1,0,''],[22,11,1,0,''],[23,12,1,0,''],[24,12,1,0,''],[12,12,1,0,''],[25,7,1,0,''],[26,10,1,0,''],[27,12,1,0,''],[28,8,0,0,'new']];
 const fmt=m=>{const h=Math.floor(m/60),x=m%60;return (h%12||12)+':'+String(x).padStart(2,'0')+(h<12?' AM':' PM')};
 const span=s=>fmt(s.a)+'–'+fmt(s.b);
-const ntext=(a,p)=>p+': '+SM[a.s].t+', '+SM[a.s].r+', '+span(SM[a.s])+' (Day '+(SM[a.s].d+1)+')'+(EVS.length>1?' ['+evOf(SM[a.s].ev).name+']':'');
+const ntext=(a,p)=>p+': '+SM[a.s].t+', '+SM[a.s].r+', '+span(SM[a.s])+' ('+dayDate(evOf(SM[a.s].ev).start,SM[a.s].d)+')'+(EVS.length>1?' ['+evOf(SM[a.s].ev).name+']':'');
 let uid=100;
 const H=[];
 const seed=()=>{const asg=SEED.map((r,i)=>({id:i+1,e:r[0],s:r[1],ack:r[2],in:r[3],conf:0,tag:r[4]}));
@@ -120,11 +123,18 @@ function Floorplans({A}){
    <select aria-label=${'Event for '+f.name} value=${f.ev} onChange=${ev=>A.moveFloorplan(f.id,+ev.target.value)}>${EVS.map(x=>html`<option key=${x.id} value=${x.id}>${x.name}</option>`)}</select><button className="btn ghost" onClick=${()=>A.delFloorplan(f.id)}>Remove</button></div></li>`)}</ul>
   ${!FP.some(f=>f.ev===e.id)&&html`<p className="mute">No floorplans assigned.</p>`}</div>`)}</div>`}
 const EVD={d:'2027-03-02'};
-const syncEv=()=>{const e=evOf(CUR.id);DAYS.length=0;for(let i=1;i<=e.days;i++)DAYS.push('Day '+i);EVD.d=e.start};
+const syncEv=()=>{const e=evOf(CUR.id);fillDays(e.start,e.days);EVD.d=e.start};
+if(evOf(CUR.id))syncEv();
 const icsDate=(day,min,st)=>{const [y,m,d]=st.split('-').map(Number),t=new Date(Date.UTC(y,m-1,d+day,0,min)),q=n=>String(n).padStart(2,'0');return t.getUTCFullYear()+q(t.getUTCMonth()+1)+q(t.getUTCDate())+'T'+q(t.getUTCHours())+q(t.getUTCMinutes())+'00'};
 const ics=a=>{const s=SM[a.s];return ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//IMPACT27//Staff Portal//EN','BEGIN:VEVENT','UID:impact27-'+a.id+'@staff.example','SEQUENCE:'+(a.seq||0),'DTSTAMP:'+new Date().toISOString().replace(/[-:]/g,'').slice(0,15)+'Z','DTSTART:'+icsDate(s.d,s.a,evOf(s.ev).start),'DTEND:'+icsDate(s.d,s.b,evOf(s.ev).start),'SUMMARY:IMPACT27: '+s.t,'LOCATION:'+s.r,'DESCRIPTION:Your IMPACT27 assignment','BEGIN:VALARM','ACTION:DISPLAY','DESCRIPTION:Starts in 30 minutes','TRIGGER:-PT30M','END:VALARM','END:VEVENT','END:VCALENDAR'].join('\r\n')};
-function Staff({S,A,me}){
+function Staff({S,A,me,canFull=false}){
  const [d0,setD]=useState(0),d=Math.min(d0,DAYS.length-1);
+ // Staff can switch to the full event schedule; contractors only ever see their own.
+ const [view,setView]=useState('mine'),[all,setAll]=useState(false),full=canFull&&view==='full';
+ const dayActs=i=>SESS.filter(s=>s.ev===CUR.id&&s.d===i).sort((x,y)=>x.a-y.a||x.b-y.b);
+ const FullCard=({s})=>{const who=S.asg.filter(a=>a.s===s.id&&EMPS[a.e]);return html`<div className=${'card'+(who.some(a=>a.e===me)?' mine':'')}>
+  <h3>${s.t}</h3><p className="mute">${s.r} · ${span(s)}</p>
+  <p>${who.length?who.map((a,j)=>html`<span key=${a.id}>${j?', ':''}${a.e===me?html`<b>You</b>`:EMPS[a.e].name}</span>`):html`<span className="mute">No one assigned yet</span>`}</p></div>`};
  const mine=S.asg.filter(a=>a.e===me&&SM[a.s].ev===CUR.id).sort((x,y)=>SM[x.s].d-SM[y.s].d||SM[x.s].a-SM[y.s].a);
  const next=mine.find(a=>!a.in&&!a.conf), notes=S.notes.filter(n=>n.e===me&&!n.done);
  const [shown,setShown]=useState(null),[fv,setFv]=useState(null),sa=mine.find(a=>a.id===shown);
@@ -138,26 +148,28 @@ function Staff({S,A,me}){
  ${mine.filter(a=>a.pc).map(a=>html`<div className="card note" key=${'c'+a.id} role="status"><b>${a.cal==null?'Add to your calendar?':'Update your calendar?'}</b><p className="mute">${SM[a.s].t}, ${SM[a.s].r}, ${span(SM[a.s])} (${DAYS[SM[a.s].d]}). Reminder 30 minutes before.</p><div className="acts"><button className="btn" onClick=${()=>{A.calAdd(a.id);setShown(a.id)}}>${a.cal==null?'Add to calendar':'Update calendar'}</button><button className="btn ghost" onClick=${()=>A.calSkip(a.id)}>Not now</button></div></div>`)}
  ${sa&&html`<div className="card"><b>Calendar event ready</b><p className="mute">${SM[sa.s].t}, ${SM[sa.s].r}, ${span(SM[sa.s])}. Reminder 30 minutes before.</p><p className="mute">In the real app this opens your phone's calendar (Apple, Google, or Outlook). This preview can't open a phone calendar, so the file it would send is shown below.</p><details><summary>Calendar file (for developers)</summary><pre style=${{whiteSpace:'pre-wrap',fontSize:'.8rem'}}>${ics(sa)}</pre></details><button className="btn ghost" onClick=${()=>setShown(null)}>Close</button></div>`}
  <div className="card"><b>Venue floorplan</b>${EMPS[me].map?(FP.some(f=>f.ev===CUR.id)?html`<div className="acts">${FP.filter(f=>f.ev===CUR.id).map(f=>html`<button key=${f.id} className="btn ghost" onClick=${()=>setFv(f.id)}>${f.name}</button>`)}</div>`:html`<p className="mute">No floorplan has been added for this event yet.</p>`):html`<p className="mute">Your administrator has not turned on access for you.</p>`}</div>
- ${EMPS[me].map&&FP.find(f=>f.id===fv&&f.ev===CUR.id)&&html`<${PdfView} f=${FP.find(f=>f.id===fv)} onClose=${()=>setFv(null)}/>`}
+ ${!!EMPS[me].map&&FP.find(f=>f.id===fv&&f.ev===CUR.id)&&html`<${PdfView} f=${FP.find(f=>f.id===fv)} onClose=${()=>setFv(null)}/>`}
  <h2>Next assignment</h2>${next?html`<${Card} a=${next} cls="next"/>`:html`<p className="mute">Nothing coming up. Your admin will notify you of new assignments.</p>`}
- <h2>My schedule</h2><div className="seg" style=${{marginBottom:12}}>${DAYS.map((x,i)=>html`<button key=${i} aria-pressed=${d===i} onClick=${()=>setD(i)}>${x}</button>`)}</div>
- ${mine.filter(a=>SM[a.s].d===d).map(a=>html`<${Card} key=${a.id} a=${a}/>`)}
- ${!mine.some(a=>SM[a.s].d===d)&&html`<p className="mute">No assignments on ${DAYS[d]}.</p>`}</div>`}
+ <h2>${full?'Full schedule':'My schedule'}</h2>
+ ${canFull&&html`<div className="seg" role="group" aria-label="Schedule view" style=${{marginBottom:8}}><button aria-pressed=${!full} onClick=${()=>setView('mine')}>My schedule</button><button aria-pressed=${full} onClick=${()=>setView('full')}>Full schedule</button></div>`}
+ <div className="seg" role="group" aria-label="Schedule days" style=${{marginBottom:12}}><button aria-pressed=${all} onClick=${()=>setAll(true)}>All days</button>${DAYS_SHORT.map((x,i)=>html`<button key=${i} aria-pressed=${!all&&d===i} onClick=${()=>{setAll(false);setD(i)}}>${x}</button>`)}</div>
+ ${(all?DAYS.map((_,i)=>i):[d]).map(i=>html`<div key=${i}>${all&&html`<h3 className="day-heading">${DAYS[i]}</h3>`}
+  ${full?html`${dayActs(i).map(s=>html`<${FullCard} key=${s.id} s=${s}/>`)}${!dayActs(i).length&&html`<p className="mute">No activities on ${DAYS[i]}.</p>`}`
+   :html`${mine.filter(a=>SM[a.s].d===i).map(a=>html`<${Card} key=${a.id} a=${a}/>`)}${!mine.some(a=>SM[a.s].d===i)&&html`<p className="mute">No assignments on ${DAYS[i]}.</p>`}`}</div>`)}</div>`}
 function AdminSession({s,S,A,coordinator=false}){
  const [pick,setPick]=useState('');
  const as=S.asg.filter(x=>x.s===s.id), free=EMPS.filter(e=>!e.gone&&!as.some(x=>x.e===e.id)), same=SESS.filter(o=>o.ev===s.ev&&o.d===s.d&&o.id!==s.id);
  return html`<div className="session-panel"><${Head} s=${s} asg=${S.asg}/>
- <ul className="rows">${as.map(a=>{const c=clash(S.asg,a),[k,l]=st(a);return html`<li key=${a.id}>
+ <ul className="rows">${as.map(a=>{const c=clash(S.asg,a),[k,l]=st(a);return html`<li key=${a.id} className="lead-actions"><${IconButton} name="delete" label=${'Remove '+EMPS[a.e].name} onClick=${()=>A.remove(a.id)}/><div>
   <div><b>${nm(a.e)}</b> <${Pill} k=${k}>${l}<//> ${c.length>0&&html`<${Pill} k="bad">Overlaps ${c.map(o=>o.t).join(', ')}<//>`}</div>
   <div className="acts"><select aria-label=${'Move '+EMPS[a.e].name} value="" onChange=${ev=>ev.target.value&&A.move(a.id,+ev.target.value)}>
    <option value="">Move to…</option>${same.map(o=>html`<option key=${o.id} value=${o.id}>${o.r}, ${span(o)}, ${o.t}</option>`)}</select>
-  <${IconButton} name="delete" label=${'Remove '+EMPS[a.e].name} onClick=${()=>A.remove(a.id)}/>
-  ${coordinator&&html`<button className="btn ghost" disabled=${!!a.in||!!a.conf} onClick=${()=>A.confirm(a.id)}>Confirm present</button>`}</div></li>`})}</ul>
+  ${coordinator&&html`<button className="btn ghost" disabled=${!!a.in||!!a.conf} onClick=${()=>A.confirm(a.id)}>Confirm present</button>`}</div></div></li>`})}</ul>
  ${!as.length&&html`<p className="mute">No one assigned yet.</p>`}
  <div className="acts"><select aria-label=${'Employee to assign to '+s.t} value=${pick} onChange=${e=>setPick(e.target.value)}><option value="">Choose employee…</option>
   ${free.map(e=>html`<option key=${e.id} value=${e.id}>${nm(e.id)}</option>`)}</select>
   <button className="btn" disabled=${pick===''} onClick=${async()=>{const ok=await A.assign(+pick,s.id);if(ok!==false)setPick('')}}>Assign</button></div></div>`}
-const desc=s=>'Was '+s.t+', '+s.r+', '+span(s)+' (Day '+(s.d+1)+')';
+const desc=s=>'Was '+s.t+', '+s.r+', '+span(s)+' ('+dayDate(evOf(s.ev).start,s.d)+')';
 const bump=(s,sid,from)=>{const ids=s.asg.filter(a=>a.s===sid).map(a=>a.id);
  return {...s,asg:s.asg.map(a=>ids.includes(a.id)?{...a,ack:0,in:0,conf:0,tag:'changed',seq:(a.seq||0)+1,pc:0}:a),
  notes:[...s.notes.filter(n=>!ids.includes(n.aid)),...s.asg.filter(a=>ids.includes(a.id)).map(a=>({id:++uid,e:a.e,aid:a.id,done:0,x:ntext(a,'Changed assignment'),from}))]}};
@@ -185,7 +197,7 @@ function Grid({S}){
  <//>`})}</tbody></table></div>
  ${!rows.length&&html`<p className="mute">No activities yet for this event.</p>`}
  <h3 style=${{marginTop:16}}>Staff colors</h3><div className="legend">${used.map(e=>html`<span key=${e}><i className="sw" style=${{background:col(e,1)}}></i>${EMPS[e].name}</span>`)}</div></div>`}
-const Admin=createAdminWorkspace({people:EMPS,events:EVS,rooms:ROOMS,activities:SESS,current:CUR,days:DAYS,cover,clash,span,evEnd,evStatus,connected:CONNECTED},{AdminSession,Grid,Floorplans,Incoming});
+const Admin=createAdminWorkspace({people:EMPS,events:EVS,rooms:ROOMS,activities:SESS,current:CUR,days:DAYS,daysShort:DAYS_SHORT,cover,clash,span,evEnd,evStatus,connected:CONNECTED},{AdminSession,Grid,Floorplans,Incoming});
 function App({connected}){
  const [demoS,setS]=useState(()=>connected?connected.snapshot:seed()),[demoRole,setRole]=useState('admin'),[demoMe,setMe]=useState(0),[toast,setToast]=useState('');
  const S=connected?connected.snapshot:demoS,role=connected?connected.snapshot.role:demoRole,me=connected?connected.snapshot.me:demoMe;
@@ -216,7 +228,7 @@ function App({connected}){
   editSession:(id,t,r,d,a,b,n)=>{if(!t){say('Enter an activity name');return false}if(!(b>a)){say('End time must be after start time');return false}if(!(n>=1)){say('Staff needed must be at least 1');return false}const o=SM[id],f=desc(o),ch=o.t!==t||o.r!==r||o.d!==+d||o.a!==a||o.b!==b;Object.assign(o,{t,r,d:+d,a,b,n});setS(s=>L(ch?bump(s,id,f):s,'Updated activity '+t+' in '+r+', '+DAYS[o.d]+', '+span(o)));say(ch?'Saved. Assigned staff notified.':'Saved');return true},
   delSession:id=>{const o=SM[id],txt=ntext({s:id},'Cancelled');setS(s=>{const g=s.asg.filter(a=>a.s===id);return L({...s,asg:s.asg.filter(a=>a.s!==id),notes:[...s.notes.filter(n=>!g.some(a=>a.id===n.aid)),...g.map(a=>({id:++uid,e:a.e,aid:null,done:0,x:txt+(a.cal!=null?'. Delete it from your calendar.':'')}))]},'Deleted activity '+o.t+' ('+g.length+' staff notified)')});SESS.splice(SESS.indexOf(o),1);delete SM[id];say(o.t+' deleted');return true},
   addEvent:o=>{if(!evv(o))return false;const id=Math.max(0,...EVS.map(e=>e.id))+1;EVS.push({id,name:o.n,start:o.b,days:Math.floor(o.d)});CUR.id=id;syncEv();setS(s=>L({...s},'Created event '+o.n));say(o.n+' created and opened');return true},
-  editEvent:(id,o)=>{if(!evv(o))return false;const n=Math.floor(o.d),bad=SESS.find(s=>s.ev===id&&s.d>=n);if(bad){say('Move or delete activities on Day '+(bad.d+1)+' first');return false}Object.assign(evOf(id),{name:o.n,start:o.b,days:n});if(id===CUR.id)syncEv();setS(s=>L({...s},'Updated event '+o.n));say('Saved');return true},
+  editEvent:(id,o)=>{if(!evv(o))return false;const n=Math.floor(o.d),bad=SESS.find(s=>s.ev===id&&s.d>=n);if(bad){say('Move or delete activities on '+dayDate(evOf(id).start,bad.d)+' first');return false}Object.assign(evOf(id),{name:o.n,start:o.b,days:n});if(id===CUR.id)syncEv();setS(s=>L({...s},'Updated event '+o.n));say('Saved');return true},
   delEvent:id=>{if(EVS.length<2){say('At least one event must remain');return false}const e=evOf(id),ids=SESS.filter(s=>s.ev===id).map(s=>s.id);setS(s=>{const g=s.asg.filter(a=>ids.includes(a.s));return L({...s,asg:s.asg.filter(a=>!ids.includes(a.s)),notes:[...s.notes.filter(n=>!g.some(a=>a.id===n.aid)),...[...new Set(g.map(a=>a.e))].map(x=>({id:++uid,e:x,aid:null,done:0,x:'Event removed: '+e.name}))]},'Deleted event '+e.name+' with '+ids.length+' activities')});for(let i=SESS.length-1;i>=0;i--)if(ids.includes(SESS[i].id)){delete SM[SESS[i].id];SESS.splice(i,1)}for(let i=FP.length-1;i>=0;i--)if(FP[i].ev===id)FP.splice(i,1);for(let i=INV.length-1;i>=0;i--)if(INV[i].ev===id)INV.splice(i,1);EVS.splice(EVS.indexOf(e),1);if(CUR.id===id){CUR.id=EVS[0].id;syncEv()}say(e.name+' deleted');return true},
   addFloorplan:(f,ev)=>{if(String.fromCharCode(...f.data.slice(0,4))!=='%PDF'){say(f.name+' is not a PDF file');return false}if(f.data.length>26214400){say(f.name+' is over 25 MB');return false}FP.push({id:Math.max(0,...FP.map(x=>x.id))+1,ev,name:/\.pdf$/i.test(f.name)?f.name:f.name+'.pdf',size:f.data.length,data:f.data});setS(s=>L({...s},'Added floorplan '+f.name+' to '+evOf(ev).name));say(f.name+' added to '+evOf(ev).name);return true},
   moveFloorplan:(id,ev)=>{const f=FP.find(x=>x.id===id);f.ev=ev;setS(s=>L({...s},'Moved floorplan '+f.name+' to '+evOf(ev).name));say('Moved to '+evOf(ev).name);return true},
@@ -228,7 +240,7 @@ function App({connected}){
   calAdd:id=>{setS(s=>{const o=s.asg.find(a=>a.id===id);return L({...s,asg:s.asg.map(a=>a.id===id?{...a,cal:a.seq||0,pc:0}:a)},EMPS[o.e].name+' added '+SM[o.s].t+' to their calendar with a 30-minute reminder')})},
   calSkip:id=>setS(s=>({...s,asg:s.asg.map(a=>a.id===id?{...a,pc:0}:a)})),
   setStart:v=>{if(!v)return false;EVD.d=v;setS(s=>L({...s},'Set event start date to '+v));say('Start date saved');return true},
-  setDays:n=>{n=Math.floor(+n);if(!(n>=1&&n<=14)){say('Enter 1 to 14 days');return false}if(n===DAYS.length){say('Already '+n+' days');return false}const bad=SESS.find(s=>s.d>=n);if(bad){say('Move or delete activities on '+DAYS[bad.d]+' first');return false}const was=DAYS.length;DAYS.length=0;for(let i=1;i<=n;i++)DAYS.push('Day '+i);setS(s=>L({...s},'Changed event length from '+was+' to '+n+' days'));say('Event is now '+n+' days');return true}};
+  setDays:n=>{n=Math.floor(+n);if(!(n>=1&&n<=14)){say('Enter 1 to 14 days');return false}if(n===DAYS.length){say('Already '+n+' days');return false}const bad=SESS.find(s=>s.d>=n);if(bad){say('Move or delete activities on '+DAYS[bad.d]+' first');return false}const was=DAYS.length;fillDays(EVD.d,n);setS(s=>L({...s},'Changed event length from '+was+' to '+n+' days'));say('Event is now '+n+' days');return true}};
  Object.keys(A).forEach(k=>{if(['dismiss','calAdd','calSkip','switchEv'].includes(k))return;const f=A[k];A[k]=(...a)=>{snap();const r=f(...a);if(r===false)H.pop();return r}});
  A.undo=()=>{const h=H.pop();if(!h)return;EMPS.length=0;EMPS.push(...h.emps);ROOMS.length=0;ROOMS.push(...h.rooms);SESS.length=0;SESS.push(...h.sess);Object.keys(SM).forEach(k=>delete SM[k]);SESS.forEach(o=>{SM[o.id]=o});EVS.length=0;EVS.push(...h.evs);CUR.id=h.cur;FP.length=0;FP.push(...h.fp);INV.length=0;INV.push(...h.inv);syncEv();setS(Lg(h.s,'Undid: '+h.label));say('Undid: '+h.label)};
  if(connected)Object.keys(A).forEach(k=>{
@@ -248,7 +260,7 @@ function App({connected}){
  <//>
  ${connected?.error&&html`<p className="app-error connection-error" role="alert">${connected.error}</p>`}
  ${!connected&&role!=='admin'&&html`<div className="wrap m" style=${{paddingBottom:0}}><label>Viewing as <select value=${me} onChange=${e=>setMe(+e.target.value)}>${EMPS.filter(e=>!e.gone&&e.acct===role).map(e=>html`<option key=${e.id} value=${e.id}>${nm(e.id)}</option>`)}</select></label></div>`}
- <fieldset className="workspace" disabled=${!!connected?.busy}>${role!=='admin'&&html`<${Staff} S=${S} A=${A} me=${me}/>`}${role==='admin'&&html`<${Admin} S=${S} A=${A} error=${connected?.error} testLogins=${connected?.testLogins}/>`}</fieldset>
+ <fieldset className="workspace" disabled=${!!connected?.busy}>${role!=='admin'&&html`<${Staff} S=${S} A=${A} me=${me} canFull=${role==='staff'}/>`}${role==='admin'&&html`<${Admin} S=${S} A=${A} error=${connected?.error} testLogins=${connected?.testLogins}/>`}</fieldset>
  ${toast&&html`<div className="toast" role="status">${toast}</div>`}</div>`}
 function hydrate(data){
  EMPS.length=0;data.people.forEach(e=>{EMPS[e.id]=e});

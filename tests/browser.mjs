@@ -159,6 +159,14 @@ try {
   }
   await page.setViewportSize({width:1440,height:900});
   await page.getByRole('button', { name: 'People', exact: true }).click();
+  {
+    const row=page.getByRole('row').filter({has:page.getByRole('button',{name:'Edit Alex',exact:true})});
+    assert.equal(await row.getByRole('cell').first().getByRole('button',{name:'Edit Alex',exact:true}).count(),1);
+    assert.equal(await row.getByRole('cell').first().getByRole('button',{name:'Delete Alex',exact:true}).count(),1);
+    const edit=await row.getByRole('button',{name:'Edit Alex',exact:true}).boundingBox();
+    const label=await row.getByRole('cell').nth(1).boundingBox();
+    assert.ok(edit.x+edit.width<=label.x,'People controls precede record details');
+  }
   await page.getByRole('button',{name:'Edit Alex',exact:true}).click();
   assert.equal(await page.getByLabel('Email',{exact:true}).inputValue(),'alex@epieventstest.com');
   await page.getByLabel('Email',{exact:true}).fill('alex.updated@example.test');

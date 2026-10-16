@@ -35,7 +35,7 @@ Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` in `.env.local` to e
 
 This walkthrough applies to the unconfigured demo. The connected POC also contains the original IMPACT27 schedule and empty IMPACT26 event. Use separate provisioned Admin and Staff accounts instead of the role switcher; roster people need an Auth account/profile before signing in. Reload to verify persistence, and use a second browser to verify shared changes.
 
-1. As **Admin**, open Schedule, Day 1, find "POS Lab: demo support" (Salon 3, 9:00-11:00 AM). Assign **Alex Rivera (Employee A)**.
+1. As **Admin**, open Schedule, the first day tab, find "POS Lab: demo support" (Salon 3, 9:00-11:00 AM). Assign **Alex Rivera (Employee A)**.
 2. Switch to **Staff** (Alex is the default). See the new assignment and banner.
 3. Switch to **Admin**, use "Move to..." on Alex's row and pick Salon 5 (Breakout A).
 4. Switch to **Staff**. See the "Changed assignment" banner. Acknowledge, then Check in.

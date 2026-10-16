@@ -9,7 +9,7 @@ test('test emails backfill safely, preserve existing access, and abort collision
     await db.exec(`create role anon; create role authenticated; create schema auth;
       create table auth.users(id uuid primary key,email text);
       create function auth.uid() returns uuid language sql as $$select null::uuid$$;`);
-    for (const file of ['202610130001_event_ops.sql','202610130002_access_invites.sql','202610130003_restrict_auto_rls.sql','20261014114123_roster_login_email.sql']) {
+    for (const file of ['202610130001_event_ops.sql','202610130002_access_invites.sql','202610130003_restrict_auto_rls.sql','20261014114123_roster_login_email.sql','20261016120000_admin_people_staff_schedule.sql']) {
       await db.exec(await readFile(new URL('../supabase/migrations/'+file,import.meta.url),'utf8'));
     }
     await db.exec(await readFile(new URL('../supabase/seed-mock.sql',import.meta.url),'utf8'));

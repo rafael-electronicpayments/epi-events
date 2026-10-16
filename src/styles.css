@@ -144,6 +144,8 @@ input[type=checkbox]{accent-color:var(--acc)}
 .setup-actions .row-actions{flex-wrap:nowrap}
 .data-table td.setup-actions+td{min-width:115px}
 .data-table td.setup-actions+td>.pill{margin-left:10px}
+.day-heading{margin:18px 0 8px;font-size:15px}.card.mine{border-left:4px solid var(--acc)}
+.session-panel .rows li.lead-actions{grid-template-columns:auto minmax(0,1fr);align-items:start;column-gap:8px}
 .activity-link{display:grid;gap:5px;text-align:left;background:none;border:0;padding:2px 0;color:var(--ink);font:inherit;cursor:pointer}
 .activity-link:hover b{color:var(--acc)}.activity-link .mute{font-size:12px;margin:0}
 .inline-warning{display:inline-flex;align-items:center;gap:4px;color:var(--warn);font-size:11px;margin-top:5px}
