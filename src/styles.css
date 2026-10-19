@@ -195,3 +195,14 @@ body:has(dialog[open]) .app-error{display:none}
 .my-export{align-items:center;margin:0 0 12px}.my-export .mute{font-size:.9rem}
 /* Coverage, web view: row action (Fill gap / View staff) leads the row, like other record actions. */
 @media(min-width:641px){.coverage-row>.btn{order:-1;min-width:128px;justify-content:center}}
+
+/* People import */
+.heading-actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}
+.editor-dialog:has(.import-people){width:min(980px,calc(100vw - 32px))}
+.file-pick{position:relative;cursor:pointer}.file-pick input{position:absolute;inset:0;opacity:0;cursor:pointer;min-height:0}
+.file-pick:focus-within{outline:2px solid var(--acc);outline-offset:2px}
+.import-summary{margin:16px 0 10px;font-size:13px}
+.import-table{max-height:min(52vh,520px);overflow:auto;border:1px solid var(--line);border-radius:6px}
+.import-table .data-table td{padding:8px 10px}.import-table .data-table td:first-child{min-width:0;width:56px;text-align:center}
+.import-table input:not([type=checkbox]){width:100%;min-width:150px}.import-table input[type=checkbox]{width:20px;height:20px;min-height:0}
+.import-table .cell-secondary{display:block}.import-error{color:var(--bad,#b42318)}

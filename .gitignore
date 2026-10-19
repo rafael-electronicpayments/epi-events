@@ -9,3 +9,8 @@ dist/
 .supabase/
 supabase/.temp/
 coverage/
+
+# Roster spreadsheets hold real staff data; never commit them.
+*.xlsx
+*.xls
+*.xlsm

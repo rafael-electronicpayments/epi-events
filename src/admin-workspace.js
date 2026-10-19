@@ -2,6 +2,7 @@ import React from 'react';
 import htm from 'htm';
 import { Icon, IconButton, Modal } from './ui.js';
 import { BulkTestLogins, TestLoginPanel } from './test-logins.js';
+import { readSpreadsheet, planImport } from './people-import.js';
 
 const html=htm.bind(React.createElement);
 const {useState,useEffect,useRef}=React;
@@ -16,6 +17,43 @@ export function createAdminWorkspace(m,components){
  const login=p=>p.login?['ok','Login active']:p.email?['warn','Login pending']:['','No email'];
  const Badge=({kind='',children})=>html`<span className=${'pill '+kind}>${children}</span>`;
 
+ // Import people from a roster spreadsheet: preview, adjust, then save row by row.
+ function ImportPeople({A,error,onClose}){
+  const [plan,setPlan]=useState(null),[file,setFile]=useState(''),[problem,setProblem]=useState(''),[progress,setProgress]=useState(null),[result,setResult]=useState(null);
+  const choose=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;setProblem('');setResult(null);setFile(f.name);
+   try{const {rows,sheet}=await readSpreadsheet(f);setPlan({sheet,rows:planImport(rows,people)});}catch(x){setPlan(null);setProblem(x.message||'Could not read that file.');}};
+  const edit=(i,patch)=>setPlan(p=>({...p,rows:p.rows.map((r,j)=>j===i?{...r,...patch,person:{...r.person,...(patch.person||{})}}:r)}));
+  const chosen=plan?plan.rows.filter(r=>r.include&&r.status!=='error'):[];
+  const count=k=>plan.rows.filter(r=>r.status===k).length;
+  const run=async()=>{
+   const done={added:0,updated:0,failed:[]};
+   for(let i=0;i<chosen.length;i++){
+    const r=chosen[i];setProgress(i+1);
+    const ok=await(r.id!=null?A.editStaff(r.id,r.person):A.addStaff(r.person));
+    if(ok===false)done.failed.push(r.person.n+(r.line?' (row '+r.line+')':''));else done[r.id!=null?'updated':'added']++;
+   }
+   setProgress(null);setResult(done);setPlan(null);
+  };
+  const label={new:['ok','New'],update:['warn','Update'],same:['','No change'],error:['bad','Cannot import']};
+  return html`<${Modal} title="Import people from Excel" onClose=${progress?()=>{}:onClose}><div className="import-people">
+   ${!plan&&!result&&html`<p className="mute">Choose an Excel (.xlsx) or CSV file with a header row. Recognized columns: Name, Email, Phone, Type (Admin, Staff, or Contractor), and Role or Title. People are matched by email, then by name. The file is read on this device and is not uploaded or stored.</p>`}
+   ${!progress&&html`<label className="btn ghost file-pick"><${Icon} name="upload"/>${plan?'Choose a different file':'Choose file'}<input type="file" accept=".xlsx,.csv" onChange=${choose}/></label>`}
+   ${problem&&html`<p className="connection-error editor-error" role="alert">${problem}</p>`}
+   ${plan&&html`<p className="import-summary"><b>${file}</b> · ${plan.rows.length} rows: ${count('new')} new, ${count('update')} updates, ${count('same')} unchanged${count('error')?html`, <b>${count('error')} cannot be imported</b>`:''}</p>
+    <div className="import-table"><table className="data-table"><thead><tr><th scope="col">Import</th><th scope="col">Name</th><th scope="col">Email / phone</th><th scope="col">Type</th><th scope="col">Status</th></tr></thead><tbody>
+    ${plan.rows.map((r,i)=>html`<tr key=${i}>
+     <td><input type="checkbox" aria-label=${'Import '+(r.person.n||'row '+r.line)} checked=${r.include&&r.status!=='error'} disabled=${r.status==='error'||!!progress} onChange=${e=>edit(i,{include:e.target.checked})}/></td>
+     <td><input aria-label=${'Name, row '+r.line} value=${r.person.n} disabled=${!!progress} onChange=${e=>edit(i,{person:{n:e.target.value},include:true})}/></td>
+     <td><span>${r.person.email||html`<span className="mute">No email</span>`}</span><span className="cell-secondary">${r.person.phone||'No phone'}</span></td>
+     <td><select aria-label=${'Type, row '+r.line} value=${r.person.acct} disabled=${!!progress} onChange=${e=>edit(i,{person:{acct:e.target.value},include:true})}><option value="staff">Staff</option><option value="contractor">Contractor</option><option value="admin">Admin</option></select></td>
+     <td><${Badge} kind=${label[r.status][0]}>${label[r.status][1]}<//>${r.status==='update'&&html`<span className="cell-secondary">${r.changes.join(', ')}</span>`}${[...r.errors,...r.notes].map(n=>html`<span key=${n} className=${'cell-secondary'+(r.errors.includes(n)?' import-error':'')}>${n}</span>`)}</td></tr>`)}
+    </tbody></table></div>`}
+   ${progress&&html`<p role="status">Saving ${progress} of ${chosen.length}…</p>`}
+   ${result&&html`<div role="status"><p><b>Import finished.</b> ${result.added} added, ${result.updated} updated${result.failed.length?`, ${result.failed.length} failed`:''}.</p>${result.failed.length>0&&html`<p className="connection-error">Not saved: ${result.failed.join(', ')}. ${error}</p>`}</div>`}
+   <div className="dialog-actions"><button type="button" className="btn ghost" disabled=${!!progress} onClick=${onClose}>${result?'Close':'Cancel'}</button>
+    ${plan&&html`<button type="button" className="btn" disabled=${!chosen.length||!!progress} onClick=${run}>Import ${chosen.length} ${chosen.length===1?'person':'people'}</button>`}</div>
+  </div><//>`;
+ }
  function Editor({editor,A,error,onClose,testLogins}){
   const [draft,setDraft]=useState(editor.draft),[failed,setFailed]=useState(false);
   const editing=editor.id!=null,version={expectedRevision:editor.revision};
@@ -65,7 +103,7 @@ export function createAdminWorkspace(m,components){
 
  return function AdminWorkspace({S,A,me=null,error='',testLogins}){
   const [view,setView]=useState('schedule'),[day,setDay]=useState(0),[mode,setMode]=useState('list'),[filter,setFilter]=useState('all');
-  const [selected,setSelected]=useState(null),[query,setQuery]=useState(''),[type,setType]=useState('all'),[tab,setTab]=useState('events'),[editor,setEditor]=useState(null);
+  const [importing,setImporting]=useState(false),[selected,setSelected]=useState(null),[query,setQuery]=useState(''),[type,setType]=useState('all'),[tab,setTab]=useState('events'),[editor,setEditor]=useState(null);
   const detail=useRef(null);
   const dayIndex=Math.min(day,days.length-1),event=events.find(e=>e.id===current.id);
   useEffect(()=>{setDay(0);setSelected(null);setFilter('all');setEditor(null);},[current.id]);
@@ -96,7 +134,7 @@ export function createAdminWorkspace(m,components){
   return html`<div className="workspace-layout"><nav className="sidebar" aria-label="Main navigation"><span className="nav-group">Planning</span>${nav.slice(0,planning.length).map(navButton)}<span className="nav-group">Manage</span>${nav.slice(planning.length).map(navButton)}</nav>
   <main className="workspace-main"><div className="page-heading"><div><h2>${title}</h2><p className="mute">${sub}</p></div>
    ${view==='schedule'&&html`<button className="btn" onClick=${()=>open('activity')} disabled=${!rooms.length}><${Icon} name="plus"/>New activity</button>`}
-   ${view==='people'&&html`<button className="btn" onClick=${()=>open('person')}><${Icon} name="plus"/>Add person</button>`}
+   ${view==='people'&&html`<div className="heading-actions"><button className="btn ghost" onClick=${()=>setImporting(true)}><${Icon} name="upload"/>Import from Excel</button><button className="btn" onClick=${()=>open('person')}><${Icon} name="plus"/>Add person</button></div>`}
    ${view==='setup'&&html`<button className="btn" onClick=${()=>open(tab==='events'?'event':tab==='rooms'?'room':'activity')} disabled=${tab==='activities'&&!rooms.length}><${Icon} name="plus"/>${tab==='events'?'Add event':tab==='rooms'?'Add room':'New activity'}</button>`}
   </div>
   ${view==='people'&&testLogins&&html`<${BulkTestLogins} api=${testLogins}/>`}
@@ -131,6 +169,6 @@ export function createAdminWorkspace(m,components){
    return html`<tr key=${i}><td>${Number.isNaN(date.valueOf())?entry.t:date.toLocaleString()}</td><td>${names[entry.x]||entry.x}</td><td>${description}</td></tr>`;
   }))}
   ${view==='mine'&&me!=null&&html`<${Staff} S=${S} A=${A} me=${me} embedded=${true}/>`}${view==='plans'&&html`<${Floorplans} A=${A}/>`}${view==='incoming'&&html`<${Incoming} A=${A}/>`}
-  </main>${editor&&html`<${Editor} key=${editor.type+'-'+editor.id} editor=${editor} A=${A} error=${error} testLogins=${testLogins} onClose=${()=>setEditor(null)}/>`}</div>`;
+  </main>${importing&&html`<${ImportPeople} A=${A} error=${error} onClose=${()=>setImporting(false)}/>`}${editor&&html`<${Editor} key=${editor.type+'-'+editor.id} editor=${editor} A=${A} error=${error} testLogins=${testLogins} onClose=${()=>setEditor(null)}/>`}</div>`;
  };
 }
