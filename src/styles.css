@@ -206,3 +206,4 @@ body:has(dialog[open]) .app-error{display:none}
 .import-table .data-table td{padding:8px 10px}.import-table .data-table td:first-child{min-width:0;width:56px;text-align:center}
 .import-table input:not([type=checkbox]){width:100%;min-width:150px}.import-table input[type=checkbox]{width:20px;height:20px;min-height:0}
 .import-table .cell-secondary{display:block}.import-error{color:var(--bad,#b42318)}
+.ack-hint{grid-column:1/-1;margin:-8px 0 0;font-size:12px}

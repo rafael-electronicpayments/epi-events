@@ -16,7 +16,7 @@ test('database permissions, persistence, acknowledgments, and concurrent edits',
       create function auth.uid() returns uuid language sql as
       $$select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid$$;
       grant usage on schema auth to authenticated;`);
-    for (const file of ['202610130001_event_ops.sql', '202610130002_access_invites.sql', '202610130003_restrict_auto_rls.sql','20261014114123_roster_login_email.sql','20261016120000_admin_people_staff_schedule.sql']) {
+    for (const file of ['202610130001_event_ops.sql', '202610130002_access_invites.sql', '202610130003_restrict_auto_rls.sql','20261014114123_roster_login_email.sql','20261016120000_admin_people_staff_schedule.sql','20261019120000_ack_checkin_flags.sql']) {
       await db.exec(await readFile(new URL('../supabase/migrations/' + file, import.meta.url), 'utf8'));
     }
     await db.exec(`insert into public.access_invites(email,role) values('admin@example.test','admin');

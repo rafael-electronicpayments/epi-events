@@ -28,6 +28,11 @@ const evStatus=e=>{const t=new Date().toISOString().slice(0,10);return t<e.start
 const SESS=[[1,0,'POS Lab: demo support','Salon 3',540,660,3],[2,0,'Breakout A: retail trends','Salon 5',540,660,2],[3,0,'Registration desk','Salon 1',480,720,4],[4,0,'Demo showcase','Salon 3',780,900,2],[5,0,'Partner workshop','Salon 7',780,930,2],[6,0,'Keynote rehearsal','Grand Ballroom',930,1020,3],[7,1,'Opening keynote','Grand Ballroom',540,630,5],[8,1,'Hands-on lab','Salon 2',570,660,3],[9,1,'Breakout B: payments','Salon 5',660,750,2],[10,1,'Customer panel','Salon 4',840,960,3],[11,2,'Closing workshop','Salon 6',540,660,2],[12,2,'Closing session','Grand Ballroom',690,750,4]].map(r=>({id:r[0],ev:1,d:r[1],t:r[2],r:r[3],a:r[4],b:r[5],n:r[6]}));
 const SM=Object.fromEntries(SESS.map(s=>[s.id,s]));
 const ROOMS=['Grand Ballroom',...[1,2,3,4,5,6,7].map(n=>'Salon '+n)];
+// Acknowledgment and check-in: rooms set the default (missing = required); an activity's q overrides it (null = follow room).
+const ROOM_ACK={};
+// Connected databases without the 20261019120000 migration don't know these settings; hide them there.
+const ACK_SUPPORT={on:!CONNECTED};
+const need=s=>!s?true:s.q!=null?!!s.q:ROOM_ACK[s.r]!==false;
 // [employee, session, acknowledged, checkedIn, tag]
 const SEED=[[1,1,1,0,''],[2,1,1,0,''],[3,2,0,0,'changed'],[4,3,1,1,''],[5,3,1,1,''],[6,3,1,0,''],[2,3,1,0,''],[0,4,1,0,''],[9,4,1,0,''],[9,5,1,0,''],[10,5,0,0,'new'],[11,6,1,0,''],[8,6,1,0,''],[12,7,1,0,''],[13,7,1,0,''],[14,7,1,0,''],[15,7,1,0,''],[16,8,1,0,''],[20,8,1,0,''],[17,9,1,0,''],[18,9,1,0,''],[19,10,1,0,''],[20,10,1,0,''],[21,11,1,0,''],[22,11,1,0,''],[23,12,1,0,''],[24,12,1,0,''],[12,12,1,0,''],[25,7,1,0,''],[26,10,1,0,''],[27,12,1,0,''],[28,8,0,0,'new']];
 const fmt=m=>{const h=Math.floor(m/60),x=m%60;return (h%12||12)+':'+String(x).padStart(2,'0')+(h<12?' AM':' PM')};
@@ -38,8 +43,8 @@ const H=[];
 const seed=()=>{const asg=SEED.map((r,i)=>({id:i+1,e:r[0],s:r[1],ack:r[2],in:r[3],conf:0,tag:r[4]}));
  return {asg,log:[],notes:asg.filter(a=>!a.ack).map(a=>({id:++uid,e:a.e,aid:a.id,done:0,x:ntext(a,a.tag==='new'?'New assignment':'Changed assignment')}))}};
 const clash=(asg,a)=>asg.filter(x=>x.id!==a.id&&x.e===a.e&&SM[x.s].ev===SM[a.s].ev&&SM[x.s].d===SM[a.s].d&&SM[x.s].a<SM[a.s].b&&SM[a.s].a<SM[x.s].b).map(x=>SM[x.s]);
-const st=a=>a.in||a.conf?['ok',a.conf&&!a.in?'Confirmed by coordinator':'Checked in']:a.ack?['','Acknowledged']:['warn',(a.tag==='changed'?'Changed':'New')+', needs acknowledgment'];
-const cover=(s,asg)=>{const as=asg.filter(x=>x.s===s.id),p=as.filter(x=>x.in||x.conf).length;
+const st=a=>!need(SM[a.s])?['ok','No check-in needed']:a.in||a.conf?['ok',a.conf&&!a.in?'Confirmed by coordinator':'Checked in']:a.ack?['','Acknowledged']:['warn',(a.tag==='changed'?'Changed':'New')+', needs acknowledgment'];
+const cover=(s,asg)=>{const as=asg.filter(x=>x.s===s.id),p=need(s)?as.filter(x=>x.in||x.conf).length:as.length;
  return {as,p,k:p>=s.n?'ok':p>0?'warn':'bad',l:p>=s.n?'Covered':p>0?'Partly covered':'Not covered'}};
 const Pill=({k,children})=>html`<span className=${'pill '+(k||'')}>${children}</span>`;
 function Head({s,asg}){const c=cover(s,asg);
@@ -152,15 +157,16 @@ function Staff({S,A,me,canFull=false,embedded=false}){
   <h3>${s.t}</h3><p className="mute">${s.r} · ${span(s)}</p>
   <p>${who.length?who.map((a,j)=>html`<span key=${a.id}>${j?', ':''}${a.e===me?html`<b>You</b>`:EMPS[a.e].name}</span>`):html`<span className="mute">No one assigned yet</span>`}</p></div>`};
  const mine=S.asg.filter(a=>a.e===me&&SM[a.s].ev===CUR.id).sort((x,y)=>SM[x.s].d-SM[y.s].d||SM[x.s].a-SM[y.s].a);
- const next=mine.find(a=>!a.in&&!a.conf), notes=S.notes.filter(n=>n.e===me&&!n.done);
+ const ended=s=>{const t=new Date(evOf(s.ev).start+'T00:00:00');t.setDate(t.getDate()+s.d);t.setMinutes(s.b);return t<new Date()};
+ const next=mine.find(a=>need(SM[a.s])?!a.in&&!a.conf:!ended(SM[a.s])), notes=S.notes.filter(n=>n.e===me&&!n.done);
  const [shown,setShown]=useState(null),[fv,setFv]=useState(null),sa=mine.find(a=>a.id===shown);
  const Card=({a,cls})=>{const s=SM[a.s],[k,l]=st(a);return html`<div className=${'card '+(cls||'')}>
   <h3>${s.t}</h3><p className="mute">${s.r} · ${span(s)} · ${DAYS[s.d]}</p><p><${Pill} k=${k}>${l}<//> ${a.cal!=null&&html`<${Pill} k=${a.cal===(a.seq||0)?'ok':'warn'}>${a.cal===(a.seq||0)?'On your calendar':'Calendar out of date'}<//>`}</p>
-  <div className="acts"><button className="btn" disabled=${!!a.ack} onClick=${()=>A.ack(a.id)}>Acknowledge</button>
-  <button className="btn ghost" disabled=${!a.ack||!!a.in||!!a.conf} onClick=${()=>A.checkIn(a.id)}>Check in</button>${!!a.ack&&a.cal!==(a.seq||0)&&html`<button className="btn ghost" onClick=${()=>{A.calAdd(a.id);setShown(a.id)}}>${a.cal==null?'Add to calendar':'Update calendar'}</button>`}</div></div>`};
+  <div className="acts">${need(s)&&html`<button className="btn" disabled=${!!a.ack} onClick=${()=>A.ack(a.id)}>Acknowledge</button>
+  <button className="btn ghost" disabled=${!a.ack||!!a.in||!!a.conf} onClick=${()=>A.checkIn(a.id)}>Check in</button>`}${(!need(s)||!!a.ack)&&a.cal!==(a.seq||0)&&html`<button className="btn ghost" onClick=${()=>{A.calAdd(a.id);setShown(a.id)}}>${a.cal==null?'Add to calendar':'Update calendar'}</button>`}</div></div>`};
  return html`<div className=${embedded?'my-schedule':'wrap m'}>${!embedded&&html`<h2>Hi, ${EMPS[me].name.split(' ')[0]}</h2><p className="mute">${EMPS[me].role} · ${evOf(CUR.id).name}</p>`}
  ${notes.map(n=>html`<div className="card note" key=${n.id} role="status"><b>${n.x}</b>${n.from&&html`<p className="mute">${n.from}</p>`}
-  <button className="btn" onClick=${()=>n.aid?A.ack(n.aid):A.dismiss(n.id)}>${n.aid?'Acknowledge':'Got it'}</button></div>`)}
+  ${(()=>{const na=n.aid&&S.asg.find(a=>a.id===n.aid),ask=!!na&&need(SM[na.s]);return html`<button className="btn" onClick=${()=>ask?A.ack(n.aid):A.dismiss(n.id)}>${ask?'Acknowledge':'Got it'}</button>`})()}</div>`)}
  ${mine.filter(a=>a.pc).map(a=>html`<div className="card note" key=${'c'+a.id} role="status"><b>${a.cal==null?'Add to your calendar?':'Update your calendar?'}</b><p className="mute">${SM[a.s].t}, ${SM[a.s].r}, ${span(SM[a.s])} (${DAYS[SM[a.s].d]}). Reminder 30 minutes before.</p><div className="acts"><button className="btn" onClick=${()=>{A.calAdd(a.id);setShown(a.id)}}>${a.cal==null?'Add to calendar':'Update calendar'}</button><button className="btn ghost" onClick=${()=>A.calSkip(a.id)}>Not now</button></div></div>`)}
  ${sa&&html`<div className="card"><b>Calendar event ready</b><p className="mute">${SM[sa.s].t}, ${SM[sa.s].r}, ${span(SM[sa.s])}. Reminder 30 minutes before.</p><p className="mute">In the real app this opens your phone's calendar (Apple, Google, or Outlook). This preview can't open a phone calendar, so the file it would send is shown below.</p><details><summary>Calendar file (for developers)</summary><pre style=${{whiteSpace:'pre-wrap',fontSize:'.8rem'}}>${ics(sa)}</pre></details><button className="btn ghost" onClick=${()=>setShown(null)}>Close</button></div>`}
  ${!embedded&&html`<div className="card"><b>Venue floorplan</b>${EMPS[me].map?(FP.some(f=>f.ev===CUR.id)?html`<div className="acts">${FP.filter(f=>f.ev===CUR.id).map(f=>html`<button key=${f.id} className="btn ghost" onClick=${()=>setFv(f.id)}>${f.name}</button>`)}</div>`:html`<p className="mute">No floorplan has been added for this event yet.</p>`):html`<p className="mute">Your administrator has not turned on access for you.</p>`}</div>`}
@@ -181,7 +187,7 @@ function AdminSession({s,S,A,coordinator=false}){
   <div><b>${nm(a.e)}</b> <${Pill} k=${k}>${l}<//> ${c.length>0&&html`<${Pill} k="bad">Overlaps ${c.map(o=>o.t).join(', ')}<//>`}</div>
   <div className="acts"><select aria-label=${'Move '+EMPS[a.e].name} value="" onChange=${ev=>ev.target.value&&A.move(a.id,+ev.target.value)}>
    <option value="">Move to…</option>${same.map(o=>html`<option key=${o.id} value=${o.id}>${o.r}, ${span(o)}, ${o.t}</option>`)}</select>
-  ${coordinator&&html`<button className="btn ghost" disabled=${!!a.in||!!a.conf} onClick=${()=>A.confirm(a.id)}>Confirm present</button>`}</div></div></li>`})}</ul>
+  ${coordinator&&need(s)&&html`<button className="btn ghost" disabled=${!!a.in||!!a.conf} onClick=${()=>A.confirm(a.id)}>Confirm present</button>`}</div></div></li>`})}</ul>
  ${!as.length&&html`<p className="mute">No one assigned yet.</p>`}
  <div className="acts"><select aria-label=${'Employee to assign to '+s.t} value=${pick} onChange=${e=>setPick(e.target.value)}><option value="">Choose employee…</option>
   ${free.map(e=>html`<option key=${e.id} value=${e.id}>${nm(e.id)}</option>`)}</select>
@@ -214,14 +220,14 @@ function Grid({S}){
  <//>`})}</tbody></table></div>
  ${!rows.length&&html`<p className="mute">No activities yet for this event.</p>`}
  <h3 style=${{marginTop:16}}>Staff colors</h3><div className="legend">${used.map(e=>html`<span key=${e}><i className="sw" style=${{background:col(e,1)}}></i>${EMPS[e].name}</span>`)}</div></div>`}
-const Admin=createAdminWorkspace({people:EMPS,events:EVS,rooms:ROOMS,activities:SESS,current:CUR,days:DAYS,daysShort:DAYS_SHORT,cover,clash,span,evEnd,evStatus,connected:CONNECTED},{AdminSession,Grid,Floorplans,Incoming,Staff});
+const Admin=createAdminWorkspace({people:EMPS,events:EVS,rooms:ROOMS,activities:SESS,current:CUR,days:DAYS,daysShort:DAYS_SHORT,cover,clash,span,evEnd,evStatus,need,roomAck:ROOM_ACK,ackSupport:ACK_SUPPORT,connected:CONNECTED},{AdminSession,Grid,Floorplans,Incoming,Staff});
 function App({connected}){
  const [demoS,setS]=useState(()=>connected?connected.snapshot:seed()),[demoRole,setRole]=useState('admin'),[demoMe,setMe]=useState(0),[toast,setToast]=useState('');
  const S=connected?connected.snapshot:demoS,role=connected?connected.snapshot.role:demoRole,me=connected?connected.snapshot.me:demoMe;
  const say=m=>{setToast(m);setTimeout(()=>setToast(''),3200)};
  const Lg=(s,x)=>({...s,log:[{t:new Date().toLocaleTimeString([], {hour:'numeric',minute:'2-digit',second:'2-digit'}),x},...s.log]});
  const L=(s,x)=>{const t=H[H.length-1];if(t&&!t.label)t.label=x;return Lg(s,x)};
- const snap=()=>{H.push({s:S,emps:EMPS.map(e=>({...e})),rooms:[...ROOMS],sess:SESS.map(o=>({...o})),evs:EVS.map(e=>({...e})),cur:CUR.id,fp:FP.map(f=>({...f})),inv:INV.map(i=>({...i}))});if(H.length>30)H.shift()};
+ const snap=()=>{H.push({s:S,emps:EMPS.map(e=>({...e})),rooms:[...ROOMS],roomAck:{...ROOM_ACK},sess:SESS.map(o=>({...o})),evs:EVS.map(e=>({...e})),cur:CUR.id,fp:FP.map(f=>({...f})),inv:INV.map(i=>({...i}))});if(H.length>30)H.shift()};
  const evv=o=>{const m=!o.n?'Enter an event name':!o.b?'Choose a start date':!(o.d>=1&&o.d<=14)?'Days must be 1 to 14':'';if(m)say(m);return !m};
  const invv=o=>{const L=o.lines,m=!o.vendor?'Enter a vendor name':!o.date?'Choose a date':!L.length?'Add at least one line item':L.some(l=>!l.d)?'Every line item needs a description':L.some(l=>!(l.q>0))?'Quantity must be more than 0':L.some(l=>l.c<0||l.w<0)?'Cost and weight cannot be negative':L.some(l=>l.sb&&!sbn(l.sb))?'Schedule B code needs 10 digits':'';if(m)say(m);return !m};
  const nrm=o=>({...o,amt:o.amt==null?ltot(o.lines):o.amt,lines:o.lines.map(l=>({...l,sb:sbn(l.sb)}))});
@@ -236,13 +242,13 @@ function App({connected}){
   checkIn:id=>{setS(s=>{const o=s.asg.find(a=>a.id===id);return L({...s,asg:s.asg.map(a=>a.id===id?{...a,in:1}:a)},EMPS[o.e].name+' checked in to '+SM[o.s].r)});say('Checked in')},
   confirm:id=>{setS(s=>{const o=s.asg.find(a=>a.id===id);return L({...s,asg:s.asg.map(a=>a.id===id?{...a,conf:1}:a)},'Coordinator confirmed '+EMPS[o.e].name+' present in '+SM[o.s].r)});say('Attendance confirmed')},
   addStaff:o=>{if(!o.n){say('Enter a name');return false}EMPS.push({id:EMPS.length,name:o.n,email:o.email,role:o.r,acct:o.acct,phone:o.phone,map:o.map?1:0});setS(s=>L({...s},'Added '+o.acct+' '+o.n+' ('+o.r+')'));say(o.n+' added');return true},
-  addRoom:n=>{if(!n||ROOMS.includes(n)){say(n?'That room already exists':'Enter a room name');return false}ROOMS.push(n);setS(s=>L({...s},'Added room '+n));say(n+' added');return true},
-  addSession:(t,r,d,a,b,n)=>{if(!t){say('Enter an activity name');return false}if(!(b>a)){say('End time must be after start time');return false}if(!(n>=1)){say('Staff needed must be at least 1');return false}const o={id:Math.max(0,...SESS.map(x=>x.id))+1,ev:CUR.id,d:+d,t,r,a,b,n};SESS.push(o);SM[o.id]=o;setS(s=>L({...s},'Created activity '+t+' in '+r+', '+DAYS[o.d]+', '+span(o)));say(t+' created');return true},
+  addRoom:(n,req=true)=>{if(!n||ROOMS.includes(n)){say(n?'That room already exists':'Enter a room name');return false}ROOMS.push(n);ROOM_ACK[n]=req!==false;setS(s=>L({...s},'Added room '+n+(req===false?' (no acknowledgment or check-in)':'')));say(n+' added');return true},
+  addSession:(t,r,d,a,b,n,q=null)=>{if(!t){say('Enter an activity name');return false}if(!(b>a)){say('End time must be after start time');return false}if(!(n>=1)){say('Staff needed must be at least 1');return false}const o={id:Math.max(0,...SESS.map(x=>x.id))+1,ev:CUR.id,d:+d,t,r,a,b,n,q};SESS.push(o);SM[o.id]=o;setS(s=>L({...s},'Created activity '+t+' in '+r+', '+DAYS[o.d]+', '+span(o)));say(t+' created');return true},
   editStaff:(id,o)=>{if(!o.n){say('Enter a name');return false}Object.assign(EMPS[id],{name:o.n,email:o.email,role:o.r,acct:o.acct,phone:o.phone,map:o.map?1:0});setS(s=>L({...s},'Updated '+o.n+' ('+o.r+', '+o.acct+', map access '+(o.map?'on':'off')+')'));say('Saved');return true},
   delStaff:id=>{const n=EMPS[id].name;EMPS[id].gone=1;if(me===id)setMe(EMPS.find(e=>!e.gone).id);setS(s=>L({...s,asg:s.asg.filter(a=>a.e!==id),notes:s.notes.filter(x=>x.e!==id)},'Deleted staff member '+n+' and cancelled their assignments'));say(n+' deleted');return true},
-  editRoom:(o,n)=>{if(!n||(n!==o&&ROOMS.includes(n))){say(n?'That room already exists':'Enter a room name');return false}const ss=SESS.filter(s=>s.r===o).map(s=>[s.id,desc(s)]);ROOMS[ROOMS.indexOf(o)]=n;ss.forEach(([id])=>{SM[id].r=n});setS(s=>L(ss.reduce((x,[id,f])=>bump(x,id,f),s),'Renamed room '+o+' to '+n));say('Saved');return true},
+  editRoom:(o,n,req)=>{if(!n||(n!==o&&ROOMS.includes(n))){say(n?'That room already exists':'Enter a room name');return false}const flag=req===undefined?ROOM_ACK[o]!==false:req!==false,ss=n!==o?SESS.filter(s=>s.r===o).map(s=>[s.id,desc(s)]):[];ROOMS[ROOMS.indexOf(o)]=n;delete ROOM_ACK[o];ROOM_ACK[n]=flag;ss.forEach(([id])=>{SM[id].r=n});setS(s=>L(ss.reduce((x,[id,f])=>bump(x,id,f),s),n!==o?'Renamed room '+o+' to '+n:'Updated room '+n+(flag?' (acknowledgment and check-in required)':' (no acknowledgment or check-in)')));say('Saved');return true},
   delRoom:r=>{if(SESS.some(s=>s.r===r)){say('Move or delete its activities first');return false}ROOMS.splice(ROOMS.indexOf(r),1);setS(s=>L({...s},'Deleted room '+r));say(r+' deleted');return true},
-  editSession:(id,t,r,d,a,b,n)=>{if(!t){say('Enter an activity name');return false}if(!(b>a)){say('End time must be after start time');return false}if(!(n>=1)){say('Staff needed must be at least 1');return false}const o=SM[id],f=desc(o),ch=o.t!==t||o.r!==r||o.d!==+d||o.a!==a||o.b!==b;Object.assign(o,{t,r,d:+d,a,b,n});setS(s=>L(ch?bump(s,id,f):s,'Updated activity '+t+' in '+r+', '+DAYS[o.d]+', '+span(o)));say(ch?'Saved. Assigned staff notified.':'Saved');return true},
+  editSession:(id,t,r,d,a,b,n,q)=>{if(!t){say('Enter an activity name');return false}if(!(b>a)){say('End time must be after start time');return false}if(!(n>=1)){say('Staff needed must be at least 1');return false}const o=SM[id],f=desc(o),ch=o.t!==t||o.r!==r||o.d!==+d||o.a!==a||o.b!==b;Object.assign(o,{t,r,d:+d,a,b,n},q===undefined?{}:{q});setS(s=>L(ch?bump(s,id,f):s,'Updated activity '+t+' in '+r+', '+DAYS[o.d]+', '+span(o)));say(ch?'Saved. Assigned staff notified.':'Saved');return true},
   delSession:id=>{const o=SM[id],txt=ntext({s:id},'Cancelled');setS(s=>{const g=s.asg.filter(a=>a.s===id);return L({...s,asg:s.asg.filter(a=>a.s!==id),notes:[...s.notes.filter(n=>!g.some(a=>a.id===n.aid)),...g.map(a=>({id:++uid,e:a.e,aid:null,done:0,x:txt+(a.cal!=null?'. Delete it from your calendar.':'')}))]},'Deleted activity '+o.t+' ('+g.length+' staff notified)')});SESS.splice(SESS.indexOf(o),1);delete SM[id];say(o.t+' deleted');return true},
   addEvent:o=>{if(!evv(o))return false;const id=Math.max(0,...EVS.map(e=>e.id))+1;EVS.push({id,name:o.n,start:o.b,days:Math.floor(o.d)});CUR.id=id;syncEv();setS(s=>L({...s},'Created event '+o.n));say(o.n+' created and opened');return true},
   editEvent:(id,o)=>{if(!evv(o))return false;const n=Math.floor(o.d),bad=SESS.find(s=>s.ev===id&&s.d>=n);if(bad){say('Move or delete activities on '+dayDate(evOf(id).start,bad.d)+' first');return false}Object.assign(evOf(id),{name:o.n,start:o.b,days:n});if(id===CUR.id)syncEv();setS(s=>L({...s},'Updated event '+o.n));say('Saved');return true},
@@ -259,12 +265,14 @@ function App({connected}){
   setStart:v=>{if(!v)return false;EVD.d=v;setS(s=>L({...s},'Set event start date to '+v));say('Start date saved');return true},
   setDays:n=>{n=Math.floor(+n);if(!(n>=1&&n<=14)){say('Enter 1 to 14 days');return false}if(n===DAYS.length){say('Already '+n+' days');return false}const bad=SESS.find(s=>s.d>=n);if(bad){say('Move or delete activities on '+DAYS[bad.d]+' first');return false}const was=DAYS.length;fillDays(EVD.d,n);setS(s=>L({...s},'Changed event length from '+was+' to '+n+' days'));say('Event is now '+n+' days');return true}};
  Object.keys(A).forEach(k=>{if(['dismiss','calAdd','calSkip','switchEv'].includes(k))return;const f=A[k];A[k]=(...a)=>{snap();const r=f(...a);if(r===false)H.pop();return r}});
- A.undo=()=>{const h=H.pop();if(!h)return;EMPS.length=0;EMPS.push(...h.emps);ROOMS.length=0;ROOMS.push(...h.rooms);SESS.length=0;SESS.push(...h.sess);Object.keys(SM).forEach(k=>delete SM[k]);SESS.forEach(o=>{SM[o.id]=o});EVS.length=0;EVS.push(...h.evs);CUR.id=h.cur;FP.length=0;FP.push(...h.fp);INV.length=0;INV.push(...h.inv);syncEv();setS(Lg(h.s,'Undid: '+h.label));say('Undid: '+h.label)};
+ A.undo=()=>{const h=H.pop();if(!h)return;EMPS.length=0;EMPS.push(...h.emps);ROOMS.length=0;ROOMS.push(...h.rooms);Object.keys(ROOM_ACK).forEach(k=>delete ROOM_ACK[k]);Object.assign(ROOM_ACK,h.roomAck);SESS.length=0;SESS.push(...h.sess);Object.keys(SM).forEach(k=>delete SM[k]);SESS.forEach(o=>{SM[o.id]=o});EVS.length=0;EVS.push(...h.evs);CUR.id=h.cur;FP.length=0;FP.push(...h.fp);INV.length=0;INV.push(...h.inv);syncEv();setS(Lg(h.s,'Undid: '+h.label));say('Undid: '+h.label)};
  if(connected)Object.keys(A).forEach(k=>{
   if(k==='switchEv')return;
   A[k]=async(...args)=>{
    const options=args.at(-1);
    const expectedRevision=k.startsWith('edit')&&options&&typeof options==='object'&&Object.hasOwn(options,'expectedRevision')?args.pop().expectedRevision:undefined;
+   // Older databases take the original argument lists, without the acknowledgment setting.
+   if(!ACK_SUPPORT.on&&({addRoom:2,editRoom:3,addSession:7,editSession:8})[k]===args.length)args.pop();
    if(k==='addSession')args.push(CUR.id);
    return connected.command(k,args,expectedRevision);
   };
@@ -282,6 +290,8 @@ function App({connected}){
 function hydrate(data){
  EMPS.length=0;data.people.forEach(e=>{EMPS[e.id]=e});
  EVS.splice(0,EVS.length,...data.events);ROOMS.splice(0,ROOMS.length,...data.rooms);
+ ACK_SUPPORT.on=!!data.roomAck;Object.keys(ROOM_ACK).forEach(k=>delete ROOM_ACK[k]);Object.assign(ROOM_ACK,data.roomAck||{});
+ data.activities.forEach(s=>{s.q=data.actAck&&Object.hasOwn(data.actAck,s.id)?data.actAck[s.id]:null});
  SESS.splice(0,SESS.length,...data.activities);Object.keys(SM).forEach(k=>delete SM[k]);SESS.forEach(s=>{SM[s.id]=s});
  FP.length=0;INV.length=0;H.length=0;
  if(EVS.length){if(!evOf(CUR.id))CUR.id=EVS[0].id;syncEv()}

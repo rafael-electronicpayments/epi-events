@@ -8,7 +8,9 @@ const html=htm.bind(React.createElement);
 const {useState,useEffect,useRef}=React;
 
 export function createAdminWorkspace(m,components){
- const {people,events,rooms,activities,current,days,cover,clash,span,evEnd,evStatus}=m;
+ const {people,events,rooms,activities,current,days,cover,clash,span,evEnd,evStatus,need,roomAck,ackSupport}=m;
+ const ackText=on=>on?'Required':'Not required';
+ const qOf={room:null,yes:true,no:false};
  const {AdminSession,Grid,Floorplans,Incoming,Staff}=components;
  const dateLabel=day=>{const event=events.find(e=>e.id===current.id);const date=new Date(event.start+'T12:00:00');date.setDate(date.getDate()+day);return date.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});};
  const field=(label,input)=>html`<label>${label}${input}</label>`;
@@ -68,9 +70,9 @@ export function createAdminWorkspace(m,components){
    }else if(editor.type==='event'){
     const value={n:draft.name.trim(),b:draft.start,d:Number(draft.days)};
     result=await(editing?A.editEvent(editor.id,value,version):A.addEvent(value));
-   }else if(editor.type==='room')result=await(editing?A.editRoom(editor.id,draft.name.trim(),version):A.addRoom(draft.name.trim()));
+   }else if(editor.type==='room')result=await(editing?A.editRoom(editor.id,draft.name.trim(),!!draft.req,version):A.addRoom(draft.name.trim(),!!draft.req));
    else{
-    const args=[draft.name.trim(),draft.room,Number(draft.day),minutes(draft.start),minutes(draft.end),Number(draft.needed)];
+    const args=[draft.name.trim(),draft.room,Number(draft.day),minutes(draft.start),minutes(draft.end),Number(draft.needed),qOf[draft.q]];
     result=await(editing?A.editSession(editor.id,...args,version):A.addSession(...args));
    }
    if(result!==false)onClose();else setFailed(true);
@@ -93,7 +95,12 @@ export function createAdminWorkspace(m,components){
      ${field('Day',html`<select value=${draft.day} onChange=${set('day')}>${days.map((d,i)=>html`<option key=${i} value=${i}>${d}</option>`)}</select>`)}
      ${field('Start time',html`<input type="time" required value=${draft.start} onChange=${set('start')}/> `)}
      ${field('End time',html`<input type="time" required value=${draft.end} onChange=${set('end')}/> `)}
-     ${field('Staff needed',html`<input type="number" required min="1" value=${draft.needed} onChange=${set('needed')}/> `)}`}
+     ${field('Staff needed',html`<input type="number" required min="1" value=${draft.needed} onChange=${set('needed')}/> `)}
+     ${ackSupport.on&&field('Acknowledgment and check-in',html`<select value=${draft.q} onChange=${set('q')}><option value="room">Same as room (${roomAck[draft.room]!==false?'required':'not required'})</option><option value="yes">Required</option><option value="no">Not required</option></select>`)}
+     ${ackSupport.on&&html`<p className="mute ack-hint">When not required, assigned people are told about the activity but are not asked to acknowledge or check in.</p>`}`}
+    ${editor.type==='room'&&ackSupport.on&&html`
+     <label className="chk"><input type="checkbox" checked=${draft.req} onChange=${set('req')}/>Requires acknowledgment and check-in</label>
+     <p className="mute ack-hint">Default for this room's activities. Each activity can override it.</p>`}
    </div>`}
    ${!editor.remove&&editing&&editor.type==='person'&&testLogins&&editor.draft.email.endsWith('@epieventstest.com')&&html`<${TestLoginPanel} personId=${editor.id} api=${testLogins} dirty=${draft.email.trim().toLowerCase()!==editor.draft.email||draft.type!==editor.draft.type}/>`}
    ${(failed||error)&&html`<p className="connection-error editor-error" role="alert">${error||'Could not save. Check the values and try again.'}</p>`}
@@ -111,16 +118,16 @@ export function createAdminWorkspace(m,components){
   const allActivities=activities.filter(s=>s.ev===current.id),today=allActivities.filter(s=>s.d===dayIndex).sort((a,b)=>a.a-b.a);
   const todayAssignments=S.asg.filter(a=>today.some(s=>s.id===a.s));
   const overlapPeople=new Set(todayAssignments.filter(a=>clash(S.asg,a).length).map(a=>a.e));
-  const unack=todayAssignments.filter(a=>!a.ack).length,short=today.filter(s=>cover(s,S.asg).as.length<s.n).length;
-  const visible=today.filter(s=>filter==='all'||filter==='short'&&cover(s,S.asg).as.length<s.n||filter==='overlap'&&S.asg.some(a=>a.s===s.id&&clash(S.asg,a).length)||filter==='unack'&&S.asg.some(a=>a.s===s.id&&!a.ack));
+  const unack=todayAssignments.filter(a=>!a.ack&&need(activities.find(s=>s.id===a.s))).length,short=today.filter(s=>cover(s,S.asg).as.length<s.n).length;
+  const visible=today.filter(s=>filter==='all'||filter==='short'&&cover(s,S.asg).as.length<s.n||filter==='overlap'&&S.asg.some(a=>a.s===s.id&&clash(S.asg,a).length)||filter==='unack'&&need(s)&&S.asg.some(a=>a.s===s.id&&!a.ack));
   const currentActivity=activities.find(s=>s.id===selected&&s.ev===current.id);
   const navigate=next=>{setView(next);setSelected(null);setFilter('all');};
   const open=(entity,record=null)=>{
    let draft,id;
    if(entity==='person'){id=record?.id;draft={name:record?.name||'',email:record?.email||'',title:record?.role||'Room Host',type:record?.acct||'staff',phone:record?.phone||'',map:record?!!record.map:true};}
    else if(entity==='event'){id=record?.id;draft={name:record?.name||'',start:record?.start||'',days:record?.days||3};}
-   else if(entity==='room'){id=record;draft={name:record||''};}
-   else{id=record?.id;draft={name:record?.t||'',room:record?.r||rooms[0]||'',day:record?.d??dayIndex,start:time(record?.a??540),end:time(record?.b??600),needed:record?.n||2};}
+   else if(entity==='room'){id=record;draft={name:record||'',req:record?roomAck[record]!==false:true};}
+   else{id=record?.id;draft={name:record?.t||'',room:record?.r||rooms[0]||'',day:record?.d??dayIndex,start:time(record?.a??540),end:time(record?.b??600),needed:record?.n||2,q:record?.q==null?'room':record.q?'yes':'no'};}
    setEditor({type:entity,id,draft,revision:S.revision});
   };
   const remove=(entity,id,label,warning)=>setEditor({type:entity,id,label,warning,remove:true,revision:S.revision});
@@ -150,7 +157,7 @@ export function createAdminWorkspace(m,components){
    </div>
    ${view==='schedule'&&mode==='grid'?html`<${Grid} S=${S}/>`:html`<div className=${'schedule-work '+(currentActivity?'with-detail':'')}><div>
     ${visible.length?view==='schedule'?table([{text:'Activity / room'},{text:'Time',className:'time-column'},{text:'Staffing'},{text:'Acknowledged',className:'ack-column'},{text:''}],visible.map(s=>{const c=cover(s,S.asg),conflict=c.as.some(a=>clash(S.asg,a).length);return html`<tr key=${s.id} className=${selected===s.id?'selected-row':''}>
-     <td><button className="activity-link" onClick=${()=>setSelected(s.id)}><b>${s.t}</b><span className="mute">${s.r}</span><span className="mute mobile-time">${span(s)}</span></button>${conflict&&html`<span className="inline-warning"><${Icon} name="warning" size=${13}/>Overlap</span>`}</td><td className="time-column">${span(s)}</td><td><${Badge} kind=${c.as.length<s.n?'warn':'ok'}>${c.as.length} / ${s.n} assigned<//></td><td className="ack-column">${c.as.filter(a=>a.ack).length} / ${c.as.length}</td><td><${IconButton} name="right" label=${'Manage '+s.t} onClick=${()=>setSelected(s.id)}/></td></tr>`;})):
+     <td><button className="activity-link" onClick=${()=>setSelected(s.id)}><b>${s.t}</b><span className="mute">${s.r}</span><span className="mute mobile-time">${span(s)}</span></button>${conflict&&html`<span className="inline-warning"><${Icon} name="warning" size=${13}/>Overlap</span>`}</td><td className="time-column">${span(s)}</td><td><${Badge} kind=${c.as.length<s.n?'warn':'ok'}>${c.as.length} / ${s.n} assigned<//></td><td className="ack-column">${need(s)?`${c.as.filter(a=>a.ack).length} / ${c.as.length}`:html`<span className="mute">Not required</span>`}</td><td><${IconButton} name="right" label=${'Manage '+s.t} onClick=${()=>setSelected(s.id)}/></td></tr>`;})):
      html`<div className="coverage-list">${[...visible].sort((a,b)=>(b.n-cover(b,S.asg).as.length)-(a.n-cover(a,S.asg).as.length)).map(s=>{const c=cover(s,S.asg);return html`<div className="coverage-row" key=${s.id}><div><b>${s.r}</b><p className="mute">${s.t} · ${span(s)}</p></div><div className="coverage-count"><b>${c.p} / ${s.n}</b><span className="mute">present</span></div><${Badge} kind=${c.as.length<s.n?'warn':'ok'}>${c.as.length} assigned<//><button className="btn ghost" onClick=${()=>setSelected(s.id)}>${c.as.length<s.n?'Fill gap':'View staff'}<${Icon} name="right"/></button></div>`;})}</div>`:
      html`<div className="empty-state"><${Icon} name="calendar" size=${28}/><h3>${today.length?'No activities match this filter':'No activities scheduled'}</h3>${today.length?html`<button className="btn ghost" onClick=${()=>setFilter('all')}>Show all activities</button>`:html`<button className="btn" disabled=${!rooms.length} onClick=${()=>open('activity')}><${Icon} name="plus"/>Add activity</button>`}</div>`}
     </div>${currentActivity&&html`<aside ref=${detail} tabIndex=${-1} className="activity-detail" aria-label="Assignment details"><div className="detail-heading"><h3>Assignment details</h3><${IconButton} name="close" label="Close activity" onClick=${()=>setSelected(null)}/></div><${AdminSession} key=${currentActivity.id} s=${currentActivity} S=${S} A=${A} coordinator=${view==='coverage'}/><button className="btn ghost detail-edit" onClick=${()=>open('activity',currentActivity)}><${Icon} name="edit"/>Edit activity</button></aside>`}</div>`}
@@ -159,8 +166,8 @@ export function createAdminWorkspace(m,components){
    ${table([{text:'',className:'setup-actions'},{text:'Person'},{text:'Type'},{text:'Phone',className:'phone-column'},{text:'Login access'}],people.filter(p=>!p.gone&&(type==='all'||p.acct===type)&&(p.name+' '+p.email+' '+p.role).toLowerCase().includes(query.toLowerCase())).map(p=>{const [kind,label]=login(p);return html`<tr key=${p.id}><td className="setup-actions">${actions('Edit '+p.name,()=>open('person',p),'Delete '+p.name,()=>remove('person',p.id,p.name,'Their assignments will be cancelled and app access disabled.'))}</td><td><b>${p.name}</b><span className="cell-secondary">${p.email||p.role}</span></td><td>${p.acct==='contractor'?'Contractor':p.acct==='admin'?'Admin':'Staff'}</td><td className="phone-column">${p.phone||'Not provided'}</td><td><${Badge} kind=${kind}>${label}<//></td></tr>`;}))}`}
   ${view==='setup'&&html`<div className="seg setup-tabs" role="group" aria-label="Event setup sections">${[['events','Event details'],['rooms','Rooms'],['activities','Activities']].map(([id,label])=>html`<button key=${id} aria-pressed=${tab===id} onClick=${()=>setTab(id)}>${label}</button>`)}</div>
    ${tab==='events'&&table([{text:'',className:'setup-actions'},{text:'Event'},{text:'Dates'},{text:'Activities'}],events.map(e=>{const [kind,label]=evStatus(e);return html`<tr key=${e.id}><td className="setup-actions">${actions('Edit '+e.name,()=>open('event',e),'Delete '+e.name,()=>remove('event',e.id,e.name,'All of its activities and assignments will be removed.'),events.length<2)}</td><td><b>${e.name}</b><${Badge} kind=${kind}>${label}<//></td><td>${e.start}<span className="cell-secondary">through ${evEnd(e)}</span></td><td>${activities.filter(s=>s.ev===e.id).length}</td></tr>`;}))}
-   ${tab==='rooms'&&table([{text:'',className:'setup-actions'},{text:'Room'},{text:'Activities'}],rooms.map(r=>{const count=activities.filter(s=>s.r===r).length;return html`<tr key=${r}><td className="setup-actions">${actions('Edit '+r,()=>open('room',r),'Delete '+r,()=>remove('room',r,r,'This room will be removed.'),!!count)}</td><td><b>${r}</b></td><td>${count}</td></tr>`;}))}
-   ${tab==='activities'&&table([{text:'',className:'setup-actions'},{text:'Activity'},{text:'Room'},{text:'Day / time'}],allActivities.map(s=>html`<tr key=${s.id}><td className="setup-actions">${actions('Edit '+s.t,()=>open('activity',s),'Delete '+s.t,()=>remove('activity',s.id,s.t,'Assigned people will receive a cancellation notice.'))}</td><td><b>${s.t}</b></td><td>${s.r}</td><td>${days[s.d]}<span className="cell-secondary">${span(s)}</span></td></tr>`))}
+   ${tab==='rooms'&&table([{text:'',className:'setup-actions'},{text:'Room'},...(ackSupport.on?[{text:'Acknowledgment and check-in'}]:[]),{text:'Activities'}],rooms.map(r=>{const count=activities.filter(s=>s.r===r).length;return html`<tr key=${r}><td className="setup-actions">${actions('Edit '+r,()=>open('room',r),'Delete '+r,()=>remove('room',r,r,'This room will be removed.'),!!count)}</td><td><b>${r}</b></td>${ackSupport.on&&html`<td>${ackText(roomAck[r]!==false)}</td>`}<td>${count}</td></tr>`;}))}
+   ${tab==='activities'&&table([{text:'',className:'setup-actions'},{text:'Activity'},{text:'Room'},{text:'Day / time'},...(ackSupport.on?[{text:'Acknowledgment and check-in'}]:[])],allActivities.map(s=>html`<tr key=${s.id}><td className="setup-actions">${actions('Edit '+s.t,()=>open('activity',s),'Delete '+s.t,()=>remove('activity',s.id,s.t,'Assigned people will receive a cancellation notice.'))}</td><td><b>${s.t}</b></td><td>${s.r}</td><td>${days[s.d]}<span className="cell-secondary">${span(s)}</span></td>${ackSupport.on&&html`<td>${ackText(need(s))}${s.q==null&&html`<span className="cell-secondary">Room default</span>`}</td>`}</tr>`))}
   `}
   ${view==='log'&&table([{text:'Time'},{text:'Action'},{text:'Details'}],S.log.map((entry,i)=>{
    const names={assign:'Assigned person',move:'Moved assignment',remove:'Removed assignment',ack:'Acknowledged assignment',checkIn:'Checked in',confirm:'Confirmed attendance',addEvent:'Added event',editEvent:'Updated event',delEvent:'Deleted event',addRoom:'Added room',editRoom:'Renamed room',delRoom:'Deleted room',addSession:'Added activity',editSession:'Updated activity',delSession:'Deleted activity',addStaff:'Added person',editStaff:'Updated person',delStaff:'Archived person',dismiss:'Dismissed notice',calAdd:'Updated calendar',calSkip:'Dismissed calendar prompt'};
