@@ -17,7 +17,7 @@ A proof of concept for an event operations web app (staff scheduling, room cover
 - Never put real staff data, phone numbers, receipts, or expense data in this repo.
 - Days display as weekday and date (e.g. "Saturday, Nov 7"; "Sat, Nov 7" on compact tabs), never "Day 1". Activities still store a zero-based day index.
 - Everyone (Admin, Staff, Contractor) can view, print, and download their own assignments for one day or all days. The export is a standalone Letter-portrait HTML file (`myDoc`/`MyExport` in `src/app.js`). Admins on the roster get a "My schedule" item in the sidebar (2026-10-19).
-- Desktop record actions (edit/delete/remove icons) sit in the first column, on the left beside the navigation, not at the right edge.
+- Desktop record actions (edit/delete/remove icons) sit in the first column, on the left beside the navigation, not at the right edge. On Coverage, the Fill gap / View staff button leads each row on web view (wider than 640px); phone layout keeps it below the row.
 
 ## How to run and verify
 `npm ci`, `npm start`, then run the acceptance test in `README.md`. `npm test` runs PostgreSQL behavior and permissions tests using PGlite; `npm run build` verifies the Vite production bundle. `tests/browser.mjs` verifies login layouts and the connected setup flow with mocked API responses. See `docs/SUPABASE.md` for its prerequisites and live verification limits.
