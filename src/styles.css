@@ -192,3 +192,4 @@ body:has(dialog[open]) .app-error{display:none}
 .mobile-time{display:none}
 @media(pointer:coarse){.btn,.btn.icon-button,.nav-item,.seg button,.account-menu summary{min-height:44px}.btn.icon-button{height:44px;min-width:36px}select,input{min-height:44px}}
 @media print{.app-header,.sidebar,.page-heading,.summary-strip,.view-toolbar,.app-error,.activity-detail{display:none!important}.workspace-layout{display:block;min-height:0}.workspace-main{padding:0}.data-surface{overflow:visible}}
+.my-export{align-items:center;margin:0 0 12px}.my-export .mute{font-size:.9rem}

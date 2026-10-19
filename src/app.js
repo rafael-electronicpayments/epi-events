@@ -1,6 +1,6 @@
 import { createConnection } from './connection.js';
 import { createAdminWorkspace } from './admin-workspace.js';
-import { AppHeader, IconButton } from './ui.js';
+import { AppHeader, Icon, IconButton } from './ui.js';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import htm from 'htm';
@@ -127,7 +127,23 @@ const syncEv=()=>{const e=evOf(CUR.id);fillDays(e.start,e.days);EVD.d=e.start};
 if(evOf(CUR.id))syncEv();
 const icsDate=(day,min,st)=>{const [y,m,d]=st.split('-').map(Number),t=new Date(Date.UTC(y,m-1,d+day,0,min)),q=n=>String(n).padStart(2,'0');return t.getUTCFullYear()+q(t.getUTCMonth()+1)+q(t.getUTCDate())+'T'+q(t.getUTCHours())+q(t.getUTCMinutes())+'00'};
 const ics=a=>{const s=SM[a.s];return ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//IMPACT27//Staff Portal//EN','BEGIN:VEVENT','UID:impact27-'+a.id+'@staff.example','SEQUENCE:'+(a.seq||0),'DTSTAMP:'+new Date().toISOString().replace(/[-:]/g,'').slice(0,15)+'Z','DTSTART:'+icsDate(s.d,s.a,evOf(s.ev).start),'DTEND:'+icsDate(s.d,s.b,evOf(s.ev).start),'SUMMARY:IMPACT27: '+s.t,'LOCATION:'+s.r,'DESCRIPTION:Your IMPACT27 assignment','BEGIN:VALARM','ACTION:DISPLAY','DESCRIPTION:Starts in 30 minutes','TRIGGER:-PT30M','END:VALARM','END:VEVENT','END:VCALENDAR'].join('\r\n')};
-function Staff({S,A,me,canFull=false}){
+const slug=t=>String(t).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'schedule';
+// One person's own assignments for the current event, for one day (index) or all days (null).
+function myDoc(S,me,day,autoPrint=false){
+ const p=EMPS[me],ev=evOf(CUR.id),days=day==null?DAYS.map((_,i)=>i):[day];
+ const mine=S.asg.filter(a=>a.e===me&&SM[a.s]&&SM[a.s].ev===CUR.id).sort((x,y)=>SM[x.s].d-SM[y.s].d||SM[x.s].a-SM[y.s].a);
+ const body=days.map(i=>{const list=mine.filter(a=>SM[a.s].d===i);
+  return `<h3>${esc(DAYS[i])}</h3>`+(list.length?`<table><thead><tr><th class="t">Time</th><th>Activity</th><th>Room</th><th class="s">Status</th></tr></thead><tbody>${list.map(a=>{const s=SM[a.s];return `<tr><td class="t">${esc(span(s))}</td><td><b>${esc(s.t)}</b></td><td>${esc(s.r)}</td><td class="s">${esc(st(a)[1])}</td></tr>`}).join('')}</tbody></table>`:'<p class="m">No assignments.</p>')}).join('');
+ const scope=day==null?'All days':DAYS[day];
+ return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(p.name)} schedule, ${esc(ev.name)}</title><style>@page{size:letter portrait;margin:.5in}body{font:12px/1.4 system-ui,sans-serif;color:#000;margin:16px;max-width:8in}h2{margin:0 0 2px}h3{margin:18px 0 6px;font-size:13px;border-bottom:2px solid #0f766e;padding-bottom:3px}p.m{color:#555;margin:4px 0}.m{color:#555}table{border-collapse:collapse;width:100%}th,td{border-top:1px solid #bbb;padding:5px 6px;text-align:left;vertical-align:top}thead th{background:#e8eeed;font-weight:700}.t{white-space:nowrap;width:1%}.s{width:28%}tr,h3{break-inside:avoid}h3{break-after:avoid}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}button{font:inherit;padding:10px 16px;margin:0 0 12px;min-height:44px}@media print{body{margin:0}button{display:none}}</style></head><body><button onclick="window.print()">Print</button><h2>${esc(p.name)}</h2><p class="m">${esc(ev.name)} · ${esc(scope)} · ${(n=>n+' assignment'+(n===1?'':'s'))(mine.filter(a=>days.includes(SM[a.s].d)).length)} · Printed ${esc(new Date().toLocaleString('en-US',{dateStyle:'medium',timeStyle:'short'}))}</p>${body}${autoPrint?'<script>addEventListener("load",()=>setTimeout(()=>print(),200))</script>':''}</body></html>`}
+function MyExport({S,me,day}){
+ const [msg,setMsg]=useState('');
+ const name=()=>slug(evOf(CUR.id).name)+'-'+slug(EMPS[me].name)+'-'+(day==null?'all-days':slug(DAYS_SHORT[day]))+'.html';
+ const save=async()=>{try{const d=window.claude&&await window.claude.use('downloads');if(!d){setMsg('Saving is not available here.');return}await d.save({filename:name(),data:myDoc(S,me,day)});setMsg('Saved. Open the file to view or print it.')}catch(e){setMsg(e&&e.code==='declined'?'Download canceled.':'Could not save the file.')}};
+ const print=()=>{const url=URL.createObjectURL(new Blob([myDoc(S,me,day,true)],{type:'text/html'})),w=window.open(url,'_blank');setTimeout(()=>URL.revokeObjectURL(url),60000);setMsg(w?'':'Your browser blocked the print window. Allow pop-ups or use Download.')};
+ const label=day==null?'all days':DAYS_SHORT[day];
+ return html`<div className="acts my-export"><button className="btn ghost" onClick=${print} aria-label=${'Print my schedule, '+label}><${Icon} name="print"/>Print</button><button className="btn ghost" onClick=${save} aria-label=${'Download my schedule, '+label}><${Icon} name="download"/>Download</button><span className="mute">My assignments, ${label}</span>${msg&&html`<p className="mute" role="status" style=${{flexBasis:'100%',margin:0}}>${msg}</p>`}</div>`}
+function Staff({S,A,me,canFull=false,embedded=false}){
  const [d0,setD]=useState(0),d=Math.min(d0,DAYS.length-1);
  // Staff can switch to the full event schedule; contractors only ever see their own.
  const [view,setView]=useState('mine'),[all,setAll]=useState(false),full=canFull&&view==='full';
@@ -141,18 +157,19 @@ function Staff({S,A,me,canFull=false}){
  const Card=({a,cls})=>{const s=SM[a.s],[k,l]=st(a);return html`<div className=${'card '+(cls||'')}>
   <h3>${s.t}</h3><p className="mute">${s.r} · ${span(s)} · ${DAYS[s.d]}</p><p><${Pill} k=${k}>${l}<//> ${a.cal!=null&&html`<${Pill} k=${a.cal===(a.seq||0)?'ok':'warn'}>${a.cal===(a.seq||0)?'On your calendar':'Calendar out of date'}<//>`}</p>
   <div className="acts"><button className="btn" disabled=${!!a.ack} onClick=${()=>A.ack(a.id)}>Acknowledge</button>
-  <button className="btn ghost" disabled=${!a.ack||!!a.in||!!a.conf} onClick=${()=>A.checkIn(a.id)}>Check in</button>${a.ack&&a.cal!==(a.seq||0)&&html`<button className="btn ghost" onClick=${()=>{A.calAdd(a.id);setShown(a.id)}}>${a.cal==null?'Add to calendar':'Update calendar'}</button>`}</div></div>`};
- return html`<div className="wrap m"><h2>Hi, ${EMPS[me].name.split(' ')[0]}</h2><p className="mute">${EMPS[me].role} · ${evOf(CUR.id).name}</p>
+  <button className="btn ghost" disabled=${!a.ack||!!a.in||!!a.conf} onClick=${()=>A.checkIn(a.id)}>Check in</button>${!!a.ack&&a.cal!==(a.seq||0)&&html`<button className="btn ghost" onClick=${()=>{A.calAdd(a.id);setShown(a.id)}}>${a.cal==null?'Add to calendar':'Update calendar'}</button>`}</div></div>`};
+ return html`<div className=${embedded?'my-schedule':'wrap m'}>${!embedded&&html`<h2>Hi, ${EMPS[me].name.split(' ')[0]}</h2><p className="mute">${EMPS[me].role} · ${evOf(CUR.id).name}</p>`}
  ${notes.map(n=>html`<div className="card note" key=${n.id} role="status"><b>${n.x}</b>${n.from&&html`<p className="mute">${n.from}</p>`}
   <button className="btn" onClick=${()=>n.aid?A.ack(n.aid):A.dismiss(n.id)}>${n.aid?'Acknowledge':'Got it'}</button></div>`)}
  ${mine.filter(a=>a.pc).map(a=>html`<div className="card note" key=${'c'+a.id} role="status"><b>${a.cal==null?'Add to your calendar?':'Update your calendar?'}</b><p className="mute">${SM[a.s].t}, ${SM[a.s].r}, ${span(SM[a.s])} (${DAYS[SM[a.s].d]}). Reminder 30 minutes before.</p><div className="acts"><button className="btn" onClick=${()=>{A.calAdd(a.id);setShown(a.id)}}>${a.cal==null?'Add to calendar':'Update calendar'}</button><button className="btn ghost" onClick=${()=>A.calSkip(a.id)}>Not now</button></div></div>`)}
  ${sa&&html`<div className="card"><b>Calendar event ready</b><p className="mute">${SM[sa.s].t}, ${SM[sa.s].r}, ${span(SM[sa.s])}. Reminder 30 minutes before.</p><p className="mute">In the real app this opens your phone's calendar (Apple, Google, or Outlook). This preview can't open a phone calendar, so the file it would send is shown below.</p><details><summary>Calendar file (for developers)</summary><pre style=${{whiteSpace:'pre-wrap',fontSize:'.8rem'}}>${ics(sa)}</pre></details><button className="btn ghost" onClick=${()=>setShown(null)}>Close</button></div>`}
- <div className="card"><b>Venue floorplan</b>${EMPS[me].map?(FP.some(f=>f.ev===CUR.id)?html`<div className="acts">${FP.filter(f=>f.ev===CUR.id).map(f=>html`<button key=${f.id} className="btn ghost" onClick=${()=>setFv(f.id)}>${f.name}</button>`)}</div>`:html`<p className="mute">No floorplan has been added for this event yet.</p>`):html`<p className="mute">Your administrator has not turned on access for you.</p>`}</div>
- ${!!EMPS[me].map&&FP.find(f=>f.id===fv&&f.ev===CUR.id)&&html`<${PdfView} f=${FP.find(f=>f.id===fv)} onClose=${()=>setFv(null)}/>`}
+ ${!embedded&&html`<div className="card"><b>Venue floorplan</b>${EMPS[me].map?(FP.some(f=>f.ev===CUR.id)?html`<div className="acts">${FP.filter(f=>f.ev===CUR.id).map(f=>html`<button key=${f.id} className="btn ghost" onClick=${()=>setFv(f.id)}>${f.name}</button>`)}</div>`:html`<p className="mute">No floorplan has been added for this event yet.</p>`):html`<p className="mute">Your administrator has not turned on access for you.</p>`}</div>`}
+ ${!embedded&&!!EMPS[me].map&&FP.find(f=>f.id===fv&&f.ev===CUR.id)&&html`<${PdfView} f=${FP.find(f=>f.id===fv)} onClose=${()=>setFv(null)}/>`}
  <h2>Next assignment</h2>${next?html`<${Card} a=${next} cls="next"/>`:html`<p className="mute">Nothing coming up. Your admin will notify you of new assignments.</p>`}
  <h2>${full?'Full schedule':'My schedule'}</h2>
  ${canFull&&html`<div className="seg" role="group" aria-label="Schedule view" style=${{marginBottom:8}}><button aria-pressed=${!full} onClick=${()=>setView('mine')}>My schedule</button><button aria-pressed=${full} onClick=${()=>setView('full')}>Full schedule</button></div>`}
  <div className="seg" role="group" aria-label="Schedule days" style=${{marginBottom:12}}><button aria-pressed=${all} onClick=${()=>setAll(true)}>All days</button>${DAYS_SHORT.map((x,i)=>html`<button key=${i} aria-pressed=${!all&&d===i} onClick=${()=>{setAll(false);setD(i)}}>${x}</button>`)}</div>
+ <${MyExport} S=${S} me=${me} day=${all?null:d}/>
  ${(all?DAYS.map((_,i)=>i):[d]).map(i=>html`<div key=${i}>${all&&html`<h3 className="day-heading">${DAYS[i]}</h3>`}
   ${full?html`${dayActs(i).map(s=>html`<${FullCard} key=${s.id} s=${s}/>`)}${!dayActs(i).length&&html`<p className="mute">No activities on ${DAYS[i]}.</p>`}`
    :html`${mine.filter(a=>SM[a.s].d===i).map(a=>html`<${Card} key=${a.id} a=${a}/>`)}${!mine.some(a=>SM[a.s].d===i)&&html`<p className="mute">No assignments on ${DAYS[i]}.</p>`}`}</div>`)}</div>`}
@@ -197,7 +214,7 @@ function Grid({S}){
  <//>`})}</tbody></table></div>
  ${!rows.length&&html`<p className="mute">No activities yet for this event.</p>`}
  <h3 style=${{marginTop:16}}>Staff colors</h3><div className="legend">${used.map(e=>html`<span key=${e}><i className="sw" style=${{background:col(e,1)}}></i>${EMPS[e].name}</span>`)}</div></div>`}
-const Admin=createAdminWorkspace({people:EMPS,events:EVS,rooms:ROOMS,activities:SESS,current:CUR,days:DAYS,daysShort:DAYS_SHORT,cover,clash,span,evEnd,evStatus,connected:CONNECTED},{AdminSession,Grid,Floorplans,Incoming});
+const Admin=createAdminWorkspace({people:EMPS,events:EVS,rooms:ROOMS,activities:SESS,current:CUR,days:DAYS,daysShort:DAYS_SHORT,cover,clash,span,evEnd,evStatus,connected:CONNECTED},{AdminSession,Grid,Floorplans,Incoming,Staff});
 function App({connected}){
  const [demoS,setS]=useState(()=>connected?connected.snapshot:seed()),[demoRole,setRole]=useState('admin'),[demoMe,setMe]=useState(0),[toast,setToast]=useState('');
  const S=connected?connected.snapshot:demoS,role=connected?connected.snapshot.role:demoRole,me=connected?connected.snapshot.me:demoMe;
@@ -260,7 +277,7 @@ function App({connected}){
  <//>
  ${connected?.error&&html`<p className="app-error connection-error" role="alert">${connected.error}</p>`}
  ${!connected&&role!=='admin'&&html`<div className="wrap m" style=${{paddingBottom:0}}><label>Viewing as <select value=${me} onChange=${e=>setMe(+e.target.value)}>${EMPS.filter(e=>!e.gone&&e.acct===role).map(e=>html`<option key=${e.id} value=${e.id}>${nm(e.id)}</option>`)}</select></label></div>`}
- <fieldset className="workspace" disabled=${!!connected?.busy}>${role!=='admin'&&html`<${Staff} S=${S} A=${A} me=${me} canFull=${role==='staff'}/>`}${role==='admin'&&html`<${Admin} S=${S} A=${A} error=${connected?.error} testLogins=${connected?.testLogins}/>`}</fieldset>
+ <fieldset className="workspace" disabled=${!!connected?.busy}>${role!=='admin'&&html`<${Staff} S=${S} A=${A} me=${me} canFull=${role==='staff'}/>`}${role==='admin'&&html`<${Admin} S=${S} A=${A} me=${me!=null&&EMPS[me]&&!EMPS[me].gone&&EMPS[me].acct==='admin'?me:null} error=${connected?.error} testLogins=${connected?.testLogins}/>`}</fieldset>
  ${toast&&html`<div className="toast" role="status">${toast}</div>`}</div>`}
 function hydrate(data){
  EMPS.length=0;data.people.forEach(e=>{EMPS[e.id]=e});

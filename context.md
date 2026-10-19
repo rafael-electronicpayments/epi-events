@@ -16,6 +16,7 @@ A proof of concept for an event operations web app (staff scheduling, room cover
 - Keep UI touch-friendly (44px targets), accessible, and working in light/dark and at phone width. Staff view is phone-first; admin is laptop/tablet.
 - Never put real staff data, phone numbers, receipts, or expense data in this repo.
 - Days display as weekday and date (e.g. "Saturday, Nov 7"; "Sat, Nov 7" on compact tabs), never "Day 1". Activities still store a zero-based day index.
+- Everyone (Admin, Staff, Contractor) can view, print, and download their own assignments for one day or all days. The export is a standalone Letter-portrait HTML file (`myDoc`/`MyExport` in `src/app.js`). Admins on the roster get a "My schedule" item in the sidebar (2026-10-19).
 - Desktop record actions (edit/delete/remove icons) sit in the first column, on the left beside the navigation, not at the right edge.
 
 ## How to run and verify

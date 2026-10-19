@@ -8,7 +8,7 @@ const {useState,useEffect,useRef}=React;
 
 export function createAdminWorkspace(m,components){
  const {people,events,rooms,activities,current,days,cover,clash,span,evEnd,evStatus}=m;
- const {AdminSession,Grid,Floorplans,Incoming}=components;
+ const {AdminSession,Grid,Floorplans,Incoming,Staff}=components;
  const dateLabel=day=>{const event=events.find(e=>e.id===current.id);const date=new Date(event.start+'T12:00:00');date.setDate(date.getDate()+day);return date.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});};
  const field=(label,input)=>html`<label>${label}${input}</label>`;
  const minutes=value=>{const [h,n]=value.split(':').map(Number);return h*60+n;};
@@ -63,7 +63,7 @@ export function createAdminWorkspace(m,components){
   </form><//>`;
  }
 
- return function AdminWorkspace({S,A,error='',testLogins}){
+ return function AdminWorkspace({S,A,me=null,error='',testLogins}){
   const [view,setView]=useState('schedule'),[day,setDay]=useState(0),[mode,setMode]=useState('list'),[filter,setFilter]=useState('all');
   const [selected,setSelected]=useState(null),[query,setQuery]=useState(''),[type,setType]=useState('all'),[tab,setTab]=useState('events'),[editor,setEditor]=useState(null);
   const detail=useRef(null);
@@ -86,13 +86,14 @@ export function createAdminWorkspace(m,components){
    setEditor({type:entity,id,draft,revision:S.revision});
   };
   const remove=(entity,id,label,warning)=>setEditor({type:entity,id,label,warning,remove:true,revision:S.revision});
-  const nav=[['schedule','calendar','Schedule'],['coverage','coverage','Coverage'],['people','people','People'],['setup','settings','Event setup'],['log','activity','Activity log'],...(!m.connected?[['plans','map','Floorplans'],['incoming','package','Incoming goods']]:[])];
+  const planning=[['schedule','calendar','Schedule'],['coverage','coverage','Coverage'],['people','people','People'],...(me!=null?[['mine','user','My schedule']]:[])];
+  const nav=[...planning,['setup','settings','Event setup'],['log','activity','Activity log'],...(!m.connected?[['plans','map','Floorplans'],['incoming','package','Incoming goods']]:[])];
   const navButton=([id,icon,label])=>html`<button key=${id} type="button" className="nav-item" aria-current=${view===id?'page':undefined} onClick=${()=>navigate(id)}><${Icon} name=${icon}/><span>${label}</span></button>`;
-  const title={schedule:'Schedule',coverage:'Coverage',people:'People',setup:'Event setup',log:'Activity log',plans:'Floorplans',incoming:'Incoming goods'}[view];
+  const title={mine:'My schedule',schedule:'Schedule',coverage:'Coverage',people:'People',setup:'Event setup',log:'Activity log',plans:'Floorplans',incoming:'Incoming goods'}[view];
   const sub=['schedule','coverage'].includes(view)?dateLabel(dayIndex):event.name;
   const actions=(editLabel,onEdit,deleteLabel,onDelete,disabled=false)=>html`<div className="row-actions"><${IconButton} name="edit" label=${editLabel} onClick=${onEdit}/><${IconButton} name="delete" label=${deleteLabel} onClick=${onDelete} disabled=${disabled}/></div>`;
   const table=(headers,body)=>html`<div className="data-surface"><table className="data-table"><thead><tr>${headers.map((h,i)=>html`<th key=${i} scope="col" className=${h.className||''}>${h.text}</th>`)}</tr></thead><tbody>${body.length?body:html`<tr><td colSpan=${headers.length} className="empty-table">No records found.</td></tr>`}</tbody></table></div>`;
-  return html`<div className="workspace-layout"><nav className="sidebar" aria-label="Main navigation"><span className="nav-group">Planning</span>${nav.slice(0,3).map(navButton)}<span className="nav-group">Manage</span>${nav.slice(3).map(navButton)}</nav>
+  return html`<div className="workspace-layout"><nav className="sidebar" aria-label="Main navigation"><span className="nav-group">Planning</span>${nav.slice(0,planning.length).map(navButton)}<span className="nav-group">Manage</span>${nav.slice(planning.length).map(navButton)}</nav>
   <main className="workspace-main"><div className="page-heading"><div><h2>${title}</h2><p className="mute">${sub}</p></div>
    ${view==='schedule'&&html`<button className="btn" onClick=${()=>open('activity')} disabled=${!rooms.length}><${Icon} name="plus"/>New activity</button>`}
    ${view==='people'&&html`<button className="btn" onClick=${()=>open('person')}><${Icon} name="plus"/>Add person</button>`}
@@ -129,7 +130,7 @@ export function createAdminWorkspace(m,components){
    const description=details&&!Array.isArray(details)?details.name||'':Array.isArray(details)?typeof details[0]==='string'?details[0]:details[0]?.n||'':'';
    return html`<tr key=${i}><td>${Number.isNaN(date.valueOf())?entry.t:date.toLocaleString()}</td><td>${names[entry.x]||entry.x}</td><td>${description}</td></tr>`;
   }))}
-  ${view==='plans'&&html`<${Floorplans} A=${A}/>`}${view==='incoming'&&html`<${Incoming} A=${A}/>`}
+  ${view==='mine'&&me!=null&&html`<${Staff} S=${S} A=${A} me=${me} embedded=${true}/>`}${view==='plans'&&html`<${Floorplans} A=${A}/>`}${view==='incoming'&&html`<${Incoming} A=${A}/>`}
   </main>${editor&&html`<${Editor} key=${editor.type+'-'+editor.id} editor=${editor} A=${A} error=${error} testLogins=${testLogins} onClose=${()=>setEditor(null)}/>`}</div>`;
  };
 }
