@@ -20,6 +20,9 @@ const fillDays=(start,n)=>{DAYS.length=0;DAYS_SHORT.length=0;for(let i=0;i<n;i++
 const EVS=[{id:1,name:'IMPACT27',start:'2027-03-02',days:3},{id:2,name:'IMPACT26',start:'2026-11-07',days:6}];
 const CUR={id:1};
 const FP=[];
+// Connected floorplans hold only metadata; PDF bytes are fetched on demand from Storage and cached here by path.
+const FP_CACHE={},FLOOR_SUPPORT={on:!CONNECTED};
+const fpData=async f=>f.data||FP_CACHE[f.path]||(FP_CACHE[f.path]=await window.eventOpsRepository.floorplanFile(f.path));
 const INV=[{id:1,ev:1,type:'Swag',vendor:'Northwind Apparel',inv:'NW-20418',date:'2027-01-15',amt:2450,unit:'lb',files:[],lines:[{q:300,d:'Event t-shirts',c:6.5,w:0.4,sb:'',disp:'Promotional Give Away - No Return'},{q:100,d:'Tote bags',c:5,w:0.5,sb:'',disp:'Promotional Give Away - No Return'}]},{id:2,ev:1,type:'Equipment',vendor:'Brightline Systems (supplier loan)',inv:'',date:'2027-01-20',amt:0,unit:'lb',files:[],lines:[{q:4,d:'Demo tablets',c:0,w:1.5,sb:'',disp:'Temporary Use - Returning'}]}];
 const WORKER='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 const kb=n=>n>1048576?(n/1048576).toFixed(1)+' MB':Math.max(1,Math.round(n/1024))+' KB';
@@ -126,21 +129,24 @@ function Incoming({A}){
   <div className="acts"><button className="btn" onClick=${()=>edit(i)}>Edit</button><button className="btn ghost" onClick=${()=>A.delInv(i.id)}>Delete</button></div></div>`)}</div>`}
 function PdfView({f,onClose}){
  const cv=useRef(null),doc=useRef(null),[pg,setPg]=useState(1),[n,setN]=useState(0),[err,setErr]=useState('');
- useEffect(()=>{let dead=false;doc.current=null;setN(0);setPg(1);setErr('');(async()=>{try{const L=window.pdfjsLib;if(!L)throw 0;L.GlobalWorkerOptions.workerSrc=WORKER;const d=await L.getDocument({data:f.data.slice(0)}).promise;if(dead)return;doc.current=d;setN(d.numPages)}catch(e){setErr('This PDF could not be displayed here. Use Download instead.')}})();return()=>{dead=true}},[f.id]);
+ useEffect(()=>{let dead=false;doc.current=null;setN(0);setPg(1);setErr('');(async()=>{try{const L=window.pdfjsLib;if(!L)throw 0;L.GlobalWorkerOptions.workerSrc=WORKER;const bytes=await fpData(f);if(dead)return;const d=await L.getDocument({data:bytes.slice(0)}).promise;if(dead)return;doc.current=d;setN(d.numPages)}catch(e){setErr('This PDF could not be displayed here. Use Download instead.')}})();return()=>{dead=true}},[f.id]);
  useEffect(()=>{(async()=>{const d=doc.current,c=cv.current;if(!d||!c||pg<1||pg>d.numPages)return;try{const p=await d.getPage(pg),w=Math.min(c.parentElement.clientWidth||800,1400),v0=p.getViewport({scale:1}),v=p.getViewport({scale:w/v0.width*(window.devicePixelRatio||1)});c.width=v.width;c.height=v.height;c.style.width='100%';await p.render({canvasContext:c.getContext('2d'),viewport:v}).promise}catch(e){}})()},[pg,n]);
- const dl=async()=>{try{const d=window.claude&&await window.claude.use('downloads');if(!d){setErr('Saving is not available here.');return}await d.save({filename:f.name,data:f.data.slice(0)})}catch(e){if(!e||e.code!=='declined')setErr('Could not save the file.')}};
- return html`<div className="card"><h3>${f.name}</h3><div className="acts"><button className="btn ghost" disabled=${pg<=1} onClick=${()=>setPg(pg-1)}>Previous page</button><span className="mute" style=${{alignSelf:'center'}}>Page ${pg} of ${n||'…'}</span><button className="btn ghost" disabled=${pg>=n} onClick=${()=>setPg(pg+1)}>Next page</button><button className="btn ghost" onClick=${dl}>Download</button><button className="btn" onClick=${onClose}>Close</button></div>
+ const dl=async()=>{try{const d=window.claude&&await window.claude.use('downloads');if(!d){setErr('Saving is not available here.');return}await d.save({filename:/\.pdf$/i.test(f.name)?f.name:f.name+'.pdf',data:(await fpData(f)).slice(0)})}catch(e){if(!e||e.code!=='declined')setErr('Could not save the file.')}};
+ return html`<div className="card"><h3>${f.name}</h3><div className="acts"><button className="btn ghost" disabled=${pg<=1} onClick=${()=>setPg(pg-1)}>Previous page</button><span className="mute" style=${{alignSelf:'center'}}>${n?'Page '+pg+' of '+n:err?'':'Loading…'}</span><button className="btn ghost" disabled=${pg>=n} onClick=${()=>setPg(pg+1)}>Next page</button><button className="btn ghost" onClick=${dl}>Download</button><button className="btn" onClick=${onClose}>Close</button></div>
  ${err&&html`<p className="mute" role="status">${err}</p>`}<div style=${{marginTop:12,overflow:'auto'}}><canvas ref=${cv} aria-label=${'Floorplan '+f.name+', page '+pg}></canvas></div></div>`}
 function Floorplans({A}){
- const [up,setUp]=useState(null),[open,setOpen]=useState(null),target=up!==null&&evOf(up)?up:CUR.id,vf=FP.find(f=>f.id===open);
- const pick=async e=>{const files=[...e.target.files];e.target.value='';for(const f of files){const data=new Uint8Array(await f.arrayBuffer());A.addFloorplan({name:f.name,data},target)}};
+ const [up,setUp]=useState(null),[open,setOpen]=useState(null),[ren,setRen]=useState(null),[gone,setGone]=useState(null),[busy,setBusy]=useState(''),target=up!==null&&evOf(up)?up:CUR.id,vf=FP.find(f=>f.id===open);
+ const pick=async e=>{const files=[...e.target.files];e.target.value='';for(const [i,f] of files.entries()){setBusy('Uploading '+(files.length>1?(i+1)+' of '+files.length+': ':'')+f.name+'…');const data=new Uint8Array(await f.arrayBuffer());await A.addFloorplan({name:f.name,data},target)}setBusy('')};
+ const saveName=async()=>{const n=ren.name.trim();if(!n)return;if(await A.renameFloorplan(ren.id,n)!==false)setRen(null)};
  return html`<div><div className="card"><h3>Add floorplan PDFs</h3><div className="form"><label>Assign to event<br/><select value=${target} onChange=${e=>setUp(+e.target.value)}>${EVS.map(e=>html`<option key=${e.id} value=${e.id}>${e.name}</option>`)}</select></label>
-  <label>PDF files (one or more)<br/><input type="file" accept="application/pdf,.pdf" multiple onChange=${pick}/></label></div>
-  <p className="mute">Most events have one floorplan PDF, but you can add several. Only people with venue map access see them. Files stay in this preview only until you reload.</p></div>
+  <label>PDF files (one or more, up to 25 MB each)<br/><input type="file" accept="application/pdf,.pdf" multiple disabled=${!!busy} onChange=${pick}/></label></div>
+  ${busy&&html`<p role="status">${busy}</p>`}
+  <p className="mute">Add one PDF covering every floor, or several (for example one per floor). Only admins and people with venue map access can open them.${CONNECTED?' Files are stored privately with the event.':' Files stay in this preview only until you reload.'}</p></div>
  ${vf&&html`<${PdfView} f=${vf} onClose=${()=>setOpen(null)}/>`}
  ${EVS.slice().sort((a,b)=>(b.id===CUR.id)-(a.id===CUR.id)).map(e=>html`<div className="card" key=${e.id}><h3>${e.name} <span className="mute">${FP.filter(f=>f.ev===e.id).length} floorplan(s)</span></h3>
-  <ul className="rows">${FP.filter(f=>f.ev===e.id).map(f=>html`<li key=${f.id}><div><b>${f.name}</b> <span className="mute">${kb(f.size)}</span></div><div className="acts"><button className="btn ghost" onClick=${()=>setOpen(f.id)}>View</button>
-   <select aria-label=${'Event for '+f.name} value=${f.ev} onChange=${ev=>A.moveFloorplan(f.id,+ev.target.value)}>${EVS.map(x=>html`<option key=${x.id} value=${x.id}>${x.name}</option>`)}</select><button className="btn ghost" onClick=${()=>A.delFloorplan(f.id)}>Remove</button></div></li>`)}</ul>
+  <ul className="rows">${FP.filter(f=>f.ev===e.id).map(f=>html`<li key=${f.id}>${ren&&ren.id===f.id?html`<form className="acts fp-rename" onSubmit=${e=>{e.preventDefault();saveName()}}><input aria-label=${'New name for '+f.name} value=${ren.name} onChange=${e=>setRen({...ren,name:e.target.value})}/><button className="btn" disabled=${!ren.name.trim()}>Save</button><button type="button" className="btn ghost" onClick=${()=>setRen(null)}>Cancel</button></form>`:html`<div><b>${f.name}</b> <span className="mute">${kb(f.size)}</span></div>`}
+   <div className="acts"><button className="btn ghost" onClick=${()=>setOpen(f.id)}>View</button><button className="btn ghost" onClick=${()=>setRen({id:f.id,name:f.name})}>Rename</button>
+   <select aria-label=${'Event for '+f.name} value=${f.ev} onChange=${ev=>A.moveFloorplan(f.id,+ev.target.value)}>${EVS.map(x=>html`<option key=${x.id} value=${x.id}>${x.name}</option>`)}</select>${gone===f.id?html`<button className="btn danger" onClick=${async()=>{setGone(null);if(open===f.id)setOpen(null);await A.delFloorplan(f.id)}}>Confirm remove</button><button className="btn ghost" onClick=${()=>setGone(null)}>Keep</button>`:html`<button className="btn ghost" onClick=${()=>setGone(f.id)}>Remove</button>`}</div></li>`)}</ul>
   ${!FP.some(f=>f.ev===e.id)&&html`<p className="mute">No floorplans assigned.</p>`}</div>`)}</div>`}
 const EVD={d:'2027-03-02'};
 const syncEv=()=>{const e=evOf(CUR.id);fillDays(e.start,e.days);EVD.d=e.start};
@@ -266,7 +272,7 @@ function Grid({S}){
  <//>`})}</tbody></table></div>
  ${!rows.length&&html`<p className="mute">No activities yet for this event.</p>`}
  <h3 style=${{marginTop:16}}>Staff colors</h3><div className="legend">${used.map(e=>html`<span key=${e}><i className="sw" style=${{background:col(e,1)}}></i>${EMPS[e].name}</span>`)}</div></div>`}
-const Admin=createAdminWorkspace({people:EMPS,events:EVS,rooms:ROOMS,activities:SESS,current:CUR,days:DAYS,daysShort:DAYS_SHORT,cover,clash,span,evEnd,evStatus,need,roomAck:ROOM_ACK,ackSupport:ACK_SUPPORT,BREAK,breaksOn,breaksDuring,openClock,lateBy,liveNow,clockTime,breakOf,todayIndex,breakExport,connected:CONNECTED},{AdminSession,Grid,Floorplans,Incoming,Staff});
+const Admin=createAdminWorkspace({people:EMPS,events:EVS,rooms:ROOMS,activities:SESS,current:CUR,days:DAYS,daysShort:DAYS_SHORT,cover,clash,span,evEnd,evStatus,need,roomAck:ROOM_ACK,ackSupport:ACK_SUPPORT,BREAK,breaksOn,breaksDuring,openClock,lateBy,liveNow,clockTime,breakOf,todayIndex,breakExport,floorSupport:FLOOR_SUPPORT,connected:CONNECTED},{AdminSession,Grid,Floorplans,Incoming,Staff});
 function App({connected}){
  const [demoS,setS]=useState(()=>connected?connected.snapshot:seed()),[demoRole,setRole]=useState('admin'),[demoMe,setMe]=useState(0),[toast,setToast]=useState('');
  const S=connected?connected.snapshot:demoS,role=connected?connected.snapshot.role:demoRole,me=connected?connected.snapshot.me:demoMe;
@@ -300,6 +306,7 @@ function App({connected}){
   editEvent:(id,o)=>{if(!evv(o))return false;const n=Math.floor(o.d),bad=SESS.find(s=>s.ev===id&&s.d>=n);if(bad){say('Move or delete activities on '+dayDate(evOf(id).start,bad.d)+' first');return false}Object.assign(evOf(id),{name:o.n,start:o.b,days:n});if(id===CUR.id)syncEv();setS(s=>L({...s},'Updated event '+o.n));say('Saved');return true},
   delEvent:id=>{if(EVS.length<2){say('At least one event must remain');return false}const e=evOf(id),ids=SESS.filter(s=>s.ev===id).map(s=>s.id);setS(s=>{const g=s.asg.filter(a=>ids.includes(a.s));return L({...s,asg:s.asg.filter(a=>!ids.includes(a.s)),notes:[...s.notes.filter(n=>!g.some(a=>a.id===n.aid)),...[...new Set(g.map(a=>a.e))].map(x=>({id:++uid,e:x,aid:null,done:0,x:'Event removed: '+e.name}))]},'Deleted event '+e.name+' with '+ids.length+' activities')});for(let i=SESS.length-1;i>=0;i--)if(ids.includes(SESS[i].id)){delete SM[SESS[i].id];SESS.splice(i,1)}for(let i=FP.length-1;i>=0;i--)if(FP[i].ev===id)FP.splice(i,1);for(let i=INV.length-1;i>=0;i--)if(INV[i].ev===id)INV.splice(i,1);EVS.splice(EVS.indexOf(e),1);if(CUR.id===id){CUR.id=EVS[0].id;syncEv()}say(e.name+' deleted');return true},
   addFloorplan:(f,ev)=>{if(String.fromCharCode(...f.data.slice(0,4))!=='%PDF'){say(f.name+' is not a PDF file');return false}if(f.data.length>26214400){say(f.name+' is over 25 MB');return false}FP.push({id:Math.max(0,...FP.map(x=>x.id))+1,ev,name:/\.pdf$/i.test(f.name)?f.name:f.name+'.pdf',size:f.data.length,data:f.data});setS(s=>L({...s},'Added floorplan '+f.name+' to '+evOf(ev).name));say(f.name+' added to '+evOf(ev).name);return true},
+  renameFloorplan:(id,n)=>{const f=FP.find(x=>x.id===id);if(!n){say('Enter a name');return false}const was=f.name;f.name=n;setS(s=>L({...s},'Renamed floorplan '+was+' to '+n));say('Renamed');return true},
   moveFloorplan:(id,ev)=>{const f=FP.find(x=>x.id===id);f.ev=ev;setS(s=>L({...s},'Moved floorplan '+f.name+' to '+evOf(ev).name));say('Moved to '+evOf(ev).name);return true},
   delFloorplan:id=>{const i=FP.findIndex(x=>x.id===id),f=FP[i];FP.splice(i,1);setS(s=>L({...s},'Removed floorplan '+f.name));say(f.name+' removed. Undo brings it back.');return true},
   addInv:o=>{if(!invv(o))return false;o=nrm(o);INV.push({...o,id:Math.max(0,...INV.map(x=>x.id))+1,ev:CUR.id});setS(s=>L({...s},'Recorded '+o.type+' from '+o.vendor+(o.inv?' (invoice '+o.inv+')':'')));say('Entry saved');return true},
@@ -328,6 +335,13 @@ function App({connected}){
    return connected.command(k,args,expectedRevision);
   };
  });
+ if(connected){const cmd=connected.command,repo=window.eventOpsRepository;
+  A.addFloorplan=async(f,ev)=>{if(String.fromCharCode(...f.data.slice(0,4))!=='%PDF'){say(f.name+' is not a PDF file');return false}if(f.data.length>26214400){say(f.name+' is over 25 MB');return false}
+   const name=/\.pdf$/i.test(f.name)?f.name:f.name+'.pdf',id=window.crypto&&crypto.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.random().toString(36).slice(2),path=ev+'/'+id+'.pdf';
+   try{await repo.floorplanUpload(path,f.data)}catch(e){say('Upload failed: '+(e&&e.message||'try again'));return false}
+   FP_CACHE[path]=f.data;const ok=await cmd('addFloorplan',[ev,name,path,f.data.length]);
+   if(!ok){delete FP_CACHE[path];repo.floorplanRemove(path).catch(()=>{});return false}say(name+' uploaded');return true};
+  A.delFloorplan=async id=>{const f=FP.find(x=>x.id===id),ok=await cmd('delFloorplan',[id]);if(ok&&f){delete FP_CACHE[f.path];repo.floorplanRemove(f.path).catch(()=>{});say(f.name+' removed')}return ok};}
  const ul=H.length?(H[H.length-1].label||'last change'):'';
  const R=[['admin','Admin'],['staff','Staff'],['contractor','Contractor']];
  return html`<div><${AppHeader} events=${EVS} current=${CUR.id} onEventChange=${A.switchEv} email=${connected?.email} role=${role} busy=${connected?.busy} error=${connected?.error} onRefresh=${connected?.refresh} onSignOut=${connected?.signOut}>
@@ -345,6 +359,7 @@ function hydrate(data){
  data.activities.forEach(s=>{s.q=data.actAck&&Object.hasOwn(data.actAck,s.id)?data.actAck[s.id]:null});
  SESS.splice(0,SESS.length,...data.activities);Object.keys(SM).forEach(k=>delete SM[k]);SESS.forEach(s=>{SM[s.id]=s});
  FP.length=0;INV.length=0;H.length=0;
+ FLOOR_SUPPORT.on=Array.isArray(data.floorplans);if(FLOOR_SUPPORT.on)FP.push(...data.floorplans.map(f=>({id:f.id,ev:f.ev,name:f.name,size:f.size,path:f.path})));
  if(EVS.length){if(!evOf(CUR.id))CUR.id=EVS[0].id;syncEv()}
 }
 const Root=CONNECTED?createConnection(React,html,window.eventOpsRepository,App,hydrate):App;

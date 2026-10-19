@@ -184,7 +184,7 @@ export function createAdminWorkspace(m,components){
   };
   const remove=(entity,id,label,warning)=>setEditor({type:entity,id,label,warning,remove:true,revision:S.revision});
   const planning=[['schedule','calendar','Schedule'],['coverage','coverage','Coverage'],['people','people','People'],...(m.breaksOn(S)?[['breaks','clock','Breaks']]:[]),...(me!=null?[['mine','user','My schedule']]:[])];
-  const nav=[...planning,['setup','settings','Event setup'],['log','activity','Activity log'],...(!m.connected?[['plans','map','Floorplans'],['incoming','package','Incoming goods']]:[])];
+  const nav=[...planning,['setup','settings','Event setup'],['log','activity','Activity log'],...(m.floorSupport.on?[['plans','map','Floorplans']]:[]),...(!m.connected?[['incoming','package','Incoming goods']]:[])];
   const navButton=([id,icon,label])=>html`<button key=${id} type="button" className="nav-item" aria-current=${view===id?'page':undefined} onClick=${()=>navigate(id)}><${Icon} name=${icon}/><span>${label}</span></button>`;
   const title={breaks:'Breaks',mine:'My schedule',schedule:'Schedule',coverage:'Coverage',people:'People',setup:'Event setup',log:'Activity log',plans:'Floorplans',incoming:'Incoming goods'}[view];
   const sub=['schedule','coverage','breaks'].includes(view)?dateLabel(dayIndex):event.name;

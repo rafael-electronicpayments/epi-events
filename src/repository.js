@@ -28,6 +28,10 @@ export function createRepository(client, { testLoginsEnabled = false, testLoginE
     },
     signOut: () => result(client.auth.signOut()),
     load: () => result(client.rpc('ops_snapshot')),
+    // Floorplan PDFs live in the private 'floorplans' Storage bucket; access is enforced by Storage policies.
+    floorplanUpload: (path, data) => result(client.storage.from('floorplans').upload(path, new Blob([data], { type: 'application/pdf' }), { contentType: 'application/pdf', upsert: false })),
+    floorplanFile: async path => new Uint8Array(await (await result(client.storage.from('floorplans').download(path))).arrayBuffer()),
+    floorplanRemove: path => result(client.storage.from('floorplans').remove([path])),
     command: (action, args, revision) => action === 'addStaff' || action === 'editStaff'
       ? result(client.rpc('ops_save_person', {
         target_person_id: action === 'editStaff' ? args[0] : null,
