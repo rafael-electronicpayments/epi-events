@@ -56,6 +56,55 @@ export function createAdminWorkspace(m,components){
     ${plan&&html`<button type="button" className="btn" disabled=${!chosen.length||!!progress} onClick=${run}>Import ${chosen.length} ${chosen.length===1?'person':'people'}</button>`}</div>
   </div><//>`;
  }
+ // Lunch and break scheduling for one person or a group, plus who is clocked out right now.
+ function BreakEditor({editor,A,S,onClose,dayIndex}){
+  const editing=editor.id!=null,ev=current.id;
+  const [k,setK]=useState(editor.k||'lunch'),[d,setD]=useState(editor.d??dayIndex),[st,setSt]=useState(time(editor.a??720)),[en,setEn]=useState(time(editor.b??750));
+  const [ids,setIds]=useState(new Set()),[q,setQ]=useState(''),[failed,setFailed]=useState('');
+  const active=people.filter(p=>p&&!p.gone).sort((x,y)=>x.name.localeCompare(y.name));
+  const dayActs=activities.filter(s=>s.ev===ev&&s.d===Number(d)).sort((x,y)=>x.a-y.a);
+  const toggle=id=>setIds(v=>{const n=new Set(v);n.has(id)?n.delete(id):n.add(id);return n});
+  const addFrom=sid=>{const s=activities.find(x=>x.id===Number(sid));if(!s)return;setIds(v=>new Set([...v,...S.asg.filter(a=>a.s===s.id&&people[a.e]&&!people[a.e].gone).map(a=>a.e)]));};
+  const submit=async e=>{e.preventDefault();setFailed('');
+   if(!editing&&!ids.size){setFailed('Choose at least one person.');return}
+   const a=minutes(st),b=minutes(en);if(!(b>a)){setFailed('End time must be after start time.');return}
+   const r=await(editing?A.editBreak(editor.id,k,Number(d),a,b):A.addBreak(k,Number(d),a,b,[...ids]));
+   if(r!==false)onClose();else setFailed('Could not save. Check the values and try again.');};
+  return html`<${Modal} title=${editing?'Edit '+(people[editor.e]?.name||'break'):'Add lunch or break'} onClose=${onClose}><form className="break-editor" onSubmit=${submit}>
+   <div className="editor-fields">
+    ${field('Type',html`<select value=${k} onChange=${e=>setK(e.target.value)}><option value="lunch">Lunch</option><option value="break">Break</option></select>`)}
+    ${field('Day',html`<select value=${d} onChange=${e=>setD(e.target.value)}>${days.map((x,i)=>html`<option key=${i} value=${i}>${x}</option>`)}</select>`)}
+    ${field('Start time',html`<input type="time" required value=${st} onChange=${e=>setSt(e.target.value)}/>`)}
+    ${field('End time',html`<input type="time" required value=${en} onChange=${e=>setEn(e.target.value)}/>`)}
+   </div>
+   ${!editing&&html`<fieldset className="break-people"><legend>People <span className="mute">${ids.size} selected</span></legend>
+    <div className="break-people-tools"><select aria-label="Add everyone assigned to an activity" value="" onChange=${e=>addFrom(e.target.value)}><option value="">Add everyone in an activity…</option>${dayActs.map(s=>html`<option key=${s.id} value=${s.id}>${s.t}, ${s.r}, ${span(s)}</option>`)}</select>
+     <input type="search" aria-label="Filter people" placeholder="Filter people" value=${q} onChange=${e=>setQ(e.target.value)}/>${ids.size>0&&html`<button type="button" className="btn ghost" onClick=${()=>setIds(new Set())}>Clear</button>`}</div>
+    <div className="break-people-list">${active.filter(p=>(p.name+' '+(p.role||'')).toLowerCase().includes(q.toLowerCase())).map(p=>html`<label key=${p.id} className="chk"><input type="checkbox" checked=${ids.has(p.id)} onChange=${()=>toggle(p.id)}/>${p.name}<span className="mute">${p.role||''}</span></label>`)}</div>
+   </fieldset>`}
+   ${failed&&html`<p className="connection-error editor-error" role="alert">${failed}</p>`}
+   <div className="dialog-actions"><button type="button" className="btn ghost" onClick=${onClose}>Cancel</button><button type="submit" className="btn">${editing?'Save changes':ids.size>1?'Schedule for '+ids.size+' people':'Schedule'}</button></div>
+  </form><//>`;
+ }
+ function BreaksPage({S,dayIndex,setDay,onAdd,onEdit,onRemove,table,actions}){
+  const [,tick]=useState(0);useEffect(()=>{const t=setInterval(()=>tick(n=>n+1),30000);return()=>clearInterval(t)},[]);
+  const who=e=>people[e]?.name||'Unknown';
+  const out=(S.clocks||[]).filter(c=>!c.in&&people[c.e]).map(c=>({c,late:m.lateBy(S,c),br:c.bid!=null&&m.breakOf(S,c.bid)})).sort((x,y)=>y.late-x.late||x.c.out.localeCompare(y.c.out));
+  const today=new Date().toDateString();
+  const lateBack=(S.clocks||[]).filter(c=>c.in&&people[c.e]&&new Date(c.in).toDateString()===today&&m.lateBy(S,c)>0);
+  const list=(S.breaks||[]).filter(b=>b.ev===current.id&&b.d===dayIndex&&people[b.e]).sort((x,y)=>x.a-y.a||who(x.e).localeCompare(who(y.e)));
+  const statusOf=b=>{const c=(S.clocks||[]).find(x=>x.bid===b.id);if(!c)return html`<span className="mute">Scheduled</span>`;const lt=m.lateBy(S,c);
+   return c.in?html`<${Badge} kind=${lt?'bad':'ok'}>${lt?'Back '+lt+' min late':'Back on time'}<//><span className="cell-secondary">Out ${m.clockTime(c.out)} · back ${m.clockTime(c.in)}</span>`:html`<${Badge} kind=${lt?'bad':'warn'}>${lt?'Out · '+lt+' min late':'Out now'}<//><span className="cell-secondary">Since ${m.clockTime(c.out)}</span>`;};
+  return html`<div className="breaks-page">
+   <section aria-labelledby="out-now"><h3 id="out-now">Out now</h3>
+    ${out.length?table([{text:'Person'},{text:'Out for'},{text:'Since'},{text:'Scheduled until'},{text:'Status'}],out.map(({c,late,br})=>html`<tr key=${c.id} className=${late?'late-row':''}><td><b>${who(c.e)}</b></td><td>${m.BREAK[c.k][0]}</td><td>${m.clockTime(c.out)}</td><td>${br?span(br):html`<span className="mute">Not scheduled</span>`}</td><td><${Badge} kind=${late?'bad':'warn'}>${late?'Late return · '+late+' min':'Out'}<//></td></tr>`)):html`<p className="mute">Everyone is clocked in.</p>`}
+   </section>
+   ${lateBack.length>0&&html`<section aria-labelledby="late-back"><h3 id="late-back">Returned late today</h3>${table([{text:'Person'},{text:'Out for'},{text:'Out'},{text:'Back'},{text:'Late by'}],lateBack.map(c=>html`<tr key=${c.id}><td><b>${who(c.e)}</b></td><td>${m.BREAK[c.k][0]}</td><td>${m.clockTime(c.out)}</td><td>${m.clockTime(c.in)}</td><td><${Badge} kind="bad">${m.lateBy(S,c)} min<//></td></tr>`))}</section>`}
+   <section aria-labelledby="scheduled"><div className="section-heading"><h3 id="scheduled">Scheduled lunches and breaks</h3></div>
+    <div className="view-toolbar"><div className="seg day-tabs" role="group" aria-label="Event day">${(m.daysShort||days).map((x,i)=>html`<button key=${x} aria-pressed=${dayIndex===i} onClick=${()=>setDay(i)}>${x}</button>`)}</div></div>
+    ${list.length?table([{text:'',className:'setup-actions'},{text:'Person'},{text:'Type'},{text:'Time'},{text:'Status'}],list.map(b=>html`<tr key=${b.id}><td className="setup-actions">${actions('Edit '+who(b.e)+' '+m.BREAK[b.k][0].toLowerCase(),()=>onEdit(b),'Delete '+who(b.e)+' '+m.BREAK[b.k][0].toLowerCase(),()=>onRemove(b))}</td><td><b>${who(b.e)}</b><span className="cell-secondary">${people[b.e].role||''}</span></td><td>${m.BREAK[b.k][0]}</td><td>${span(b)}</td><td>${statusOf(b)}</td></tr>`)):html`<div className="empty-state"><${Icon} name="clock" size=${28}/><h3>No lunches or breaks scheduled</h3><button className="btn" onClick=${onAdd}><${Icon} name="plus"/>Add lunch or break</button></div>`}
+   </section></div>`;
+ }
  function Editor({editor,A,error,onClose,testLogins}){
   const [draft,setDraft]=useState(editor.draft),[failed,setFailed]=useState(false);
   const editing=editor.id!=null,version={expectedRevision:editor.revision};
@@ -63,7 +112,7 @@ export function createAdminWorkspace(m,components){
   const title=editor.remove?'Delete '+editor.label:((editing?'Edit ':'Add ')+{person:'person',event:'event',room:'room',activity:'activity'}[editor.type]);
   const submit=async e=>{
    e.preventDefault();setFailed(false);let result;
-   if(editor.remove)result=await ({person:A.delStaff,event:A.delEvent,room:A.delRoom,activity:A.delSession}[editor.type])(editor.id);
+   if(editor.remove)result=await ({person:A.delStaff,event:A.delEvent,room:A.delRoom,activity:A.delSession,break:A.delBreak}[editor.type])(editor.id);
    else if(editor.type==='person'){
     const value={n:draft.name.trim(),email:draft.email.trim().toLowerCase(),r:draft.title.trim(),acct:draft.type,phone:draft.phone.trim(),map:draft.map};
     result=await(editing?A.editStaff(editor.id,value,version):A.addStaff(value));
@@ -110,7 +159,7 @@ export function createAdminWorkspace(m,components){
 
  return function AdminWorkspace({S,A,me=null,error='',testLogins}){
   const [view,setView]=useState('schedule'),[day,setDay]=useState(0),[mode,setMode]=useState('list'),[filter,setFilter]=useState('all');
-  const [importing,setImporting]=useState(false),[selected,setSelected]=useState(null),[query,setQuery]=useState(''),[type,setType]=useState('all'),[tab,setTab]=useState('events'),[editor,setEditor]=useState(null);
+  const [importing,setImporting]=useState(false),[breakEd,setBreakEd]=useState(null),[selected,setSelected]=useState(null),[query,setQuery]=useState(''),[type,setType]=useState('all'),[tab,setTab]=useState('events'),[editor,setEditor]=useState(null);
   const detail=useRef(null);
   const dayIndex=Math.min(day,days.length-1),event=events.find(e=>e.id===current.id);
   useEffect(()=>{setDay(0);setSelected(null);setFilter('all');setEditor(null);},[current.id]);
@@ -121,6 +170,9 @@ export function createAdminWorkspace(m,components){
   const unack=todayAssignments.filter(a=>!a.ack&&need(activities.find(s=>s.id===a.s))).length,short=today.filter(s=>cover(s,S.asg).as.length<s.n).length;
   const visible=today.filter(s=>filter==='all'||filter==='short'&&cover(s,S.asg).as.length<s.n||filter==='overlap'&&S.asg.some(a=>a.s===s.id&&clash(S.asg,a).length)||filter==='unack'&&need(s)&&S.asg.some(a=>a.s===s.id&&!a.ack));
   const currentActivity=activities.find(s=>s.id===selected&&s.ev===current.id);
+  const coverNote=s=>{if(!m.breaksOn(S))return null;const as=S.asg.filter(a=>a.s===s.id&&people[a.e]),first=e=>people[e].name.split(' ')[0];
+   const outs=as.map(a=>[a.e,m.openClock(S,a.e)]).filter(([,c])=>c),brs=as.flatMap(a=>m.breaksDuring(S,a.e,s).map(b=>[a.e,b]));
+   return html`${m.liveNow(s)&&html`<p className="coverage-live"><b>Active now: ${as.length-outs.length} of ${as.length}</b>${outs.length>0&&html` · ${outs.map(([e,c])=>first(e)+' '+m.BREAK[c.k][1].toLowerCase()+(m.lateBy(S,c)?' (late)':'')).join(', ')}`}</p>`}${brs.length>0&&html`<p className="mute coverage-breaks">Breaks: ${brs.map(([e,b])=>first(e)+' '+m.BREAK[b.k][0].toLowerCase()+' '+span(b)).join(', ')}</p>`}`;};
   const navigate=next=>{setView(next);setSelected(null);setFilter('all');};
   const open=(entity,record=null)=>{
    let draft,id;
@@ -131,16 +183,17 @@ export function createAdminWorkspace(m,components){
    setEditor({type:entity,id,draft,revision:S.revision});
   };
   const remove=(entity,id,label,warning)=>setEditor({type:entity,id,label,warning,remove:true,revision:S.revision});
-  const planning=[['schedule','calendar','Schedule'],['coverage','coverage','Coverage'],['people','people','People'],...(me!=null?[['mine','user','My schedule']]:[])];
+  const planning=[['schedule','calendar','Schedule'],['coverage','coverage','Coverage'],['people','people','People'],...(m.breaksOn(S)?[['breaks','clock','Breaks']]:[]),...(me!=null?[['mine','user','My schedule']]:[])];
   const nav=[...planning,['setup','settings','Event setup'],['log','activity','Activity log'],...(!m.connected?[['plans','map','Floorplans'],['incoming','package','Incoming goods']]:[])];
   const navButton=([id,icon,label])=>html`<button key=${id} type="button" className="nav-item" aria-current=${view===id?'page':undefined} onClick=${()=>navigate(id)}><${Icon} name=${icon}/><span>${label}</span></button>`;
-  const title={mine:'My schedule',schedule:'Schedule',coverage:'Coverage',people:'People',setup:'Event setup',log:'Activity log',plans:'Floorplans',incoming:'Incoming goods'}[view];
-  const sub=['schedule','coverage'].includes(view)?dateLabel(dayIndex):event.name;
+  const title={breaks:'Breaks',mine:'My schedule',schedule:'Schedule',coverage:'Coverage',people:'People',setup:'Event setup',log:'Activity log',plans:'Floorplans',incoming:'Incoming goods'}[view];
+  const sub=['schedule','coverage','breaks'].includes(view)?dateLabel(dayIndex):event.name;
   const actions=(editLabel,onEdit,deleteLabel,onDelete,disabled=false)=>html`<div className="row-actions"><${IconButton} name="edit" label=${editLabel} onClick=${onEdit}/><${IconButton} name="delete" label=${deleteLabel} onClick=${onDelete} disabled=${disabled}/></div>`;
   const table=(headers,body)=>html`<div className="data-surface"><table className="data-table"><thead><tr>${headers.map((h,i)=>html`<th key=${i} scope="col" className=${h.className||''}>${h.text}</th>`)}</tr></thead><tbody>${body.length?body:html`<tr><td colSpan=${headers.length} className="empty-table">No records found.</td></tr>`}</tbody></table></div>`;
   return html`<div className="workspace-layout"><nav className="sidebar" aria-label="Main navigation"><span className="nav-group">Planning</span>${nav.slice(0,planning.length).map(navButton)}<span className="nav-group">Manage</span>${nav.slice(planning.length).map(navButton)}</nav>
   <main className="workspace-main"><div className="page-heading"><div><h2>${title}</h2><p className="mute">${sub}</p></div>
    ${view==='schedule'&&html`<button className="btn" onClick=${()=>open('activity')} disabled=${!rooms.length}><${Icon} name="plus"/>New activity</button>`}
+   ${view==='breaks'&&html`<button className="btn" onClick=${()=>setBreakEd({})}><${Icon} name="plus"/>Add lunch or break</button>`}
    ${view==='people'&&html`<div className="heading-actions"><button className="btn ghost" onClick=${()=>setImporting(true)}><${Icon} name="upload"/>Import from Excel</button><button className="btn" onClick=${()=>open('person')}><${Icon} name="plus"/>Add person</button></div>`}
    ${view==='setup'&&html`<button className="btn" onClick=${()=>open(tab==='events'?'event':tab==='rooms'?'room':'activity')} disabled=${tab==='activities'&&!rooms.length}><${Icon} name="plus"/>${tab==='events'?'Add event':tab==='rooms'?'Add room':'New activity'}</button>`}
   </div>
@@ -158,7 +211,7 @@ export function createAdminWorkspace(m,components){
    ${view==='schedule'&&mode==='grid'?html`<${Grid} S=${S}/>`:html`<div className=${'schedule-work '+(currentActivity?'with-detail':'')}><div>
     ${visible.length?view==='schedule'?table([{text:'Activity / room'},{text:'Time',className:'time-column'},{text:'Staffing'},{text:'Acknowledged',className:'ack-column'},{text:''}],visible.map(s=>{const c=cover(s,S.asg),conflict=c.as.some(a=>clash(S.asg,a).length);return html`<tr key=${s.id} className=${selected===s.id?'selected-row':''}>
      <td><button className="activity-link" onClick=${()=>setSelected(s.id)}><b>${s.t}</b><span className="mute">${s.r}</span><span className="mute mobile-time">${span(s)}</span></button>${conflict&&html`<span className="inline-warning"><${Icon} name="warning" size=${13}/>Overlap</span>`}</td><td className="time-column">${span(s)}</td><td><${Badge} kind=${c.as.length<s.n?'warn':'ok'}>${c.as.length} / ${s.n} assigned<//></td><td className="ack-column">${need(s)?`${c.as.filter(a=>a.ack).length} / ${c.as.length}`:html`<span className="mute">Not required</span>`}</td><td><${IconButton} name="right" label=${'Manage '+s.t} onClick=${()=>setSelected(s.id)}/></td></tr>`;})):
-     html`<div className="coverage-list">${[...visible].sort((a,b)=>(b.n-cover(b,S.asg).as.length)-(a.n-cover(a,S.asg).as.length)).map(s=>{const c=cover(s,S.asg);return html`<div className="coverage-row" key=${s.id}><div><b>${s.r}</b><p className="mute">${s.t} · ${span(s)}</p></div><div className="coverage-count"><b>${c.p} / ${s.n}</b><span className="mute">present</span></div><${Badge} kind=${c.as.length<s.n?'warn':'ok'}>${c.as.length} assigned<//><button className="btn ghost" onClick=${()=>setSelected(s.id)}>${c.as.length<s.n?'Fill gap':'View staff'}<${Icon} name="right"/></button></div>`;})}</div>`:
+     html`<div className="coverage-list">${[...visible].sort((a,b)=>(b.n-cover(b,S.asg).as.length)-(a.n-cover(a,S.asg).as.length)).map(s=>{const c=cover(s,S.asg);return html`<div className="coverage-row" key=${s.id}><div><b>${s.r}</b><p className="mute">${s.t} · ${span(s)}</p>${coverNote(s)}</div><div className="coverage-count"><b>${c.p} / ${s.n}</b><span className="mute">present</span></div><${Badge} kind=${c.as.length<s.n?'warn':'ok'}>${c.as.length} assigned<//><button className="btn ghost" onClick=${()=>setSelected(s.id)}>${c.as.length<s.n?'Fill gap':'View staff'}<${Icon} name="right"/></button></div>`;})}</div>`:
      html`<div className="empty-state"><${Icon} name="calendar" size=${28}/><h3>${today.length?'No activities match this filter':'No activities scheduled'}</h3>${today.length?html`<button className="btn ghost" onClick=${()=>setFilter('all')}>Show all activities</button>`:html`<button className="btn" disabled=${!rooms.length} onClick=${()=>open('activity')}><${Icon} name="plus"/>Add activity</button>`}</div>`}
     </div>${currentActivity&&html`<aside ref=${detail} tabIndex=${-1} className="activity-detail" aria-label="Assignment details"><div className="detail-heading"><h3>Assignment details</h3><${IconButton} name="close" label="Close activity" onClick=${()=>setSelected(null)}/></div><${AdminSession} key=${currentActivity.id} s=${currentActivity} S=${S} A=${A} coordinator=${view==='coverage'}/><button className="btn ghost detail-edit" onClick=${()=>open('activity',currentActivity)}><${Icon} name="edit"/>Edit activity</button></aside>`}</div>`}
   `}
@@ -175,7 +228,7 @@ export function createAdminWorkspace(m,components){
    const description=details&&!Array.isArray(details)?details.name||'':Array.isArray(details)?typeof details[0]==='string'?details[0]:details[0]?.n||'':'';
    return html`<tr key=${i}><td>${Number.isNaN(date.valueOf())?entry.t:date.toLocaleString()}</td><td>${names[entry.x]||entry.x}</td><td>${description}</td></tr>`;
   }))}
-  ${view==='mine'&&me!=null&&html`<${Staff} S=${S} A=${A} me=${me} embedded=${true}/>`}${view==='plans'&&html`<${Floorplans} A=${A}/>`}${view==='incoming'&&html`<${Incoming} A=${A}/>`}
-  </main>${importing&&html`<${ImportPeople} A=${A} error=${error} onClose=${()=>setImporting(false)}/>`}${editor&&html`<${Editor} key=${editor.type+'-'+editor.id} editor=${editor} A=${A} error=${error} testLogins=${testLogins} onClose=${()=>setEditor(null)}/>`}</div>`;
+  ${view==='breaks'&&m.breaksOn(S)&&html`<${BreaksPage} S=${S} table=${table} actions=${actions} dayIndex=${dayIndex} setDay=${setDay} onAdd=${()=>setBreakEd({})} onEdit=${b=>setBreakEd(b)} onRemove=${b=>remove('break',b.id,(people[b.e]?.name||'')+' '+m.BREAK[b.k][0].toLowerCase(),'They will be notified that this '+m.BREAK[b.k][0].toLowerCase()+' was cancelled.')}/>`}${view==='mine'&&me!=null&&html`<${Staff} S=${S} A=${A} me=${me} embedded=${true}/>`}${view==='plans'&&html`<${Floorplans} A=${A}/>`}${view==='incoming'&&html`<${Incoming} A=${A}/>`}
+  </main>${breakEd&&html`<${BreakEditor} key=${breakEd.id??'new'} editor=${breakEd} A=${A} S=${S} dayIndex=${dayIndex} onClose=${()=>setBreakEd(null)}/>`}${importing&&html`<${ImportPeople} A=${A} error=${error} onClose=${()=>setImporting(false)}/>`}${editor&&html`<${Editor} key=${editor.type+'-'+editor.id} editor=${editor} A=${A} error=${error} testLogins=${testLogins} onClose=${()=>setEditor(null)}/>`}</div>`;
  };
 }

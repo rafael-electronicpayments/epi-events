@@ -33,6 +33,20 @@ const ROOM_ACK={};
 // Connected databases without the 20261019120000 migration don't know these settings; hide them there.
 const ACK_SUPPORT={on:!CONNECTED};
 const need=s=>!s?true:s.q!=null?!!s.q:ROOM_ACK[s.r]!==false;
+// Scheduled lunches/breaks (S.breaks) and clock-outs (S.clocks). Older connected databases send neither.
+const BREAK={lunch:['Lunch','At lunch','Clock out for lunch'],break:['Break','On break','Clock out for break']};
+const breaksOn=S=>Array.isArray(S.breaks);
+const atTime=(ev,d,min)=>{const t=new Date(evOf(ev).start+'T00:00:00');t.setDate(t.getDate()+d);t.setMinutes(min);return t};
+const todayIndex=ev=>{if(!evOf(ev))return -1;const s=new Date(evOf(ev).start+'T00:00:00'),n=new Date();n.setHours(0,0,0,0);return Math.round((n-s)/86400000)};
+const nowMinute=(t=Date.now())=>{const n=new Date(t);return n.getHours()*60+n.getMinutes()};
+const breakOf=(S,id)=>(S.breaks||[]).find(b=>b.id===id);
+const openClock=(S,e)=>(S.clocks||[]).find(c=>c.e===e&&!c.in);
+// Minutes past the linked scheduled break's end (0 when on time, unscheduled, or not yet due).
+const lateBy=(S,c,now=Date.now())=>{const br=c&&c.bid!=null&&breakOf(S,c.bid);if(!br||!evOf(br.ev))return 0;const end=atTime(br.ev,br.d,br.b).getTime(),at=c.in?new Date(c.in).getTime():now;return at>end?Math.round((at-end)/60000):0};
+const clockTime=iso=>new Date(iso).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
+const breaksDuring=(S,e,s)=>(S.breaks||[]).filter(b=>b.e===e&&b.ev===s.ev&&b.d===s.d&&b.a<s.b&&s.a<b.b);
+const liveNow=s=>todayIndex(s.ev)===s.d&&nowMinute()>=s.a&&nowMinute()<s.b;
+const useNow=(ms=30000)=>{const [n,setN]=useState(Date.now());useEffect(()=>{const t=setInterval(()=>setN(Date.now()),ms);return()=>clearInterval(t)},[ms]);return n};
 // [employee, session, acknowledged, checkedIn, tag]
 const SEED=[[1,1,1,0,''],[2,1,1,0,''],[3,2,0,0,'changed'],[4,3,1,1,''],[5,3,1,1,''],[6,3,1,0,''],[2,3,1,0,''],[0,4,1,0,''],[9,4,1,0,''],[9,5,1,0,''],[10,5,0,0,'new'],[11,6,1,0,''],[8,6,1,0,''],[12,7,1,0,''],[13,7,1,0,''],[14,7,1,0,''],[15,7,1,0,''],[16,8,1,0,''],[20,8,1,0,''],[17,9,1,0,''],[18,9,1,0,''],[19,10,1,0,''],[20,10,1,0,''],[21,11,1,0,''],[22,11,1,0,''],[23,12,1,0,''],[24,12,1,0,''],[12,12,1,0,''],[25,7,1,0,''],[26,10,1,0,''],[27,12,1,0,''],[28,8,0,0,'new']];
 const fmt=m=>{const h=Math.floor(m/60),x=m%60;return (h%12||12)+':'+String(x).padStart(2,'0')+(h<12?' AM':' PM')};
@@ -41,7 +55,7 @@ const ntext=(a,p)=>p+': '+SM[a.s].t+', '+SM[a.s].r+', '+span(SM[a.s])+' ('+dayDa
 let uid=100;
 const H=[];
 const seed=()=>{const asg=SEED.map((r,i)=>({id:i+1,e:r[0],s:r[1],ack:r[2],in:r[3],conf:0,tag:r[4]}));
- return {asg,log:[],notes:asg.filter(a=>!a.ack).map(a=>({id:++uid,e:a.e,aid:a.id,done:0,x:ntext(a,a.tag==='new'?'New assignment':'Changed assignment')}))}};
+ return {asg,log:[],breaks:[],clocks:[],notes:asg.filter(a=>!a.ack).map(a=>({id:++uid,e:a.e,aid:a.id,done:0,x:ntext(a,a.tag==='new'?'New assignment':'Changed assignment')}))}};
 const clash=(asg,a)=>asg.filter(x=>x.id!==a.id&&x.e===a.e&&SM[x.s].ev===SM[a.s].ev&&SM[x.s].d===SM[a.s].d&&SM[x.s].a<SM[a.s].b&&SM[a.s].a<SM[x.s].b).map(x=>SM[x.s]);
 const st=a=>!need(SM[a.s])?['ok','No check-in needed']:a.in||a.conf?['ok',a.conf&&!a.in?'Confirmed by coordinator':'Checked in']:a.ack?['','Acknowledged']:['warn',(a.tag==='changed'?'Changed':'New')+', needs acknowledgment'];
 const cover=(s,asg)=>{const as=asg.filter(x=>x.s===s.id),p=need(s)?as.filter(x=>x.in||x.conf).length:as.length;
@@ -137,8 +151,9 @@ const slug=t=>String(t).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/
 function myDoc(S,me,day,autoPrint=false){
  const p=EMPS[me],ev=evOf(CUR.id),days=day==null?DAYS.map((_,i)=>i):[day];
  const mine=S.asg.filter(a=>a.e===me&&SM[a.s]&&SM[a.s].ev===CUR.id).sort((x,y)=>SM[x.s].d-SM[y.s].d||SM[x.s].a-SM[y.s].a);
- const body=days.map(i=>{const list=mine.filter(a=>SM[a.s].d===i);
-  return `<h3>${esc(DAYS[i])}</h3>`+(list.length?`<table><thead><tr><th class="t">Time</th><th>Activity</th><th>Room</th><th class="s">Status</th></tr></thead><tbody>${list.map(a=>{const s=SM[a.s];return `<tr><td class="t">${esc(span(s))}</td><td><b>${esc(s.t)}</b></td><td>${esc(s.r)}</td><td class="s">${esc(st(a)[1])}</td></tr>`}).join('')}</tbody></table>`:'<p class="m">No assignments.</p>')}).join('');
+ const brs=(S.breaks||[]).filter(b=>b.e===me&&b.ev===CUR.id);
+ const body=days.map(i=>{const list=[...mine.filter(a=>SM[a.s].d===i).map(a=>{const s=SM[a.s];return [s.a,`<tr><td class="t">${esc(span(s))}</td><td><b>${esc(s.t)}</b></td><td>${esc(s.r)}</td><td class="s">${esc(st(a)[1])}</td></tr>`]}),...brs.filter(b=>b.d===i).map(b=>[b.a,`<tr class="br"><td class="t">${esc(span(b))}</td><td><i>${BREAK[b.k][1]}</i></td><td></td><td class="s"></td></tr>`])].sort((x,y)=>x[0]-y[0]).map(x=>x[1]);
+  return `<h3>${esc(DAYS[i])}</h3>`+(list.length?`<table><thead><tr><th class="t">Time</th><th>Activity</th><th>Room</th><th class="s">Status</th></tr></thead><tbody>${list.join('')}</tbody></table>`:'<p class="m">No assignments.</p>')}).join('');
  const scope=day==null?'All days':DAYS[day];
  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(p.name)} schedule, ${esc(ev.name)}</title><style>@page{size:letter portrait;margin:.5in}body{font:12px/1.4 system-ui,sans-serif;color:#000;margin:16px;max-width:8in}h2{margin:0 0 2px}h3{margin:18px 0 6px;font-size:13px;border-bottom:2px solid #0f766e;padding-bottom:3px}p.m{color:#555;margin:4px 0}.m{color:#555}table{border-collapse:collapse;width:100%}th,td{border-top:1px solid #bbb;padding:5px 6px;text-align:left;vertical-align:top}thead th{background:#e8eeed;font-weight:700}.t{white-space:nowrap;width:1%}.s{width:28%}tr,h3{break-inside:avoid}h3{break-after:avoid}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}button{font:inherit;padding:10px 16px;margin:0 0 12px;min-height:44px}@media print{body{margin:0}button{display:none}}</style></head><body><button onclick="window.print()">Print</button><h2>${esc(p.name)}</h2><p class="m">${esc(ev.name)} · ${esc(scope)} · ${(n=>n+' assignment'+(n===1?'':'s'))(mine.filter(a=>days.includes(SM[a.s].d)).length)} · Printed ${esc(new Date().toLocaleString('en-US',{dateStyle:'medium',timeStyle:'short'}))}</p>${body}${autoPrint?'<script>addEventListener("load",()=>setTimeout(()=>print(),200))</script>':''}</body></html>`}
 function MyExport({S,me,day}){
@@ -160,6 +175,13 @@ function Staff({S,A,me,canFull=false,embedded=false}){
  const ended=s=>{const t=new Date(evOf(s.ev).start+'T00:00:00');t.setDate(t.getDate()+s.d);t.setMinutes(s.b);return t<new Date()};
  const next=mine.find(a=>need(SM[a.s])?!a.in&&!a.conf:!ended(SM[a.s])), notes=S.notes.filter(n=>n.e===me&&!n.done);
  const [shown,setShown]=useState(null),[fv,setFv]=useState(null),sa=mine.find(a=>a.id===shown);
+ const now=useNow(),ti=todayIndex(CUR.id),nm0=nowMinute(now),oc=breaksOn(S)&&openClock(S,me);
+ const myBreaks=(S.breaks||[]).filter(b=>b.e===me&&b.ev===CUR.id).sort((x,y)=>x.d-y.d||x.a-y.a);
+ const pick=k=>{const t=myBreaks.filter(b=>b.k===k&&b.d===ti);return t.length?t.reduce((p,b)=>Math.abs(b.a-nm0)<Math.abs(p.a-nm0)?b:p).id:null};
+ const nextBreak=myBreaks.find(b=>b.d===ti&&b.b>nm0);
+ const dayItems=i=>[...mine.filter(a=>SM[a.s].d===i).map(a=>({t:SM[a.s].a,a})),...myBreaks.filter(b=>b.d===i).map(b=>({t:b.a,br:b}))].sort((x,y)=>x.t-y.t);
+ const BreakCard=({b})=>html`<div className="card break-card"><h3>${BREAK[b.k][1]}</h3><p className="mute">${span(b)} · ${DAYS[b.d]}</p></div>`;
+ const late=oc?lateBy(S,oc,now):0,obr=oc&&oc.bid!=null&&breakOf(S,oc.bid);
  const Card=({a,cls})=>{const s=SM[a.s],[k,l]=st(a);return html`<div className=${'card '+(cls||'')}>
   <h3>${s.t}</h3><p className="mute">${s.r} · ${span(s)} · ${DAYS[s.d]}</p><p><${Pill} k=${k}>${l}<//> ${a.cal!=null&&html`<${Pill} k=${a.cal===(a.seq||0)?'ok':'warn'}>${a.cal===(a.seq||0)?'On your calendar':'Calendar out of date'}<//>`}</p>
   <div className="acts">${need(s)&&html`<button className="btn" disabled=${!!a.ack} onClick=${()=>A.ack(a.id)}>Acknowledge</button>
@@ -168,6 +190,8 @@ function Staff({S,A,me,canFull=false,embedded=false}){
  ${notes.map(n=>html`<div className="card note" key=${n.id} role="status"><b>${n.x}</b>${n.from&&html`<p className="mute">${n.from}</p>`}
   ${(()=>{const na=n.aid&&S.asg.find(a=>a.id===n.aid),ask=!!na&&need(SM[na.s]);return html`<button className="btn" onClick=${()=>ask?A.ack(n.aid):A.dismiss(n.id)}>${ask?'Acknowledge':'Got it'}</button>`})()}</div>`)}
  ${mine.filter(a=>a.pc).map(a=>html`<div className="card note" key=${'c'+a.id} role="status"><b>${a.cal==null?'Add to your calendar?':'Update your calendar?'}</b><p className="mute">${SM[a.s].t}, ${SM[a.s].r}, ${span(SM[a.s])} (${DAYS[SM[a.s].d]}). Reminder 30 minutes before.</p><div className="acts"><button className="btn" onClick=${()=>{A.calAdd(a.id);setShown(a.id)}}>${a.cal==null?'Add to calendar':'Update calendar'}</button><button className="btn ghost" onClick=${()=>A.calSkip(a.id)}>Not now</button></div></div>`)}
+ ${breaksOn(S)&&html`<div className=${'card clock-card'+(oc?' out':'')+(late?' late':'')}>${oc?html`<b>${BREAK[oc.k][1]} since ${clockTime(oc.out)}</b><p className="mute">${obr?'Scheduled until '+fmt(obr.b):'Unscheduled '+BREAK[oc.k][0].toLowerCase()}</p>${late>0&&html`<p><${Pill} k="bad">Late return · ${late} min past scheduled end<//></p>`}<div className="acts"><button className="btn" onClick=${()=>A.clockIn()}>Clock back in</button></div>`
+  :html`<b>Lunch and breaks</b><p className="mute">${nextBreak?'Next: '+BREAK[nextBreak.k][0]+', '+span(nextBreak)+' today.':'Clock out whenever you step away, then clock back in when you return.'}</p><div className="acts">${['lunch','break'].map(k=>html`<button key=${k} className="btn ghost" onClick=${()=>A.clockOut(k,pick(k))}>${BREAK[k][2]}</button>`)}</div>`}</div>`}
  ${sa&&html`<div className="card"><b>Calendar event ready</b><p className="mute">${SM[sa.s].t}, ${SM[sa.s].r}, ${span(SM[sa.s])}. Reminder 30 minutes before.</p><p className="mute">In the real app this opens your phone's calendar (Apple, Google, or Outlook). This preview can't open a phone calendar, so the file it would send is shown below.</p><details><summary>Calendar file (for developers)</summary><pre style=${{whiteSpace:'pre-wrap',fontSize:'.8rem'}}>${ics(sa)}</pre></details><button className="btn ghost" onClick=${()=>setShown(null)}>Close</button></div>`}
  ${!embedded&&html`<div className="card"><b>Venue floorplan</b>${EMPS[me].map?(FP.some(f=>f.ev===CUR.id)?html`<div className="acts">${FP.filter(f=>f.ev===CUR.id).map(f=>html`<button key=${f.id} className="btn ghost" onClick=${()=>setFv(f.id)}>${f.name}</button>`)}</div>`:html`<p className="mute">No floorplan has been added for this event yet.</p>`):html`<p className="mute">Your administrator has not turned on access for you.</p>`}</div>`}
  ${!embedded&&!!EMPS[me].map&&FP.find(f=>f.id===fv&&f.ev===CUR.id)&&html`<${PdfView} f=${FP.find(f=>f.id===fv)} onClose=${()=>setFv(null)}/>`}
@@ -178,13 +202,13 @@ function Staff({S,A,me,canFull=false,embedded=false}){
  <${MyExport} S=${S} me=${me} day=${all?null:d}/>
  ${(all?DAYS.map((_,i)=>i):[d]).map(i=>html`<div key=${i}>${all&&html`<h3 className="day-heading">${DAYS[i]}</h3>`}
   ${full?html`${dayActs(i).map(s=>html`<${FullCard} key=${s.id} s=${s}/>`)}${!dayActs(i).length&&html`<p className="mute">No activities on ${DAYS[i]}.</p>`}`
-   :html`${mine.filter(a=>SM[a.s].d===i).map(a=>html`<${Card} key=${a.id} a=${a}/>`)}${!mine.some(a=>SM[a.s].d===i)&&html`<p className="mute">No assignments on ${DAYS[i]}.</p>`}`}</div>`)}</div>`}
+   :html`${dayItems(i).map(x=>x.br?html`<${BreakCard} key=${'b'+x.br.id} b=${x.br}/>`:html`<${Card} key=${x.a.id} a=${x.a}/>`)}${!dayItems(i).length&&html`<p className="mute">No assignments on ${DAYS[i]}.</p>`}`}</div>`)}</div>`}
 function AdminSession({s,S,A,coordinator=false}){
  const [pick,setPick]=useState('');
  const as=S.asg.filter(x=>x.s===s.id), free=EMPS.filter(e=>!e.gone&&!as.some(x=>x.e===e.id)), same=SESS.filter(o=>o.ev===s.ev&&o.d===s.d&&o.id!==s.id);
  return html`<div className="session-panel"><${Head} s=${s} asg=${S.asg}/>
  <ul className="rows">${as.map(a=>{const c=clash(S.asg,a),[k,l]=st(a);return html`<li key=${a.id} className="lead-actions"><${IconButton} name="delete" label=${'Remove '+EMPS[a.e].name} onClick=${()=>A.remove(a.id)}/><div>
-  <div><b>${nm(a.e)}</b> <${Pill} k=${k}>${l}<//> ${c.length>0&&html`<${Pill} k="bad">Overlaps ${c.map(o=>o.t).join(', ')}<//>`}</div>
+  <div><b>${nm(a.e)}</b> <${Pill} k=${k}>${l}<//> ${c.length>0&&html`<${Pill} k="bad">Overlaps ${c.map(o=>o.t).join(', ')}<//>`}${breaksDuring(S,a.e,s).map(b=>html` <${Pill} key=${'b'+b.id}>${BREAK[b.k][0]} ${span(b)}<//>`)}${(()=>{const o=openClock(S,a.e),lt=o&&lateBy(S,o);return o&&html` <${Pill} k=${lt?'bad':'warn'}>${BREAK[o.k][1]} now${lt?' · '+lt+' min late':''}<//>`})()}</div>
   <div className="acts"><select aria-label=${'Move '+EMPS[a.e].name} value="" onChange=${ev=>ev.target.value&&A.move(a.id,+ev.target.value)}>
    <option value="">Move to…</option>${same.map(o=>html`<option key=${o.id} value=${o.id}>${o.r}, ${span(o)}, ${o.t}</option>`)}</select>
   ${coordinator&&need(s)&&html`<button className="btn ghost" disabled=${!!a.in||!!a.conf} onClick=${()=>A.confirm(a.id)}>Confirm present</button>`}</div></div></li>`})}</ul>
@@ -220,7 +244,7 @@ function Grid({S}){
  <//>`})}</tbody></table></div>
  ${!rows.length&&html`<p className="mute">No activities yet for this event.</p>`}
  <h3 style=${{marginTop:16}}>Staff colors</h3><div className="legend">${used.map(e=>html`<span key=${e}><i className="sw" style=${{background:col(e,1)}}></i>${EMPS[e].name}</span>`)}</div></div>`}
-const Admin=createAdminWorkspace({people:EMPS,events:EVS,rooms:ROOMS,activities:SESS,current:CUR,days:DAYS,daysShort:DAYS_SHORT,cover,clash,span,evEnd,evStatus,need,roomAck:ROOM_ACK,ackSupport:ACK_SUPPORT,connected:CONNECTED},{AdminSession,Grid,Floorplans,Incoming,Staff});
+const Admin=createAdminWorkspace({people:EMPS,events:EVS,rooms:ROOMS,activities:SESS,current:CUR,days:DAYS,daysShort:DAYS_SHORT,cover,clash,span,evEnd,evStatus,need,roomAck:ROOM_ACK,ackSupport:ACK_SUPPORT,BREAK,breaksOn,breaksDuring,openClock,lateBy,liveNow,clockTime,breakOf,todayIndex,connected:CONNECTED},{AdminSession,Grid,Floorplans,Incoming,Staff});
 function App({connected}){
  const [demoS,setS]=useState(()=>connected?connected.snapshot:seed()),[demoRole,setRole]=useState('admin'),[demoMe,setMe]=useState(0),[toast,setToast]=useState('');
  const S=connected?connected.snapshot:demoS,role=connected?connected.snapshot.role:demoRole,me=connected?connected.snapshot.me:demoMe;
@@ -262,9 +286,14 @@ function App({connected}){
   switchEv:id=>{CUR.id=id;syncEv();setS(s=>({...s}))},
   calAdd:id=>{setS(s=>{const o=s.asg.find(a=>a.id===id);return L({...s,asg:s.asg.map(a=>a.id===id?{...a,cal:a.seq||0,pc:0}:a)},EMPS[o.e].name+' added '+SM[o.s].t+' to their calendar with a 30-minute reminder')})},
   calSkip:id=>setS(s=>({...s,asg:s.asg.map(a=>a.id===id?{...a,pc:0}:a)})),
+  addBreak:(k,d,a,b,ids)=>{if(!ids||!ids.length){say('Choose at least one person');return false}if(!(b>a)){say('End time must be after start time');return false}const ev=CUR.id;setS(s=>{let next=Math.max(0,...(s.breaks||[]).map(x=>x.id));const add=ids.map(e=>({id:++next,e,ev,d:+d,k,a,b}));return L({...s,breaks:[...(s.breaks||[]),...add],notes:[...s.notes,...add.map(x=>({id:++uid,e:x.e,aid:null,done:0,x:BREAK[k][0]+' scheduled: '+span(x)+' ('+DAYS[x.d]+')'}))]},'Scheduled '+BREAK[k][0].toLowerCase()+' for '+ids.map(e=>EMPS[e].name).join(', ')+', '+DAYS[+d]+' '+span({a,b}))});say(BREAK[k][0]+' scheduled for '+ids.length+(ids.length===1?' person':' people'));return true},
+  editBreak:(id,k,d,a,b)=>{if(!(b>a)){say('End time must be after start time');return false}setS(s=>{const o=s.breaks.find(x=>x.id===id),n={...o,k,d:+d,a,b};return L({...s,breaks:s.breaks.map(x=>x.id===id?n:x),notes:[...s.notes,{id:++uid,e:o.e,aid:null,done:0,x:BREAK[k][0]+' changed: '+span(n)+' ('+DAYS[n.d]+')'}]},'Updated '+BREAK[k][0].toLowerCase()+' for '+EMPS[o.e].name)});say('Saved');return true},
+  delBreak:id=>{setS(s=>{const o=s.breaks.find(x=>x.id===id);return L({...s,breaks:s.breaks.filter(x=>x.id!==id),clocks:(s.clocks||[]).map(c=>c.bid===id?{...c,bid:null}:c),notes:[...s.notes,{id:++uid,e:o.e,aid:null,done:0,x:BREAK[o.k][0]+' cancelled: '+span(o)+' ('+DAYS[o.d]+')'}]},'Cancelled '+BREAK[o.k][0].toLowerCase()+' for '+EMPS[o.e].name)});say('Break removed');return true},
+  clockOut:(k,bid=null)=>{if(openClock(S,me)){say('Already clocked out');return false}setS(s=>Lg({...s,clocks:[{id:++uid,e:me,k,bid,out:new Date().toISOString(),in:null},...(s.clocks||[])]},EMPS[me].name+' clocked out for '+BREAK[k][0].toLowerCase()));say('Clocked out for '+BREAK[k][0].toLowerCase());return true},
+  clockIn:()=>{const c=openClock(S,me);if(!c){say('Not clocked out');return false}setS(s=>Lg({...s,clocks:s.clocks.map(x=>x.id===c.id?{...x,in:new Date().toISOString()}:x)},EMPS[me].name+' clocked back in'));say('Clocked back in');return true},
   setStart:v=>{if(!v)return false;EVD.d=v;setS(s=>L({...s},'Set event start date to '+v));say('Start date saved');return true},
   setDays:n=>{n=Math.floor(+n);if(!(n>=1&&n<=14)){say('Enter 1 to 14 days');return false}if(n===DAYS.length){say('Already '+n+' days');return false}const bad=SESS.find(s=>s.d>=n);if(bad){say('Move or delete activities on '+DAYS[bad.d]+' first');return false}const was=DAYS.length;fillDays(EVD.d,n);setS(s=>L({...s},'Changed event length from '+was+' to '+n+' days'));say('Event is now '+n+' days');return true}};
- Object.keys(A).forEach(k=>{if(['dismiss','calAdd','calSkip','switchEv'].includes(k))return;const f=A[k];A[k]=(...a)=>{snap();const r=f(...a);if(r===false)H.pop();return r}});
+ Object.keys(A).forEach(k=>{if(['dismiss','calAdd','calSkip','switchEv','clockOut','clockIn'].includes(k))return;const f=A[k];A[k]=(...a)=>{snap();const r=f(...a);if(r===false)H.pop();return r}});
  A.undo=()=>{const h=H.pop();if(!h)return;EMPS.length=0;EMPS.push(...h.emps);ROOMS.length=0;ROOMS.push(...h.rooms);Object.keys(ROOM_ACK).forEach(k=>delete ROOM_ACK[k]);Object.assign(ROOM_ACK,h.roomAck);SESS.length=0;SESS.push(...h.sess);Object.keys(SM).forEach(k=>delete SM[k]);SESS.forEach(o=>{SM[o.id]=o});EVS.length=0;EVS.push(...h.evs);CUR.id=h.cur;FP.length=0;FP.push(...h.fp);INV.length=0;INV.push(...h.inv);syncEv();setS(Lg(h.s,'Undid: '+h.label));say('Undid: '+h.label)};
  if(connected)Object.keys(A).forEach(k=>{
   if(k==='switchEv')return;
@@ -273,7 +302,7 @@ function App({connected}){
    const expectedRevision=k.startsWith('edit')&&options&&typeof options==='object'&&Object.hasOwn(options,'expectedRevision')?args.pop().expectedRevision:undefined;
    // Older databases take the original argument lists, without the acknowledgment setting.
    if(!ACK_SUPPORT.on&&({addRoom:2,editRoom:3,addSession:7,editSession:8})[k]===args.length)args.pop();
-   if(k==='addSession')args.push(CUR.id);
+   if(k==='addSession'||k==='addBreak')args.push(CUR.id);
    return connected.command(k,args,expectedRevision);
   };
  });
