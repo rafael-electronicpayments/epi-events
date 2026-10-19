@@ -217,3 +217,4 @@ body:has(dialog[open]) .app-error{display:none}
 .break-people-tools{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px}.break-people-tools select,.break-people-tools input{flex:1 1 200px;min-width:0}
 .break-people-list{max-height:260px;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:0 12px}
 .break-people-list .chk{gap:8px;font-size:13px}.break-people-list .chk .mute{font-size:11px;margin-left:auto}
+.export-msg{margin:-12px 0 16px}

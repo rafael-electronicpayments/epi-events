@@ -1,6 +1,7 @@
 import { createConnection } from './connection.js';
 import { createAdminWorkspace } from './admin-workspace.js';
 import { AppHeader, Icon, IconButton } from './ui.js';
+import { xlsx } from './xlsx-writer.js';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import htm from 'htm';
@@ -156,6 +157,27 @@ function myDoc(S,me,day,autoPrint=false){
   return `<h3>${esc(DAYS[i])}</h3>`+(list.length?`<table><thead><tr><th class="t">Time</th><th>Activity</th><th>Room</th><th class="s">Status</th></tr></thead><tbody>${list.join('')}</tbody></table>`:'<p class="m">No assignments.</p>')}).join('');
  const scope=day==null?'All days':DAYS[day];
  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(p.name)} schedule, ${esc(ev.name)}</title><style>@page{size:letter portrait;margin:.5in}body{font:12px/1.4 system-ui,sans-serif;color:#000;margin:16px;max-width:8in}h2{margin:0 0 2px}h3{margin:18px 0 6px;font-size:13px;border-bottom:2px solid #0f766e;padding-bottom:3px}p.m{color:#555;margin:4px 0}.m{color:#555}table{border-collapse:collapse;width:100%}th,td{border-top:1px solid #bbb;padding:5px 6px;text-align:left;vertical-align:top}thead th{background:#e8eeed;font-weight:700}.t{white-space:nowrap;width:1%}.s{width:28%}tr,h3{break-inside:avoid}h3{break-after:avoid}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}button{font:inherit;padding:10px 16px;margin:0 0 12px;min-height:44px}@media print{body{margin:0}button{display:none}}</style></head><body><button onclick="window.print()">Print</button><h2>${esc(p.name)}</h2><p class="m">${esc(ev.name)} · ${esc(scope)} · ${(n=>n+' assignment'+(n===1?'':'s'))(mine.filter(a=>days.includes(SM[a.s].d)).length)} · Printed ${esc(new Date().toLocaleString('en-US',{dateStyle:'medium',timeStyle:'short'}))}</p>${body}${autoPrint?'<script>addEventListener("load",()=>setTimeout(()=>print(),200))</script>':''}</body></html>`}
+// Breaks export: every scheduled lunch/break for the current event, by day, then room, then time.
+// Each break is listed under the room of the activity the person is assigned to during it (largest overlap).
+const breakPlan=S=>{const ev=CUR.id;
+ const where=b=>{let best=null,ov=0;S.asg.filter(a=>a.e===b.e).forEach(a=>{const s=SM[a.s];if(!s||s.ev!==ev||s.d!==b.d)return;const o=Math.min(s.b,b.b)-Math.max(s.a,b.a);if(o>ov){ov=o;best=s}});return best};
+ const ri=s=>!s?1e6:ROOMS.includes(s.r)?ROOMS.indexOf(s.r):1e5;
+ return (S.breaks||[]).filter(b=>b.ev===ev&&EMPS[b.e]&&!EMPS[b.e].gone&&b.d<DAYS.length).map(b=>({b,s:where(b)}))
+  .sort((x,y)=>x.b.d-y.b.d||ri(x.s)-ri(y.s)||(x.s&&y.s?x.s.r.localeCompare(y.s.r):0)||x.b.a-y.b.a||EMPS[x.b.e].name.localeCompare(EMPS[y.b.e].name))};
+const NO_ROOM='No room assigned';
+function breaksDoc(S,autoPrint=false){
+ const ev=evOf(CUR.id),plan=breakPlan(S),out=[];let day=-1,room=null;
+ plan.forEach(({b,s})=>{const r=s?s.r:NO_ROOM;
+  if(b.d!==day){if(room!==null)out.push('</tbody></table>');out.push(`<h2>${esc(DAYS[b.d])}</h2>`);day=b.d;room=null}
+  if(r!==room){if(room!==null)out.push('</tbody></table>');out.push(`<h3>${esc(r)}</h3><table><thead><tr><th class="bt">Time</th><th class="bp">Person</th><th class="k">Type</th><th>During activity</th></tr></thead><tbody>`);room=r}
+  out.push(`<tr><td class="t">${esc(span(b))}</td><td><b>${esc(EMPS[b.e].name)}</b>${EMPS[b.e].role?`<br><span class="m">${esc(EMPS[b.e].role)}</span>`:''}</td><td class="k">${BREAK[b.k][0]}</td><td>${s?esc(s.t)+' <span class="m">('+esc(span(s))+')</span>':'<span class="m">Not assigned at this time</span>'}</td></tr>`)});
+ if(room!==null)out.push('</tbody></table>');
+ return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(ev.name)} lunches and breaks</title><style>@page{size:letter portrait;margin:.5in}body{font:12px/1.4 system-ui,sans-serif;color:#000;margin:16px;max-width:8in}h1{font-size:18px;margin:0 0 2px}h2{font-size:15px;margin:22px 0 4px;border-bottom:2px solid #0f766e;padding-bottom:3px;break-after:avoid}h3{font-size:13px;margin:12px 0 4px;break-after:avoid}.m{color:#555}table{border-collapse:collapse;width:100%}th,td{border-top:1px solid #bbb;padding:5px 6px;text-align:left;vertical-align:top}thead th{background:#e8eeed;font-weight:700}table{table-layout:fixed}.t{white-space:nowrap}.bt{width:24%}.bp{width:30%}.k{width:10%}tr{break-inside:avoid}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}button{font:inherit;padding:10px 16px;margin:0 0 12px;min-height:44px}@media print{body{margin:0}button{display:none}}</style></head><body><button onclick="window.print()">Print or save as PDF</button><h1>${esc(ev.name)}: lunches and breaks</h1><p class="m">${plan.length} scheduled · by day, then room · Printed ${esc(new Date().toLocaleString('en-US',{dateStyle:'medium',timeStyle:'short'}))}</p>${out.join('')||'<p class="m">No lunches or breaks are scheduled.</p>'}${autoPrint?'<script>addEventListener("load",()=>setTimeout(()=>print(),200))</script>':''}</body></html>`}
+const breaksSheet=S=>[['Day','Room','Person','Role','Type','Start','End','During activity'],...breakPlan(S).map(({b,s})=>[DAYS[b.d],s?s.r:NO_ROOM,EMPS[b.e].name,EMPS[b.e].role||'',BREAK[b.k][0],fmt(b.a),fmt(b.b),s?s.t+' ('+span(s)+')':''])];
+const breakExport={
+ pdf:S=>{const url=URL.createObjectURL(new Blob([breaksDoc(S,true)],{type:'text/html'})),w=window.open(url,'_blank');setTimeout(()=>URL.revokeObjectURL(url),60000);return w?'':'Your browser blocked the print window. Allow pop-ups for this site and try again.'},
+ xlsx:async S=>{try{const d=window.claude&&await window.claude.use('downloads');if(!d)return 'Saving is not available here.';await d.save({filename:slug(evOf(CUR.id).name)+'-lunches-and-breaks.xlsx',data:xlsx('Lunches and breaks',breaksSheet(S),[20,20,24,22,8,10,10,40])});return 'Excel file saved.'}catch(e){return e&&e.code==='declined'?'Download canceled.':'Could not save the file.'}}
+};
 function MyExport({S,me,day}){
  const [msg,setMsg]=useState('');
  const name=()=>slug(evOf(CUR.id).name)+'-'+slug(EMPS[me].name)+'-'+(day==null?'all-days':slug(DAYS_SHORT[day]))+'.html';
@@ -244,7 +266,7 @@ function Grid({S}){
  <//>`})}</tbody></table></div>
  ${!rows.length&&html`<p className="mute">No activities yet for this event.</p>`}
  <h3 style=${{marginTop:16}}>Staff colors</h3><div className="legend">${used.map(e=>html`<span key=${e}><i className="sw" style=${{background:col(e,1)}}></i>${EMPS[e].name}</span>`)}</div></div>`}
-const Admin=createAdminWorkspace({people:EMPS,events:EVS,rooms:ROOMS,activities:SESS,current:CUR,days:DAYS,daysShort:DAYS_SHORT,cover,clash,span,evEnd,evStatus,need,roomAck:ROOM_ACK,ackSupport:ACK_SUPPORT,BREAK,breaksOn,breaksDuring,openClock,lateBy,liveNow,clockTime,breakOf,todayIndex,connected:CONNECTED},{AdminSession,Grid,Floorplans,Incoming,Staff});
+const Admin=createAdminWorkspace({people:EMPS,events:EVS,rooms:ROOMS,activities:SESS,current:CUR,days:DAYS,daysShort:DAYS_SHORT,cover,clash,span,evEnd,evStatus,need,roomAck:ROOM_ACK,ackSupport:ACK_SUPPORT,BREAK,breaksOn,breaksDuring,openClock,lateBy,liveNow,clockTime,breakOf,todayIndex,breakExport,connected:CONNECTED},{AdminSession,Grid,Floorplans,Incoming,Staff});
 function App({connected}){
  const [demoS,setS]=useState(()=>connected?connected.snapshot:seed()),[demoRole,setRole]=useState('admin'),[demoMe,setMe]=useState(0),[toast,setToast]=useState('');
  const S=connected?connected.snapshot:demoS,role=connected?connected.snapshot.role:demoRole,me=connected?connected.snapshot.me:demoMe;

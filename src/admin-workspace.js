@@ -159,7 +159,7 @@ export function createAdminWorkspace(m,components){
 
  return function AdminWorkspace({S,A,me=null,error='',testLogins}){
   const [view,setView]=useState('schedule'),[day,setDay]=useState(0),[mode,setMode]=useState('list'),[filter,setFilter]=useState('all');
-  const [importing,setImporting]=useState(false),[breakEd,setBreakEd]=useState(null),[selected,setSelected]=useState(null),[query,setQuery]=useState(''),[type,setType]=useState('all'),[tab,setTab]=useState('events'),[editor,setEditor]=useState(null);
+  const [importing,setImporting]=useState(false),[breakEd,setBreakEd]=useState(null),[exportMsg,setExportMsg]=useState(''),[selected,setSelected]=useState(null),[query,setQuery]=useState(''),[type,setType]=useState('all'),[tab,setTab]=useState('events'),[editor,setEditor]=useState(null);
   const detail=useRef(null);
   const dayIndex=Math.min(day,days.length-1),event=events.find(e=>e.id===current.id);
   useEffect(()=>{setDay(0);setSelected(null);setFilter('all');setEditor(null);},[current.id]);
@@ -173,7 +173,7 @@ export function createAdminWorkspace(m,components){
   const coverNote=s=>{if(!m.breaksOn(S))return null;const as=S.asg.filter(a=>a.s===s.id&&people[a.e]),first=e=>people[e].name.split(' ')[0];
    const outs=as.map(a=>[a.e,m.openClock(S,a.e)]).filter(([,c])=>c),brs=as.flatMap(a=>m.breaksDuring(S,a.e,s).map(b=>[a.e,b]));
    return html`${m.liveNow(s)&&html`<p className="coverage-live"><b>Active now: ${as.length-outs.length} of ${as.length}</b>${outs.length>0&&html` · ${outs.map(([e,c])=>first(e)+' '+m.BREAK[c.k][1].toLowerCase()+(m.lateBy(S,c)?' (late)':'')).join(', ')}`}</p>`}${brs.length>0&&html`<p className="mute coverage-breaks">Breaks: ${brs.map(([e,b])=>first(e)+' '+m.BREAK[b.k][0].toLowerCase()+' '+span(b)).join(', ')}</p>`}`;};
-  const navigate=next=>{setView(next);setSelected(null);setFilter('all');};
+  const navigate=next=>{setExportMsg('');setView(next);setSelected(null);setFilter('all');};
   const open=(entity,record=null)=>{
    let draft,id;
    if(entity==='person'){id=record?.id;draft={name:record?.name||'',email:record?.email||'',title:record?.role||'Room Host',type:record?.acct||'staff',phone:record?.phone||'',map:record?!!record.map:true};}
@@ -193,7 +193,7 @@ export function createAdminWorkspace(m,components){
   return html`<div className="workspace-layout"><nav className="sidebar" aria-label="Main navigation"><span className="nav-group">Planning</span>${nav.slice(0,planning.length).map(navButton)}<span className="nav-group">Manage</span>${nav.slice(planning.length).map(navButton)}</nav>
   <main className="workspace-main"><div className="page-heading"><div><h2>${title}</h2><p className="mute">${sub}</p></div>
    ${view==='schedule'&&html`<button className="btn" onClick=${()=>open('activity')} disabled=${!rooms.length}><${Icon} name="plus"/>New activity</button>`}
-   ${view==='breaks'&&html`<button className="btn" onClick=${()=>setBreakEd({})}><${Icon} name="plus"/>Add lunch or break</button>`}
+   ${view==='breaks'&&html`<div className="heading-actions">${(()=>{const none=!(S.breaks||[]).some(b=>b.ev===current.id);return html`<button className="btn ghost" disabled=${none} title=${none?'No lunches or breaks to export':''} onClick=${()=>setExportMsg(m.breakExport.pdf(S))}><${Icon} name="print"/>PDF</button><button className="btn ghost" disabled=${none} onClick=${async()=>setExportMsg(await m.breakExport.xlsx(S))}><${Icon} name="download"/>Excel</button>`})()}<button className="btn" onClick=${()=>setBreakEd({})}><${Icon} name="plus"/>Add lunch or break</button></div>`}
    ${view==='people'&&html`<div className="heading-actions"><button className="btn ghost" onClick=${()=>setImporting(true)}><${Icon} name="upload"/>Import from Excel</button><button className="btn" onClick=${()=>open('person')}><${Icon} name="plus"/>Add person</button></div>`}
    ${view==='setup'&&html`<button className="btn" onClick=${()=>open(tab==='events'?'event':tab==='rooms'?'room':'activity')} disabled=${tab==='activities'&&!rooms.length}><${Icon} name="plus"/>${tab==='events'?'Add event':tab==='rooms'?'Add room':'New activity'}</button>`}
   </div>
@@ -228,7 +228,7 @@ export function createAdminWorkspace(m,components){
    const description=details&&!Array.isArray(details)?details.name||'':Array.isArray(details)?typeof details[0]==='string'?details[0]:details[0]?.n||'':'';
    return html`<tr key=${i}><td>${Number.isNaN(date.valueOf())?entry.t:date.toLocaleString()}</td><td>${names[entry.x]||entry.x}</td><td>${description}</td></tr>`;
   }))}
-  ${view==='breaks'&&m.breaksOn(S)&&html`<${BreaksPage} S=${S} table=${table} actions=${actions} dayIndex=${dayIndex} setDay=${setDay} onAdd=${()=>setBreakEd({})} onEdit=${b=>setBreakEd(b)} onRemove=${b=>remove('break',b.id,(people[b.e]?.name||'')+' '+m.BREAK[b.k][0].toLowerCase(),'They will be notified that this '+m.BREAK[b.k][0].toLowerCase()+' was cancelled.')}/>`}${view==='mine'&&me!=null&&html`<${Staff} S=${S} A=${A} me=${me} embedded=${true}/>`}${view==='plans'&&html`<${Floorplans} A=${A}/>`}${view==='incoming'&&html`<${Incoming} A=${A}/>`}
+  ${view==='breaks'&&exportMsg&&html`<p className="mute export-msg" role="status">${exportMsg}</p>`}${view==='breaks'&&m.breaksOn(S)&&html`<${BreaksPage} S=${S} table=${table} actions=${actions} dayIndex=${dayIndex} setDay=${setDay} onAdd=${()=>setBreakEd({})} onEdit=${b=>setBreakEd(b)} onRemove=${b=>remove('break',b.id,(people[b.e]?.name||'')+' '+m.BREAK[b.k][0].toLowerCase(),'They will be notified that this '+m.BREAK[b.k][0].toLowerCase()+' was cancelled.')}/>`}${view==='mine'&&me!=null&&html`<${Staff} S=${S} A=${A} me=${me} embedded=${true}/>`}${view==='plans'&&html`<${Floorplans} A=${A}/>`}${view==='incoming'&&html`<${Incoming} A=${A}/>`}
   </main>${breakEd&&html`<${BreakEditor} key=${breakEd.id??'new'} editor=${breakEd} A=${A} S=${S} dayIndex=${dayIndex} onClose=${()=>setBreakEd(null)}/>`}${importing&&html`<${ImportPeople} A=${A} error=${error} onClose=${()=>setImporting(false)}/>`}${editor&&html`<${Editor} key=${editor.type+'-'+editor.id} editor=${editor} A=${A} error=${error} testLogins=${testLogins} onClose=${()=>setEditor(null)}/>`}</div>`;
  };
 }
