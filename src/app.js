@@ -32,7 +32,9 @@ const WORKER='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.
 const kb=n=>n>1048576?(n/1048576).toFixed(1)+' MB':Math.max(1,Math.round(n/1024))+' KB';
 const evOf=id=>EVS.find(e=>e.id===id);
 const evEnd=e=>{const [y,m,d]=e.start.split('-').map(Number);return new Date(Date.UTC(y,m-1,d+e.days-1)).toISOString().slice(0,10)};
-const evStatus=e=>{const t=new Date().toISOString().slice(0,10);return t<e.start?['','Upcoming']:t>evEnd(e)?['','Past']:['ok','Current']};
+// Closed events are hidden from staff and contractors (server-enforced in connected mode).
+const CLOSE_SUPPORT={on:!CONNECTED};
+const evStatus=e=>{if(e.closed)return ['','Closed'];const t=new Date().toISOString().slice(0,10);return t<e.start?['','Upcoming']:t>evEnd(e)?['','Past']:['ok','Current']};
 const SESS=[[1,0,'POS Lab: demo support','Salon 3',540,660,3],[2,0,'Breakout A: retail trends','Salon 5',540,660,2],[3,0,'Registration desk','Salon 1',480,720,4],[4,0,'Demo showcase','Salon 3',780,900,2],[5,0,'Partner workshop','Salon 7',780,930,2],[6,0,'Keynote rehearsal','Grand Ballroom',930,1020,3],[7,1,'Opening keynote','Grand Ballroom',540,630,5],[8,1,'Hands-on lab','Salon 2',570,660,3],[9,1,'Breakout B: payments','Salon 5',660,750,2],[10,1,'Customer panel','Salon 4',840,960,3],[11,2,'Closing workshop','Salon 6',540,660,2],[12,2,'Closing session','Grand Ballroom',690,750,4]].map(r=>({id:r[0],ev:1,d:r[1],t:r[2],r:r[3],a:r[4],b:r[5],n:r[6]}));
 const SM=Object.fromEntries(SESS.map(s=>[s.id,s]));
 const ROOMS=['Grand Ballroom',...[1,2,3,4,5,6,7].map(n=>'Salon '+n)];
@@ -278,7 +280,7 @@ function Grid({S}){
  ${!rows.length&&html`<p className="mute">No activities yet for this event.</p>`}
  <h3 style=${{marginTop:16}}>Staff colors</h3><div className="legend">${used.map(e=>html`<span key=${e}><i className="sw" style=${{background:col(e,1)}}></i>${EMPS[e].name}</span>`)}</div></div>`}
 const EXP=createExpenses({React,html,Modal,Icon,IconButton,people:EMPS,events:EVS,current:CUR});
-const Admin=createAdminWorkspace({people:EMPS,events:EVS,rooms:ROOMS,activities:SESS,current:CUR,days:DAYS,daysShort:DAYS_SHORT,cover,clash,span,evEnd,evStatus,need,roomAck:ROOM_ACK,ackSupport:ACK_SUPPORT,BREAK,breaksOn,breaksDuring,openClock,lateBy,liveNow,clockTime,breakOf,todayIndex,breakExport,floorSupport:FLOOR_SUPPORT,hrPdf:(list,scope)=>{const url=URL.createObjectURL(new Blob([hrReport({list,people:EMPS,eventName:evOf(CUR.id).name,scope,autoPrint:true})],{type:'text/html'})),w=window.open(url,'_blank');setTimeout(()=>URL.revokeObjectURL(url),60000);return w?'':'Your browser blocked the report window. Allow pop-ups for this site and try again.'},connected:CONNECTED},{AdminSession,Grid,Floorplans,Incoming,Staff,ExpensesAdmin:EXP.ExpensesAdmin});
+const Admin=createAdminWorkspace({people:EMPS,events:EVS,rooms:ROOMS,activities:SESS,current:CUR,days:DAYS,daysShort:DAYS_SHORT,cover,clash,span,evEnd,evStatus,need,roomAck:ROOM_ACK,ackSupport:ACK_SUPPORT,BREAK,breaksOn,breaksDuring,openClock,lateBy,liveNow,clockTime,breakOf,todayIndex,breakExport,floorSupport:FLOOR_SUPPORT,closeSupport:CLOSE_SUPPORT,hrPdf:(list,scope)=>{const url=URL.createObjectURL(new Blob([hrReport({list,people:EMPS,eventName:evOf(CUR.id).name,scope,autoPrint:true})],{type:'text/html'})),w=window.open(url,'_blank');setTimeout(()=>URL.revokeObjectURL(url),60000);return w?'':'Your browser blocked the report window. Allow pop-ups for this site and try again.'},connected:CONNECTED},{AdminSession,Grid,Floorplans,Incoming,Staff,ExpensesAdmin:EXP.ExpensesAdmin});
 function App({connected}){
  const [demoS,setS]=useState(()=>connected?connected.snapshot:seed()),[demoRole,setRole]=useState('admin'),[demoMe,setMe]=useState(0),[toast,setToast]=useState('');
  const S=connected?connected.snapshot:demoS,role=connected?connected.snapshot.role:demoRole,me=connected?connected.snapshot.me:demoMe;
@@ -318,6 +320,7 @@ function App({connected}){
   addInv:o=>{if(!invv(o))return false;o=nrm(o);INV.push({...o,id:Math.max(0,...INV.map(x=>x.id))+1,ev:CUR.id});setS(s=>L({...s},'Recorded '+o.type+' from '+o.vendor+(o.inv?' (invoice '+o.inv+')':'')));say('Entry saved');return true},
   editInv:(id,o)=>{if(!invv(o))return false;o=nrm(o);const i=INV.findIndex(x=>x.id===id);INV[i]={...INV[i],...o};setS(s=>L({...s},'Updated incoming entry from '+o.vendor+(o.inv?' (invoice '+o.inv+')':'')));say('Entry saved');return true},
   delInv:id=>{const i=INV.findIndex(x=>x.id===id),e=INV[i];INV.splice(i,1);setS(s=>L({...s},'Deleted incoming entry from '+e.vendor));say('Entry deleted. Undo brings it back.');return true},
+  setEventClosed:(id,c)=>{const e=evOf(id);if(!e)return false;e.closed=!!c;setS(s=>L({...s},(c?'Closed event ':'Reopened event ')+e.name));say(c?e.name+' closed. Staff and contractors no longer see it.':e.name+' reopened');return true},
   switchEv:id=>{CUR.id=id;syncEv();setS(s=>({...s}))},
   calAdd:id=>{setS(s=>{const o=s.asg.find(a=>a.id===id);return L({...s,asg:s.asg.map(a=>a.id===id?{...a,cal:a.seq||0,pc:0}:a)},EMPS[o.e].name+' added '+SM[o.s].t+' to their calendar with a 30-minute reminder')})},
   calSkip:id=>setS(s=>({...s,asg:s.asg.map(a=>a.id===id?{...a,pc:0}:a)})),
@@ -363,19 +366,22 @@ function App({connected}){
    if(old&&old.rp&&old.rp!==rp){delete RECEIPT_CACHE[old.rp];repo.receiptRemove(old.rp).catch(()=>{})}say(old?'Expense saved':'Expense added');return true};
   A.delExpense=async id=>{const old=(S.expenses||[]).find(x=>x.id===id),ok=await cmd('delExpense',[id]);if(ok&&old&&old.rp){delete RECEIPT_CACHE[old.rp];repo.receiptRemove(old.rp).catch(()=>{})}if(ok)say('Expense deleted');return ok};
   A.delFloorplan=async id=>{const f=FP.find(x=>x.id===id),ok=await cmd('delFloorplan',[id]);if(ok&&f){delete FP_CACHE[f.path];repo.floorplanRemove(f.path).catch(()=>{});say(f.name+' removed')}return ok};}
+ // Staff and contractors never land on a closed event (the server already omits them when connected).
+ const openEvs=EVS.filter(e=>!e.closed);
+ if(role!=='admin'&&evOf(CUR.id)?.closed&&openEvs.length){CUR.id=openEvs[0].id;syncEv()}
  const ul=H.length?(H[H.length-1].label||'last change'):'';
  const R=[['admin','Admin'],['staff','Staff'],['contractor','Contractor']];
- return html`<div><${AppHeader} events=${EVS} current=${CUR.id} onEventChange=${A.switchEv} email=${connected?.email} role=${role} busy=${connected?.busy} error=${connected?.error} onRefresh=${connected?.refresh} onSignOut=${connected?.signOut}>
+ return html`<div><${AppHeader} events=${role==='admin'?EVS.map(e=>e.closed?{...e,name:e.name+' (closed)'}:e):openEvs} current=${CUR.id} onEventChange=${A.switchEv} email=${connected?.email} role=${role} busy=${connected?.busy} error=${connected?.error} onRefresh=${connected?.refresh} onSignOut=${connected?.signOut}>
   ${!connected&&html`<${IconButton} name="undo" label=${H.length?'Undo: '+ul:'Nothing to undo'} disabled=${!H.length} onClick=${A.undo}/>
   <div className="seg" role="group" aria-label="Demo role">${R.map(([k,l])=>html`<button key=${k} aria-pressed=${role===k} onClick=${()=>{setRole(k);const f=EMPS.find(e=>!e.gone&&e.acct===k);if(f)setMe(f.id)}}>${l}</button>`)}</div><${IconButton} name="reset" label="Reset demo" onClick=${()=>{H.length=0;setS(seed());say('Demo reset')}}/>`}
  <//>
  ${connected?.error&&html`<p className="app-error connection-error" role="alert">${connected.error}</p>`}
  ${!connected&&role!=='admin'&&html`<div className="wrap m" style=${{paddingBottom:0}}><label>Viewing as <select value=${me} onChange=${e=>setMe(+e.target.value)}>${EMPS.filter(e=>!e.gone&&e.acct===role).map(e=>html`<option key=${e.id} value=${e.id}>${nm(e.id)}</option>`)}</select></label></div>`}
- <fieldset className="workspace" disabled=${!!connected?.busy}>${role!=='admin'&&html`<${Staff} S=${S} A=${A} me=${me} canFull=${role==='staff'}/>`}${role==='admin'&&html`<${Admin} S=${S} A=${A} me=${me!=null&&EMPS[me]&&!EMPS[me].gone&&EMPS[me].acct==='admin'?me:null} error=${connected?.error} testLogins=${connected?.testLogins}/>`}</fieldset>
+ <fieldset className="workspace" disabled=${!!connected?.busy}>${role!=='admin'&&(openEvs.length?html`<${Staff} S=${S} A=${A} me=${me} canFull=${role==='staff'}/>`:html`<div className="wrap m"><h2>No open events</h2><p className="mute">There are no events for you right now.</p></div>`)}${role==='admin'&&html`<${Admin} S=${S} A=${A} me=${me!=null&&EMPS[me]&&!EMPS[me].gone&&EMPS[me].acct==='admin'?me:null} error=${connected?.error} testLogins=${connected?.testLogins}/>`}</fieldset>
  ${toast&&html`<div className="toast" role="status">${toast}</div>`}</div>`}
 function hydrate(data){
  EMPS.length=0;data.people.forEach(e=>{EMPS[e.id]=e});
- EVS.splice(0,EVS.length,...data.events);ROOMS.splice(0,ROOMS.length,...data.rooms);
+ EVS.splice(0,EVS.length,...data.events);CLOSE_SUPPORT.on=Array.isArray(data.closedEvents);EVS.forEach(e=>{e.closed=!!(data.closedEvents&&data.closedEvents.includes(e.id))});ROOMS.splice(0,ROOMS.length,...data.rooms);
  ACK_SUPPORT.on=!!data.roomAck;Object.keys(ROOM_ACK).forEach(k=>delete ROOM_ACK[k]);Object.assign(ROOM_ACK,data.roomAck||{});
  data.activities.forEach(s=>{s.q=data.actAck&&Object.hasOwn(data.actAck,s.id)?data.actAck[s.id]:null});
  SESS.splice(0,SESS.length,...data.activities);Object.keys(SM).forEach(k=>delete SM[k]);SESS.forEach(s=>{SM[s.id]=s});
