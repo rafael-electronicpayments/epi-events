@@ -32,7 +32,7 @@ export function hrReport({ list, people, eventName, scope, autoPrint = false }) 
     .sort((a, b) => a.p.name.localeCompare(b.p.name));
   const totals = items => ({ all: sum(items), ok: sum(items.filter(x => x.ok)), pending: sum(items.filter(x => !x.ok)), reimb: sum(items.filter(x => x.reimb)) });
   const tline = (t, cls) => `<tr class="${cls}"><td colspan="7">Total ${esc(money(t.all))} · Approved ${esc(money(t.ok))} · Not yet approved ${esc(money(t.pending))} · To reimburse ${esc(money(t.reimb))}</td><td class="r">${esc(money(t.all))}</td><td></td></tr>`;
-  const body = byPerson.map(g => `<section><h2>${esc(g.p.name)}${g.p.role ? ` <span class="m">${esc(g.p.role)}</span>` : ''}</h2><table><thead><tr><th class="d">Date</th><th>Expense</th><th>Location</th><th>Receipt ID</th><th>Payment</th><th class="c">Reimburse</th><th>Notes</th><th class="r">Amount</th><th class="s">Status</th></tr></thead><tbody>${g.items.map(x => `<tr><td class="d">${esc(dateText(x.date))}</td><td>${esc(catText(x.cat))}</td><td>${esc(x.loc)}</td><td>${esc(x.ref)}${x.rp ? ' <span class="m">(receipt attached)</span>' : ''}</td><td>${esc(payText(x.pay))}</td><td class="c">${x.reimb ? 'Y' : 'N'}</td><td>${esc(x.notes)}</td><td class="r">${esc(money(x.amt))}</td><td class="s ${x.ok ? 'ok' : 'pend'}">${x.ok ? 'Approved' : 'Not approved'}</td></tr>`).join('')}${tline(totals(g.items), 'sub')}</tbody></table></section>`).join('');
+  const body = byPerson.map(g => `<section><h2>${esc(g.p.name)}${g.p.role ? ` <span class="m">${esc(g.p.role)}</span>` : ''}</h2><table><thead><tr><th class="d">Date</th><th>Expense</th><th>Location</th><th>Receipt ID</th><th>Payment</th><th class="c">Reimburse</th><th>Notes</th><th class="r">Amount</th><th class="s">Status</th></tr></thead><tbody>${g.items.map(x => `<tr><td class="d">${esc(dateText(x.date))}</td><td>${esc(catText(x.cat))}</td><td>${esc(x.loc)}</td><td>${esc(x.ref)}</td><td>${esc(payText(x.pay))}</td><td class="c">${x.reimb ? 'Y' : 'N'}</td><td>${esc(x.notes)}</td><td class="r">${esc(money(x.amt))}</td><td class="s ${x.ok ? 'ok' : 'pend'}">${x.ok ? 'Approved' : 'Not approved'}</td></tr>`).join('')}${tline(totals(g.items), 'sub')}</tbody></table></section>`).join('');
   const all = totals(list);
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(eventName)} expense report</title><style>@page{size:letter landscape;margin:.4in}body{font:11px/1.35 system-ui,sans-serif;color:#000;margin:16px}h1{font-size:18px;margin:0 0 2px}h2{font-size:14px;margin:18px 0 4px;break-after:avoid}.m{color:#555;font-weight:400}table{border-collapse:collapse;width:100%;table-layout:fixed}th,td{border-top:1px solid #bbb;padding:4px 5px;text-align:left;vertical-align:top;overflow-wrap:anywhere}thead th{background:#e8eeed}.d{width:11%}.c{width:7%;text-align:center}.r{width:9%;text-align:right}.s{width:10%}.ok{color:#05603a;font-weight:600}.pend{color:#93370d;font-weight:600}tr.sub td{background:#f3f6f5;font-weight:600}tr{break-inside:avoid}section{break-inside:auto}.grand{margin-top:18px;padding:8px 10px;border:2px solid #0f766e;font-size:13px}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}button{font:inherit;padding:10px 16px;margin:0 0 12px;min-height:44px}@media print{body{margin:0}button{display:none}}</style></head><body><button onclick="window.print()">Print or save as PDF</button><h1>${esc(eventName)}: expense report</h1><p class="m">${esc(scope)} · ${list.length} expense${list.length === 1 ? '' : 's'} · ${byPerson.length} ${byPerson.length === 1 ? 'person' : 'people'} · Printed ${esc(new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }))}</p>${body || '<p class="m">No expenses match.</p>'}${list.length ? `<p class="grand"><b>All people: ${esc(money(all.all))}</b> · Approved ${esc(money(all.ok))} · Not yet approved ${esc(money(all.pending))} · To reimburse ${esc(money(all.reimb))}</p>` : ''}${autoPrint ? '<script>addEventListener("load",()=>setTimeout(()=>print(),200))</script>' : ''}</body></html>`;
 }
@@ -54,17 +54,17 @@ export function createExpenses({ React, html, Modal, Icon, IconButton, people, e
     const [d, setD] = useState(() => x ? { cat: x.cat, loc: x.loc, ref: x.ref, date: x.date, amt: String(Number(x.amt).toFixed(2)), pay: x.pay, reimb: !!x.reimb, notes: x.notes }
       : { cat: 'lunch', loc: '', ref: '', date: editor.date || today(), amt: '', pay: 'personal_card', reimb: true, notes: '' });
     const [who, setWho] = useState(x ? x.e : editor.e ?? '');
-    const [file, setFile] = useState(null), [drop, setDrop] = useState(false), [err, setErr] = useState(''), [busy, setBusy] = useState(false);
+    const [file, setFile] = useState(null), [err, setErr] = useState(''), [busy, setBusy] = useState(false);
     const set = k => e => setD(v => ({ ...v, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }));
     const pick = e => { const f = e.target.files[0]; e.target.value = ''; if (!f) return; const t = receiptType(f);
       if (!t) { setErr('Receipts must be a photo (JPG, PNG, HEIC, WebP) or a PDF.'); return; }
       if (f.size > RECEIPT_MAX) { setErr('Receipts must be 10 MB or smaller.'); return; }
-      setErr(''); setDrop(false); setFile({ f, type: t }); };
+      setErr(''); setFile({ f, type: t }); };
     const submit = async e => { e.preventDefault(); const o = { ...d, amt: d.amt.trim().replace(/^\$/, '').replace(/,/g, ''), loc: d.loc.trim(), ref: d.ref.trim(), notes: d.notes.trim() };
-      const m = checkExpense(o) || (chooser && !x && who === '' ? 'Choose who this expense is for.' : ''); if (m) { setErr(m); return; }
+      const m = checkExpense(o) || (chooser && !x && who === '' ? 'Choose who this expense is for.' : '') || (!file && !(x && x.rp) ? 'Attach a photo or PDF of the receipt before saving.' : ''); if (m) { setErr(m); return; }
       setBusy(true); setErr('');
       const data = file ? new Uint8Array(await file.f.arrayBuffer()) : null;
-      const r = await A.saveExpense(x ? x.id : null, chooser && !x ? { ...o, e: Number(who) } : o, data ? { data, type: file.type } : null, drop);
+      const r = await A.saveExpense(x ? x.id : null, chooser && !x ? { ...o, e: Number(who) } : o, data ? { data, type: file.type } : null, false);
       setBusy(false); if (r !== false) onClose(); else setErr('Could not save. Check the values and try again.'); };
     const active = people.filter(p => p && !p.gone).sort((a, b) => a.name.localeCompare(b.name));
     return html`<${Modal} title=${x ? 'Edit expense' : 'Add expense'} onClose=${busy ? () => {} : onClose}><form className="expense-editor" onSubmit=${submit}>
@@ -79,11 +79,11 @@ export function createExpenses({ React, html, Modal, Icon, IconButton, people, e
        <label className="chk"><input type="checkbox" checked=${d.reimb} onChange=${set('reimb')}/>Reimburse me for this expense</label>
        ${field('Notes', html`<textarea rows="3" maxLength="1000" value=${d.notes} onChange=${set('notes')}></textarea>`, d.cat === 'other' ? 'Required: describe the expense (for example gas, mileage, tolls).' : ['breakfast', 'lunch', 'dinner'].includes(d.cat) ? 'List others included, or note team, ISO hosting, or personal meal.' : d.cat === 'transportation' ? 'For example: Uber from A to B, rental car.' : '')}
       </div>
-      <div className="receipt-field"><b>Receipt</b>
+      <div className="receipt-field"><b>Receipt <span className="required-tag">Required</span></b>
        ${file ? html`<p>${file.f.name} <span className="mute">(${file.type === 'application/pdf' ? 'PDF' : 'photo'}, ready to upload)</span> <button type="button" className="btn ghost" onClick=${() => setFile(null)}>Remove</button></p>`
-        : x && x.rp && !drop ? html`<p><button type="button" className="btn ghost" onClick=${() => openReceipt(A, x, setErr)}><${Icon} name="eye"/>View current receipt</button> <button type="button" className="btn ghost" onClick=${() => setDrop(true)}>Remove receipt</button></p>`
-        : html`<p className="mute">${drop ? 'The current receipt will be removed when you save.' : 'No receipt attached.'}</p>`}
-       <label className="btn ghost file-pick"><${Icon} name="upload"/>${file || (x && x.rp && !drop) ? 'Replace with photo or PDF' : 'Attach photo or PDF'}<input type="file" accept="image/*,application/pdf,.heic,.heif" onChange=${pick}/></label>
+        : x && x.rp ? html`<p><button type="button" className="btn ghost" onClick=${() => openReceipt(A, x, setErr)}><${Icon} name="eye"/>View current receipt</button></p>`
+        : html`<p className="receipt-missing">No receipt attached yet. Attach a photo or PDF to save this expense.</p>`}
+       <label className="btn ghost file-pick"><${Icon} name="upload"/>${file || (x && x.rp) ? 'Replace with photo or PDF' : 'Attach photo or PDF'}<input type="file" accept="image/*,application/pdf,.heic,.heif" onChange=${pick}/></label>
        <p className="mute field-hint">Take a photo of the receipt or choose a PDF (10 MB max). Only you and administrators can see it.</p>
       </div>
       ${err && html`<p className="connection-error editor-error" role="alert">${err}</p>`}
@@ -97,7 +97,7 @@ export function createExpenses({ React, html, Modal, Icon, IconButton, people, e
     const ev = events.find(e => e.id === current.id);
     const mine = (S.expenses || []).filter(x => x.e === me && x.ev === current.id).sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
     return html`<div className="card expense-card"><div className="expense-head"><b>My expenses</b><span className="mute">${mine.length ? money(sum(mine)) + ' · ' + mine.filter(x => x.ok).length + ' of ' + mine.length + ' approved' : ev ? ev.name : ''}</span></div>
-     ${mine.length ? html`<ul className="expense-list">${mine.map(x => html`<li key=${x.id}><div className="expense-main"><b>${catText(x.cat)}${x.loc ? ' · ' + x.loc : ''}</b><span className="mute">${dateText(x.date)} · ${payText(x.pay)}${x.reimb ? ' · reimburse' : ''}${x.rp ? ' · receipt attached' : ''}</span></div>
+     ${mine.length ? html`<ul className="expense-list">${mine.map(x => html`<li key=${x.id}><div className="expense-main"><b>${catText(x.cat)}${x.loc ? ' · ' + x.loc : ''}</b><span className="mute">${dateText(x.date)} · ${payText(x.pay)}${x.reimb ? ' · reimburse' : ''}</span></div>
        <div className="expense-side"><b>${money(x.amt)}</b><${Status} x=${x}/></div>
        <div className="acts">${x.rp && html`<button className="btn ghost" onClick=${() => openReceipt(A, x, setMsg)}>Receipt</button>`}
         ${!x.ok && html`<button className="btn ghost" onClick=${() => setEd({ x })}>Edit</button>${confirm === x.id ? html`<button className="btn danger" onClick=${async () => { setConfirm(null); await A.delExpense(x.id); }}>Confirm delete</button><button className="btn ghost" onClick=${() => setConfirm(null)}>Keep</button>` : html`<button className="btn ghost" onClick=${() => setConfirm(x.id)}>Delete</button>`}`}</div></li>`)}</ul>`

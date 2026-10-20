@@ -1,5 +1,5 @@
 -- 2026-10-20 owner request: expense entry and HR reporting.
--- Staff and contractors enter their own expenses (fields follow EPI's expense template) with an optional
+-- Staff and contractors enter their own expenses (fields follow EPI's expense template). Every expense requires a
 -- receipt photo or PDF in the private Storage bucket "receipts". Admins tick to approve. Approved expenses
 -- are locked for their owner. Receipts are visible only to their owner and admins.
 
@@ -15,8 +15,8 @@ create table public.expenses (
   payment text not null check (payment in ('cash', 'corporate_amex', 'personal_card', 'guest_room')),
   reimburse boolean not null default false,
   notes text not null default '' check (length(notes) <= 1000),
-  receipt_path text unique,
-  receipt_type text check (receipt_type is null or receipt_type in ('image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'application/pdf')),
+  receipt_path text not null unique,
+  receipt_type text not null check (receipt_type in ('image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'application/pdf')),
   approved boolean not null default false,
   approved_at timestamptz,
   approved_by uuid,
@@ -76,7 +76,7 @@ grant execute on function public.ops_snapshot() to authenticated;
 
 -- Commands: expense actions are handled here; everything else goes to the previous command function unchanged.
 --   addExpense [eventId, expense]   editExpense [id, expense]   delExpense [id]   approveExpense [id, true|false]
---   expense = {e?, cat, loc, ref, date, amt, pay, reimb, notes, rp?, rt?}  (e: admins only, defaults to the caller)
+--   expense = {e?, cat, loc, ref, date, amt, pay, reimb, notes, rp, rt}  (rp/rt: required receipt; e: admins only, defaults to the caller)
 alter function public.ops_command(text, jsonb, integer) rename to ops_command_v3;
 alter function public.ops_command_v3(text, jsonb, integer) set schema ops_private;
 revoke all on function ops_private.ops_command_v3(text, jsonb, integer) from public, anon, authenticated;
@@ -90,13 +90,12 @@ begin
   if coalesce(obj->>'date', '') !~ '^\d{4}-\d{2}-\d{2}$' then raise exception 'Enter the expense date.'; end if;
   if coalesce(obj->>'amt', '') !~ '^\d{1,5}(\.\d{1,2})?$' or (obj->>'amt')::numeric <= 0 then raise exception 'Enter an amount greater than zero (up to two decimals).'; end if;
   if obj->>'cat' = 'other' and coalesce(btrim(obj->>'notes'), '') = '' then raise exception 'Add a note describing this expense.'; end if;
-  if nullif(obj->>'rp', '') is not null then
-    if obj->>'rp' !~ ('^' || owner || '/[A-Za-z0-9-]+\.(jpg|jpeg|png|webp|heic|heif|pdf)$') then raise exception 'Invalid receipt location.'; end if;
-    if coalesce(obj->>'rt', '') not in ('image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'application/pdf') then raise exception 'Receipts must be a photo or a PDF.'; end if;
-    if to_regclass('storage.objects') is not null then
-      execute 'select exists(select 1 from storage.objects where bucket_id = ''receipts'' and name = $1)' into uploaded using obj->>'rp';
-      if not uploaded then raise exception 'The receipt was not uploaded. Try again.'; end if;
-    end if;
+  if nullif(obj->>'rp', '') is null then raise exception 'Attach a photo or PDF of the receipt.'; end if;
+  if obj->>'rp' !~ ('^' || owner || '/[A-Za-z0-9-]+\.(jpg|jpeg|png|webp|heic|heif|pdf)$') then raise exception 'Invalid receipt location.'; end if;
+  if coalesce(obj->>'rt', '') not in ('image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'application/pdf') then raise exception 'Receipts must be a photo or a PDF.'; end if;
+  if to_regclass('storage.objects') is not null then
+    execute 'select exists(select 1 from storage.objects where bucket_id = ''receipts'' and name = $1)' into uploaded using obj->>'rp';
+    if not uploaded then raise exception 'The receipt was not uploaded. Try again.'; end if;
   end if;
 end;
 $$;
@@ -133,14 +132,13 @@ begin
       insert into public.expenses(event_id, person_id, category, location, receipt_ref, spent_on, amount, payment, reimburse, notes, receipt_path, receipt_type)
         values((args->>0)::integer, owner, obj->>'cat', btrim(coalesce(obj->>'loc', '')), btrim(coalesce(obj->>'ref', '')), (obj->>'date')::date,
           (obj->>'amt')::numeric, obj->>'pay', coalesce((obj->>'reimb')::boolean, false), btrim(coalesce(obj->>'notes', '')),
-          nullif(obj->>'rp', ''), case when nullif(obj->>'rp', '') is null then null else obj->>'rt' end);
+          obj->>'rp', obj->>'rt');
     when 'editExpense' then
       obj := args->1;
       perform ops_private.check_expense(obj, x.person_id);
       update public.expenses set category = obj->>'cat', location = btrim(coalesce(obj->>'loc', '')), receipt_ref = btrim(coalesce(obj->>'ref', '')),
         spent_on = (obj->>'date')::date, amount = (obj->>'amt')::numeric, payment = obj->>'pay', reimburse = coalesce((obj->>'reimb')::boolean, false),
-        notes = btrim(coalesce(obj->>'notes', '')), receipt_path = nullif(obj->>'rp', ''),
-        receipt_type = case when nullif(obj->>'rp', '') is null then null else obj->>'rt' end, updated_at = now()
+        notes = btrim(coalesce(obj->>'notes', '')), receipt_path = obj->>'rp', receipt_type = obj->>'rt', updated_at = now()
         where id = x.id;
     when 'delExpense' then
       delete from public.expenses where id = x.id;
