@@ -1,9 +1,9 @@
 import React from 'react';
 import htm from 'htm';
-import { CalendarDays, Radio, Users, Settings2, Activity, RefreshCw, LogOut, ChevronDown, ChevronRight, Plus, X, Pencil, Trash2, Search, List, LayoutGrid, CircleAlert, Check, UserRound, Map, Package, Undo2, RotateCcw, Eye, EyeOff, KeyRound, Copy, Download, Printer, Upload, Clock } from 'lucide-react';
+import { CalendarDays, Radio, Users, Settings2, Activity, RefreshCw, LogOut, ChevronDown, ChevronRight, Plus, X, Pencil, Trash2, Search, List, LayoutGrid, CircleAlert, Check, UserRound, Map, Package, Undo2, RotateCcw, Eye, EyeOff, KeyRound, Copy, Download, Printer, Upload, Clock, Receipt } from 'lucide-react';
 
 const html=htm.bind(React.createElement);
-const icons={calendar:CalendarDays,coverage:Radio,people:Users,settings:Settings2,activity:Activity,refresh:RefreshCw,logout:LogOut,down:ChevronDown,right:ChevronRight,plus:Plus,close:X,edit:Pencil,delete:Trash2,search:Search,list:List,grid:LayoutGrid,warning:CircleAlert,check:Check,user:UserRound,map:Map,package:Package,undo:Undo2,reset:RotateCcw,eye:Eye,'eye-off':EyeOff,key:KeyRound,copy:Copy,download:Download,print:Printer,upload:Upload,clock:Clock};
+const icons={calendar:CalendarDays,coverage:Radio,people:Users,settings:Settings2,activity:Activity,refresh:RefreshCw,logout:LogOut,down:ChevronDown,right:ChevronRight,plus:Plus,close:X,edit:Pencil,delete:Trash2,search:Search,list:List,grid:LayoutGrid,warning:CircleAlert,check:Check,user:UserRound,map:Map,package:Package,undo:Undo2,reset:RotateCcw,eye:Eye,'eye-off':EyeOff,key:KeyRound,copy:Copy,download:Download,print:Printer,upload:Upload,clock:Clock,receipt:Receipt};
 export function Icon({name,size=16}){const Component=icons[name]||CircleAlert;return html`<${Component} size=${size} strokeWidth=${1.75} aria-hidden="true"/>`;}
 export function IconButton({name,label,onClick,disabled=false,className=''}){
  return html`<button type="button" className=${'btn icon-button '+className} aria-label=${label} title=${label} onClick=${onClick} disabled=${disabled}><${Icon} name=${name}/></button>`;

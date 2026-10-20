@@ -32,6 +32,10 @@ export function createRepository(client, { testLoginsEnabled = false, testLoginE
     floorplanUpload: (path, data) => result(client.storage.from('floorplans').upload(path, new Blob([data], { type: 'application/pdf' }), { contentType: 'application/pdf', upsert: false })),
     floorplanFile: async path => new Uint8Array(await (await result(client.storage.from('floorplans').download(path))).arrayBuffer()),
     floorplanRemove: path => result(client.storage.from('floorplans').remove([path])),
+    // Expense receipts live in the private 'receipts' bucket under '<person id>/'.
+    receiptUpload: (path, data, type) => result(client.storage.from('receipts').upload(path, new Blob([data], { type }), { contentType: type, upsert: false })),
+    receiptFile: async path => new Uint8Array(await (await result(client.storage.from('receipts').download(path))).arrayBuffer()),
+    receiptRemove: path => result(client.storage.from('receipts').remove([path])),
     command: (action, args, revision) => action === 'addStaff' || action === 'editStaff'
       ? result(client.rpc('ops_save_person', {
         target_person_id: action === 'editStaff' ? args[0] : null,

@@ -1,6 +1,7 @@
 import { createConnection } from './connection.js';
 import { createAdminWorkspace } from './admin-workspace.js';
-import { AppHeader, Icon, IconButton } from './ui.js';
+import { AppHeader, Icon, IconButton, Modal } from './ui.js';
+import { createExpenses, hrReport, RECEIPT_TYPES } from './expenses.js';
 import { xlsx } from './xlsx-writer.js';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
@@ -22,6 +23,9 @@ const CUR={id:1};
 const FP=[];
 // Connected floorplans hold only metadata; PDF bytes are fetched on demand from Storage and cached here by path.
 const FP_CACHE={},FLOOR_SUPPORT={on:!CONNECTED};
+// Expense receipts: demo keeps bytes here; connected caches downloaded files by path.
+const RECEIPTS={},RECEIPT_CACHE={};
+const uuid=()=>window.crypto&&crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+'-'+Math.random().toString(36).slice(2);
 const fpData=async f=>f.data||FP_CACHE[f.path]||(FP_CACHE[f.path]=await window.eventOpsRepository.floorplanFile(f.path));
 const INV=[{id:1,ev:1,type:'Swag',vendor:'Northwind Apparel',inv:'NW-20418',date:'2027-01-15',amt:2450,unit:'lb',files:[],lines:[{q:300,d:'Event t-shirts',c:6.5,w:0.4,sb:'',disp:'Promotional Give Away - No Return'},{q:100,d:'Tote bags',c:5,w:0.5,sb:'',disp:'Promotional Give Away - No Return'}]},{id:2,ev:1,type:'Equipment',vendor:'Brightline Systems (supplier loan)',inv:'',date:'2027-01-20',amt:0,unit:'lb',files:[],lines:[{q:4,d:'Demo tablets',c:0,w:1.5,sb:'',disp:'Temporary Use - Returning'}]}];
 const WORKER='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -59,7 +63,7 @@ const ntext=(a,p)=>p+': '+SM[a.s].t+', '+SM[a.s].r+', '+span(SM[a.s])+' ('+dayDa
 let uid=100;
 const H=[];
 const seed=()=>{const asg=SEED.map((r,i)=>({id:i+1,e:r[0],s:r[1],ack:r[2],in:r[3],conf:0,tag:r[4]}));
- return {asg,log:[],breaks:[],clocks:[],notes:asg.filter(a=>!a.ack).map(a=>({id:++uid,e:a.e,aid:a.id,done:0,x:ntext(a,a.tag==='new'?'New assignment':'Changed assignment')}))}};
+ return {asg,log:[],breaks:[],clocks:[],expenses:[],notes:asg.filter(a=>!a.ack).map(a=>({id:++uid,e:a.e,aid:a.id,done:0,x:ntext(a,a.tag==='new'?'New assignment':'Changed assignment')}))}};
 const clash=(asg,a)=>asg.filter(x=>x.id!==a.id&&x.e===a.e&&SM[x.s].ev===SM[a.s].ev&&SM[x.s].d===SM[a.s].d&&SM[x.s].a<SM[a.s].b&&SM[a.s].a<SM[x.s].b).map(x=>SM[x.s]);
 const st=a=>!need(SM[a.s])?['ok','No check-in needed']:a.in||a.conf?['ok',a.conf&&!a.in?'Confirmed by coordinator':'Checked in']:a.ack?['','Acknowledged']:['warn',(a.tag==='changed'?'Changed':'New')+', needs acknowledgment'];
 const cover=(s,asg)=>{const as=asg.filter(x=>x.s===s.id),p=need(s)?as.filter(x=>x.in||x.conf).length:as.length;
@@ -230,7 +234,8 @@ function Staff({S,A,me,canFull=false,embedded=false}){
  <${MyExport} S=${S} me=${me} day=${all?null:d}/>
  ${(all?DAYS.map((_,i)=>i):[d]).map(i=>html`<div key=${i}>${all&&html`<h3 className="day-heading">${DAYS[i]}</h3>`}
   ${full?html`${dayActs(i).map(s=>html`<${FullCard} key=${s.id} s=${s}/>`)}${!dayActs(i).length&&html`<p className="mute">No activities on ${DAYS[i]}.</p>`}`
-   :html`${dayItems(i).map(x=>x.br?html`<${BreakCard} key=${'b'+x.br.id} b=${x.br}/>`:html`<${Card} key=${x.a.id} a=${x.a}/>`)}${!dayItems(i).length&&html`<p className="mute">No assignments on ${DAYS[i]}.</p>`}`}</div>`)}</div>`}
+   :html`${dayItems(i).map(x=>x.br?html`<${BreakCard} key=${'b'+x.br.id} b=${x.br}/>`:html`<${Card} key=${x.a.id} a=${x.a}/>`)}${!dayItems(i).length&&html`<p className="mute">No assignments on ${DAYS[i]}.</p>`}`}</div>`)}
+ ${Array.isArray(S.expenses)&&html`<h2>Expenses</h2><${EXP.ExpenseSection} S=${S} A=${A} me=${me}/>`}</div>`}
 function AdminSession({s,S,A,coordinator=false}){
  const [pick,setPick]=useState('');
  const as=S.asg.filter(x=>x.s===s.id), free=EMPS.filter(e=>!e.gone&&!as.some(x=>x.e===e.id)), same=SESS.filter(o=>o.ev===s.ev&&o.d===s.d&&o.id!==s.id);
@@ -272,7 +277,8 @@ function Grid({S}){
  <//>`})}</tbody></table></div>
  ${!rows.length&&html`<p className="mute">No activities yet for this event.</p>`}
  <h3 style=${{marginTop:16}}>Staff colors</h3><div className="legend">${used.map(e=>html`<span key=${e}><i className="sw" style=${{background:col(e,1)}}></i>${EMPS[e].name}</span>`)}</div></div>`}
-const Admin=createAdminWorkspace({people:EMPS,events:EVS,rooms:ROOMS,activities:SESS,current:CUR,days:DAYS,daysShort:DAYS_SHORT,cover,clash,span,evEnd,evStatus,need,roomAck:ROOM_ACK,ackSupport:ACK_SUPPORT,BREAK,breaksOn,breaksDuring,openClock,lateBy,liveNow,clockTime,breakOf,todayIndex,breakExport,floorSupport:FLOOR_SUPPORT,connected:CONNECTED},{AdminSession,Grid,Floorplans,Incoming,Staff});
+const EXP=createExpenses({React,html,Modal,Icon,IconButton,people:EMPS,events:EVS,current:CUR});
+const Admin=createAdminWorkspace({people:EMPS,events:EVS,rooms:ROOMS,activities:SESS,current:CUR,days:DAYS,daysShort:DAYS_SHORT,cover,clash,span,evEnd,evStatus,need,roomAck:ROOM_ACK,ackSupport:ACK_SUPPORT,BREAK,breaksOn,breaksDuring,openClock,lateBy,liveNow,clockTime,breakOf,todayIndex,breakExport,floorSupport:FLOOR_SUPPORT,hrPdf:(list,scope)=>{const url=URL.createObjectURL(new Blob([hrReport({list,people:EMPS,eventName:evOf(CUR.id).name,scope,autoPrint:true})],{type:'text/html'})),w=window.open(url,'_blank');setTimeout(()=>URL.revokeObjectURL(url),60000);return w?'':'Your browser blocked the report window. Allow pop-ups for this site and try again.'},connected:CONNECTED},{AdminSession,Grid,Floorplans,Incoming,Staff,ExpensesAdmin:EXP.ExpensesAdmin});
 function App({connected}){
  const [demoS,setS]=useState(()=>connected?connected.snapshot:seed()),[demoRole,setRole]=useState('admin'),[demoMe,setMe]=useState(0),[toast,setToast]=useState('');
  const S=connected?connected.snapshot:demoS,role=connected?connected.snapshot.role:demoRole,me=connected?connected.snapshot.me:demoMe;
@@ -320,12 +326,19 @@ function App({connected}){
   delBreak:id=>{setS(s=>{const o=s.breaks.find(x=>x.id===id);return L({...s,breaks:s.breaks.filter(x=>x.id!==id),clocks:(s.clocks||[]).map(c=>c.bid===id?{...c,bid:null}:c),notes:[...s.notes,{id:++uid,e:o.e,aid:null,done:0,x:BREAK[o.k][0]+' cancelled: '+span(o)+' ('+DAYS[o.d]+')'}]},'Cancelled '+BREAK[o.k][0].toLowerCase()+' for '+EMPS[o.e].name)});say('Break removed');return true},
   clockOut:(k,bid=null)=>{if(openClock(S,me)){say('Already clocked out');return false}setS(s=>Lg({...s,clocks:[{id:++uid,e:me,k,bid,out:new Date().toISOString(),in:null},...(s.clocks||[])]},EMPS[me].name+' clocked out for '+BREAK[k][0].toLowerCase()));say('Clocked out for '+BREAK[k][0].toLowerCase());return true},
   clockIn:()=>{const c=openClock(S,me);if(!c){say('Not clocked out');return false}setS(s=>Lg({...s,clocks:s.clocks.map(x=>x.id===c.id?{...x,in:new Date().toISOString()}:x)},EMPS[me].name+' clocked back in'));say('Clocked back in');return true},
+  saveExpense:(id,o,file,drop)=>{const list=S.expenses||[],old=id!=null?list.find(x=>x.id===id):null,owner=old?old.e:(o.e??me);if(owner==null||!EMPS[owner]){say('Choose a person');return false}
+   let rp=old&&old.rp&&!drop?old.rp:null,rt=rp?old.rt:null;if(file){rp=owner+'/'+uuid()+'.'+RECEIPT_TYPES[file.type];rt=file.type;RECEIPTS[rp]=file}
+   const rec={cat:o.cat,loc:o.loc,ref:o.ref,date:o.date,amt:Number(o.amt).toFixed(2),pay:o.pay,reimb:!!o.reimb,notes:o.notes,rp,rt};
+   setS(s=>{const l=s.expenses||[];if(old)return L({...s,expenses:l.map(x=>x.id===id?{...x,...rec}:x)},'Updated expense for '+EMPS[owner].name);const nid=Math.max(0,...l.map(x=>x.id))+1;return L({...s,expenses:[...l,{id:nid,e:owner,ev:CUR.id,ok:false,okAt:null,...rec}]},'Added expense for '+EMPS[owner].name)});say(old?'Expense saved':'Expense added');return true},
+  delExpense:id=>{const x=(S.expenses||[]).find(y=>y.id===id);setS(s=>L({...s,expenses:s.expenses.filter(y=>y.id!==id)},'Deleted expense'+(x&&EMPS[x.e]?' for '+EMPS[x.e].name:'')));say('Expense deleted');return true},
+  approveExpense:(id,ok)=>{setS(s=>L({...s,expenses:s.expenses.map(x=>x.id===id?{...x,ok:!!ok,okAt:ok?new Date().toISOString():null}:x)},(ok?'Approved':'Unapproved')+' expense'));return true},
+  receiptFile:async x=>RECEIPTS[x.rp]||RECEIPT_CACHE[x.rp]||(RECEIPT_CACHE[x.rp]={data:await window.eventOpsRepository.receiptFile(x.rp),type:x.rt}),
   setStart:v=>{if(!v)return false;EVD.d=v;setS(s=>L({...s},'Set event start date to '+v));say('Start date saved');return true},
   setDays:n=>{n=Math.floor(+n);if(!(n>=1&&n<=14)){say('Enter 1 to 14 days');return false}if(n===DAYS.length){say('Already '+n+' days');return false}const bad=SESS.find(s=>s.d>=n);if(bad){say('Move or delete activities on '+DAYS[bad.d]+' first');return false}const was=DAYS.length;fillDays(EVD.d,n);setS(s=>L({...s},'Changed event length from '+was+' to '+n+' days'));say('Event is now '+n+' days');return true}};
- Object.keys(A).forEach(k=>{if(['dismiss','calAdd','calSkip','switchEv','clockOut','clockIn'].includes(k))return;const f=A[k];A[k]=(...a)=>{snap();const r=f(...a);if(r===false)H.pop();return r}});
+ Object.keys(A).forEach(k=>{if(['dismiss','calAdd','calSkip','switchEv','clockOut','clockIn','receiptFile'].includes(k))return;const f=A[k];A[k]=(...a)=>{snap();const r=f(...a);if(r===false)H.pop();return r}});
  A.undo=()=>{const h=H.pop();if(!h)return;EMPS.length=0;EMPS.push(...h.emps);ROOMS.length=0;ROOMS.push(...h.rooms);Object.keys(ROOM_ACK).forEach(k=>delete ROOM_ACK[k]);Object.assign(ROOM_ACK,h.roomAck);SESS.length=0;SESS.push(...h.sess);Object.keys(SM).forEach(k=>delete SM[k]);SESS.forEach(o=>{SM[o.id]=o});EVS.length=0;EVS.push(...h.evs);CUR.id=h.cur;FP.length=0;FP.push(...h.fp);INV.length=0;INV.push(...h.inv);syncEv();setS(Lg(h.s,'Undid: '+h.label));say('Undid: '+h.label)};
  if(connected)Object.keys(A).forEach(k=>{
-  if(k==='switchEv')return;
+  if(k==='switchEv'||k==='receiptFile')return;
   A[k]=async(...args)=>{
    const options=args.at(-1);
    const expectedRevision=k.startsWith('edit')&&options&&typeof options==='object'&&Object.hasOwn(options,'expectedRevision')?args.pop().expectedRevision:undefined;
@@ -341,6 +354,14 @@ function App({connected}){
    try{await repo.floorplanUpload(path,f.data)}catch(e){say('Upload failed: '+(e&&e.message||'try again'));return false}
    FP_CACHE[path]=f.data;const ok=await cmd('addFloorplan',[ev,name,path,f.data.length]);
    if(!ok){delete FP_CACHE[path];repo.floorplanRemove(path).catch(()=>{});return false}say(name+' uploaded');return true};
+  A.saveExpense=async(id,o,file,drop)=>{const old=id!=null?(S.expenses||[]).find(x=>x.id===id):null,owner=old?old.e:(o.e??me);
+   let rp=old&&old.rp&&!drop?old.rp:null,rt=rp?old.rt:null,up=null;
+   if(file){if(owner==null){say('Choose a person');return false}up=owner+'/'+uuid()+'.'+RECEIPT_TYPES[file.type];try{await repo.receiptUpload(up,file.data,file.type)}catch(e){say('Receipt upload failed: '+(e&&e.message||'try again'));return false}RECEIPT_CACHE[up]={data:file.data,type:file.type};rp=up;rt=file.type}
+   const body={cat:o.cat,loc:o.loc,ref:o.ref,date:o.date,amt:o.amt,pay:o.pay,reimb:!!o.reimb,notes:o.notes,rp,rt,...(!old&&o.e!=null?{e:o.e}:{})};
+   const ok=await cmd(old?'editExpense':'addExpense',old?[id,body]:[CUR.id,body]);
+   if(!ok){if(up){delete RECEIPT_CACHE[up];repo.receiptRemove(up).catch(()=>{})}return false}
+   if(old&&old.rp&&old.rp!==rp){delete RECEIPT_CACHE[old.rp];repo.receiptRemove(old.rp).catch(()=>{})}say(old?'Expense saved':'Expense added');return true};
+  A.delExpense=async id=>{const old=(S.expenses||[]).find(x=>x.id===id),ok=await cmd('delExpense',[id]);if(ok&&old&&old.rp){delete RECEIPT_CACHE[old.rp];repo.receiptRemove(old.rp).catch(()=>{})}if(ok)say('Expense deleted');return ok};
   A.delFloorplan=async id=>{const f=FP.find(x=>x.id===id),ok=await cmd('delFloorplan',[id]);if(ok&&f){delete FP_CACHE[f.path];repo.floorplanRemove(f.path).catch(()=>{});say(f.name+' removed')}return ok};}
  const ul=H.length?(H[H.length-1].label||'last change'):'';
  const R=[['admin','Admin'],['staff','Staff'],['contractor','Contractor']];

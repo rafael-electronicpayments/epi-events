@@ -11,7 +11,7 @@ export function createAdminWorkspace(m,components){
  const {people,events,rooms,activities,current,days,cover,clash,span,evEnd,evStatus,need,roomAck,ackSupport}=m;
  const ackText=on=>on?'Required':'Not required';
  const qOf={room:null,yes:true,no:false};
- const {AdminSession,Grid,Floorplans,Incoming,Staff}=components;
+ const {AdminSession,Grid,Floorplans,Incoming,Staff,ExpensesAdmin}=components;
  const dateLabel=day=>{const event=events.find(e=>e.id===current.id);const date=new Date(event.start+'T12:00:00');date.setDate(date.getDate()+day);return date.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});};
  const field=(label,input)=>html`<label>${label}${input}</label>`;
  const minutes=value=>{const [h,n]=value.split(':').map(Number);return h*60+n;};
@@ -184,9 +184,9 @@ export function createAdminWorkspace(m,components){
   };
   const remove=(entity,id,label,warning)=>setEditor({type:entity,id,label,warning,remove:true,revision:S.revision});
   const planning=[['schedule','calendar','Schedule'],['coverage','coverage','Coverage'],['people','people','People'],...(m.breaksOn(S)?[['breaks','clock','Breaks']]:[]),...(me!=null?[['mine','user','My schedule']]:[])];
-  const nav=[...planning,['setup','settings','Event setup'],['log','activity','Activity log'],...(m.floorSupport.on?[['plans','map','Floorplans']]:[]),...(!m.connected?[['incoming','package','Incoming goods']]:[])];
+  const nav=[...planning,['setup','settings','Event setup'],...(Array.isArray(S.expenses)?[['expenses','receipt','Expenses']]:[]),['log','activity','Activity log'],...(m.floorSupport.on?[['plans','map','Floorplans']]:[]),...(!m.connected?[['incoming','package','Incoming goods']]:[])];
   const navButton=([id,icon,label])=>html`<button key=${id} type="button" className="nav-item" aria-current=${view===id?'page':undefined} onClick=${()=>navigate(id)}><${Icon} name=${icon}/><span>${label}</span></button>`;
-  const title={breaks:'Breaks',mine:'My schedule',schedule:'Schedule',coverage:'Coverage',people:'People',setup:'Event setup',log:'Activity log',plans:'Floorplans',incoming:'Incoming goods'}[view];
+  const title={expenses:'Expenses',breaks:'Breaks',mine:'My schedule',schedule:'Schedule',coverage:'Coverage',people:'People',setup:'Event setup',log:'Activity log',plans:'Floorplans',incoming:'Incoming goods'}[view];
   const sub=['schedule','coverage','breaks'].includes(view)?dateLabel(dayIndex):event.name;
   const actions=(editLabel,onEdit,deleteLabel,onDelete,disabled=false)=>html`<div className="row-actions"><${IconButton} name="edit" label=${editLabel} onClick=${onEdit}/><${IconButton} name="delete" label=${deleteLabel} onClick=${onDelete} disabled=${disabled}/></div>`;
   const table=(headers,body)=>html`<div className="data-surface"><table className="data-table"><thead><tr>${headers.map((h,i)=>html`<th key=${i} scope="col" className=${h.className||''}>${h.text}</th>`)}</tr></thead><tbody>${body.length?body:html`<tr><td colSpan=${headers.length} className="empty-table">No records found.</td></tr>`}</tbody></table></div>`;
@@ -228,7 +228,7 @@ export function createAdminWorkspace(m,components){
    const description=details&&!Array.isArray(details)?details.name||'':Array.isArray(details)?typeof details[0]==='string'?details[0]:details[0]?.n||'':'';
    return html`<tr key=${i}><td>${Number.isNaN(date.valueOf())?entry.t:date.toLocaleString()}</td><td>${names[entry.x]||entry.x}</td><td>${description}</td></tr>`;
   }))}
-  ${view==='breaks'&&exportMsg&&html`<p className="mute export-msg" role="status">${exportMsg}</p>`}${view==='breaks'&&m.breaksOn(S)&&html`<${BreaksPage} S=${S} table=${table} actions=${actions} dayIndex=${dayIndex} setDay=${setDay} onAdd=${()=>setBreakEd({})} onEdit=${b=>setBreakEd(b)} onRemove=${b=>remove('break',b.id,(people[b.e]?.name||'')+' '+m.BREAK[b.k][0].toLowerCase(),'They will be notified that this '+m.BREAK[b.k][0].toLowerCase()+' was cancelled.')}/>`}${view==='mine'&&me!=null&&html`<${Staff} S=${S} A=${A} me=${me} embedded=${true}/>`}${view==='plans'&&html`<${Floorplans} A=${A}/>`}${view==='incoming'&&html`<${Incoming} A=${A}/>`}
+  ${view==='breaks'&&exportMsg&&html`<p className="mute export-msg" role="status">${exportMsg}</p>`}${view==='breaks'&&m.breaksOn(S)&&html`<${BreaksPage} S=${S} table=${table} actions=${actions} dayIndex=${dayIndex} setDay=${setDay} onAdd=${()=>setBreakEd({})} onEdit=${b=>setBreakEd(b)} onRemove=${b=>remove('break',b.id,(people[b.e]?.name||'')+' '+m.BREAK[b.k][0].toLowerCase(),'They will be notified that this '+m.BREAK[b.k][0].toLowerCase()+' was cancelled.')}/>`}${view==='mine'&&me!=null&&html`<${Staff} S=${S} A=${A} me=${me} embedded=${true}/>`}${view==='expenses'&&Array.isArray(S.expenses)&&html`<${ExpensesAdmin} S=${S} A=${A} table=${table} actions=${actions} onReport=${m.hrPdf}/>`}${view==='plans'&&html`<${Floorplans} A=${A}/>`}${view==='incoming'&&html`<${Incoming} A=${A}/>`}
   </main>${breakEd&&html`<${BreakEditor} key=${breakEd.id??'new'} editor=${breakEd} A=${A} S=${S} dayIndex=${dayIndex} onClose=${()=>setBreakEd(null)}/>`}${importing&&html`<${ImportPeople} A=${A} error=${error} onClose=${()=>setImporting(false)}/>`}${editor&&html`<${Editor} key=${editor.type+'-'+editor.id} editor=${editor} A=${A} error=${error} testLogins=${testLogins} onClose=${()=>setEditor(null)}/>`}</div>`;
  };
 }
