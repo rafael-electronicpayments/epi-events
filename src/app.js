@@ -4,7 +4,8 @@ import { AppHeader, Icon, IconButton, Modal } from './ui.js';
 import { createExpenses, hrReport, RECEIPT_TYPES } from './expenses.js';
 import { xlsx } from './xlsx-writer.js';
 import { PushCard, onOpenAssignment } from './push.js';
-import { createEventLogo, prepLogo } from './event-logo.js';
+import { createEventLogo, createImageUrls, prepLogo, prepSplash } from './event-logo.js';
+import { Splash } from './splash.js';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import htm from 'htm';
@@ -46,9 +47,11 @@ const ROOM_ACK={};
 const ACK_SUPPORT={on:!CONNECTED};
 // Push notifications: shown only on databases with the push migration (the snapshot then includes 'push').
 const PUSH_SUPPORT={on:false};
-// Event logos (shown next to module headings): demo keeps bytes on the event; connected databases need the logo migration.
-const LOGO_SUPPORT={on:!CONNECTED},LOGO_CACHE={};
-const EventLogo=createEventLogo({React,html,load:async e=>e.logoData?{data:e.logoData,type:e.logoType}:{data:LOGO_CACHE[e.logo]||(LOGO_CACHE[e.logo]=await window.eventOpsRepository.logoFile(e.logo)),type:e.logoType}});
+// Event images: the logo (next to module headings) and the welcome splash (after signing in).
+// Demo keeps bytes on the event; connected databases need the matching migrations (snapshot 'logos' / 'splashes').
+const LOGO_SUPPORT={on:!CONNECTED},SPLASH_SUPPORT={on:!CONNECTED},LOGO_CACHE={};
+const imageUrl=createImageUrls(async(e,kind)=>e[kind+'Data']?{data:e[kind+'Data'],type:e[kind+'Type']}:{data:LOGO_CACHE[e[kind]]||(LOGO_CACHE[e[kind]]=await window.eventOpsRepository.logoFile(e[kind])),type:e[kind+'Type']});
+const EventLogo=createEventLogo({React,html,url:imageUrl});
 const pushOff=(S,e)=>Array.isArray(S.pushStatus)&&!((S.pushStatus.find(p=>p.e===e)||{}).n);
 const need=s=>!s?true:s.q!=null?!!s.q:ROOM_ACK[s.r]!==false;
 // Scheduled lunches/breaks (S.breaks) and clock-outs (S.clocks). Older connected databases send neither.
@@ -293,10 +296,13 @@ function Grid({S}){
  ${!rows.length&&html`<p className="mute">No activities yet for this event.</p>`}
  <h3 style=${{marginTop:16}}>Staff colors</h3><div className="legend">${used.map(e=>html`<span key=${e}><i className="sw" style=${{background:col(e,1)}}></i>${EMPS[e].name}</span>`)}</div></div>`}
 const EXP=createExpenses({React,html,Modal,Icon,IconButton,people:EMPS,events:EVS,current:CUR});
-const Admin=createAdminWorkspace({people:EMPS,events:EVS,rooms:ROOMS,activities:SESS,current:CUR,days:DAYS,daysShort:DAYS_SHORT,cover,clash,span,evEnd,evStatus,need,roomAck:ROOM_ACK,ackSupport:ACK_SUPPORT,BREAK,breaksOn,breaksDuring,openClock,lateBy,liveNow,clockTime,breakOf,todayIndex,breakExport,floorSupport:FLOOR_SUPPORT,closeSupport:CLOSE_SUPPORT,pushSupport:PUSH_SUPPORT,logoSupport:LOGO_SUPPORT,prepLogo,hrPdf:(list,scope)=>{const url=URL.createObjectURL(new Blob([hrReport({list,people:EMPS,eventName:evOf(CUR.id).name,scope,autoPrint:true})],{type:'text/html'})),w=window.open(url,'_blank');setTimeout(()=>URL.revokeObjectURL(url),60000);return w?'':'Your browser blocked the report window. Allow pop-ups for this site and try again.'},connected:CONNECTED},{AdminSession,Grid,Floorplans,Incoming,Staff,ExpensesAdmin:EXP.ExpensesAdmin,EventLogo});
+const Admin=createAdminWorkspace({people:EMPS,events:EVS,rooms:ROOMS,activities:SESS,current:CUR,days:DAYS,daysShort:DAYS_SHORT,cover,clash,span,evEnd,evStatus,need,roomAck:ROOM_ACK,ackSupport:ACK_SUPPORT,BREAK,breaksOn,breaksDuring,openClock,lateBy,liveNow,clockTime,breakOf,todayIndex,breakExport,floorSupport:FLOOR_SUPPORT,closeSupport:CLOSE_SUPPORT,pushSupport:PUSH_SUPPORT,logoSupport:LOGO_SUPPORT,splashSupport:SPLASH_SUPPORT,prepLogo,prepSplash,imageUrl,hrPdf:(list,scope)=>{const url=URL.createObjectURL(new Blob([hrReport({list,people:EMPS,eventName:evOf(CUR.id).name,scope,autoPrint:true})],{type:'text/html'})),w=window.open(url,'_blank');setTimeout(()=>URL.revokeObjectURL(url),60000);return w?'':'Your browser blocked the report window. Allow pop-ups for this site and try again.'},connected:CONNECTED},{AdminSession,Grid,Floorplans,Incoming,Staff,ExpensesAdmin:EXP.ExpensesAdmin,EventLogo,Splash});
 function App({connected}){
  const [demoS,setS]=useState(()=>connected?connected.snapshot:seed()),[demoRole,setRole]=useState('admin'),[demoMe,setMe]=useState(0),[toast,setToast]=useState('');
  const S=connected?connected.snapshot:demoS,role=connected?connected.snapshot.role:demoRole,me=connected?connected.snapshot.me:demoMe;
+ // Welcome splash after signing in: the current event's splash image, if it has one; otherwise nothing.
+ const welcome=connected?.welcome,welcomeEv=welcome&&SPLASH_SUPPORT.on?evOf(CUR.id):null,showSplash=!!(welcomeEv&&welcomeEv.splash);
+ useEffect(()=>{if(welcome&&!showSplash)welcome()},[!!welcome,showSplash]);
  const say=m=>{setToast(m);setTimeout(()=>setToast(''),3200)};
  const Lg=(s,x)=>({...s,log:[{t:new Date().toLocaleTimeString([], {hour:'numeric',minute:'2-digit',second:'2-digit'}),x},...s.log]});
  const L=(s,x)=>{const t=H[H.length-1];if(t&&!t.label)t.label=x;return Lg(s,x)};
@@ -327,6 +333,7 @@ function App({connected}){
   editEvent:(id,o)=>{if(!evv(o))return false;const n=Math.floor(o.d),bad=SESS.find(s=>s.ev===id&&s.d>=n);if(bad){say('Move or delete activities on '+dayDate(evOf(id).start,bad.d)+' first');return false}Object.assign(evOf(id),{name:o.n,start:o.b,days:n});if(id===CUR.id)syncEv();setS(s=>L({...s},'Updated event '+o.n));say('Saved');return true},
   delEvent:id=>{if(EVS.length<2){say('At least one event must remain');return false}const e=evOf(id),ids=SESS.filter(s=>s.ev===id).map(s=>s.id);setS(s=>{const g=s.asg.filter(a=>ids.includes(a.s));return L({...s,asg:s.asg.filter(a=>!ids.includes(a.s)),notes:[...s.notes.filter(n=>!g.some(a=>a.id===n.aid)),...[...new Set(g.map(a=>a.e))].map(x=>({id:++uid,e:x,aid:null,done:0,x:'Event removed: '+e.name}))]},'Deleted event '+e.name+' with '+ids.length+' activities')});for(let i=SESS.length-1;i>=0;i--)if(ids.includes(SESS[i].id)){delete SM[SESS[i].id];SESS.splice(i,1)}for(let i=FP.length-1;i>=0;i--)if(FP[i].ev===id)FP.splice(i,1);for(let i=INV.length-1;i>=0;i--)if(INV[i].ev===id)INV.splice(i,1);EVS.splice(EVS.indexOf(e),1);if(CUR.id===id){CUR.id=EVS[0].id;syncEv()}say(e.name+' deleted');return true},
   setEventLogo:(ev,logo)=>{const e=evOf(ev);if(!e)return false;if(logo){Object.assign(e,{logo:'demo/'+uuid()+'.png',logoType:logo.type,logoData:logo.data})}else{delete e.logo;delete e.logoType;delete e.logoData}setS(s=>L({...s},(logo?'Set logo for ':'Removed logo from ')+e.name));say(logo?'Logo saved':'Logo removed');return true},
+  setEventSplash:(ev,img)=>{const e=evOf(ev);if(!e)return false;if(img){Object.assign(e,{splash:'demo/'+uuid()+'.img',splashType:img.type,splashData:img.data})}else{delete e.splash;delete e.splashType;delete e.splashData}setS(s=>L({...s},(img?'Set welcome splash for ':'Removed welcome splash from ')+e.name));say(img?'Welcome splash saved':'Welcome splash removed');return true},
   addFloorplan:(f,ev)=>{if(String.fromCharCode(...f.data.slice(0,4))!=='%PDF'){say(f.name+' is not a PDF file');return false}if(f.data.length>26214400){say(f.name+' is over 25 MB');return false}FP.push({id:Math.max(0,...FP.map(x=>x.id))+1,ev,name:/\.pdf$/i.test(f.name)?f.name:f.name+'.pdf',size:f.data.length,data:f.data});setS(s=>L({...s},'Added floorplan '+f.name+' to '+evOf(ev).name));say(f.name+' added to '+evOf(ev).name);return true},
   renameFloorplan:(id,n)=>{const f=FP.find(x=>x.id===id);if(!n){say('Enter a name');return false}const was=f.name;f.name=n;setS(s=>L({...s},'Renamed floorplan '+was+' to '+n));say('Renamed');return true},
   moveFloorplan:(id,ev)=>{const f=FP.find(x=>x.id===id);f.ev=ev;setS(s=>L({...s},'Moved floorplan '+f.name+' to '+evOf(ev).name));say('Moved to '+evOf(ev).name);return true},
@@ -386,6 +393,11 @@ function App({connected}){
    const ok=await cmd('setEventLogo',logo?[ev,path,logo.type]:[ev,null]);
    if(!ok){if(path){delete LOGO_CACHE[path];repo.logoRemove(path).catch(()=>{})}return false}
    if(old&&old!==path){delete LOGO_CACHE[old];repo.logoRemove(old).catch(()=>{})}say(logo?'Logo saved':'Logo removed');return true};
+  A.setEventSplash=async(ev,img)=>{const old=evOf(ev)?.splash;let path=null;
+   if(img){path=ev+'/splash-'+uuid()+({'image/webp':'.webp','image/jpeg':'.jpg'}[img.type]||'.png');try{await repo.logoUpload(path,img.data,img.type)}catch(e){say('Splash upload failed: '+(e&&e.message||'try again'));return false}LOGO_CACHE[path]=img.data}
+   const ok=await cmd('setEventSplash',img?[ev,path,img.type]:[ev,null]);
+   if(!ok){if(path){delete LOGO_CACHE[path];repo.logoRemove(path).catch(()=>{})}return false}
+   if(old&&old!==path){delete LOGO_CACHE[old];repo.logoRemove(old).catch(()=>{})}say(img?'Welcome splash saved':'Welcome splash removed');return true};
   A.delFloorplan=async id=>{const f=FP.find(x=>x.id===id),ok=await cmd('delFloorplan',[id]);if(ok&&f){delete FP_CACHE[f.path];repo.floorplanRemove(f.path).catch(()=>{});say(f.name+' removed')}return ok};}
  // Staff and contractors never land on a closed event (the server already omits them when connected).
  const openEvs=EVS.filter(e=>!e.closed);
@@ -401,7 +413,7 @@ function App({connected}){
  ${connected?.error&&html`<p className="app-error connection-error" role="alert">${connected.error}</p>`}
  ${!connected&&role!=='admin'&&html`<div className="wrap m" style=${{paddingBottom:0}}><label>Viewing as <select value=${me} onChange=${e=>setMe(+e.target.value)}>${EMPS.filter(e=>!e.gone&&e.acct===role).map(e=>html`<option key=${e.id} value=${e.id}>${nm(e.id)}</option>`)}</select></label></div>`}
  <fieldset className="workspace" disabled=${!!connected?.busy}>${role!=='admin'&&(openEvs.length?html`<${Staff} S=${S} A=${A} me=${me} canFull=${role==='staff'} push=${push}/>`:html`<div className="wrap m"><h2>No open events</h2><p className="mute">There are no events for you right now.</p></div>`)}${role==='admin'&&html`<${Admin} S=${S} A=${A} me=${me!=null&&EMPS[me]&&!EMPS[me].gone&&EMPS[me].acct==='admin'?me:null} error=${connected?.error} testLogins=${connected?.testLogins} push=${push}/>`}</fieldset>
- ${toast&&html`<div className="toast" role="status">${toast}</div>`}</div>`}
+ ${toast&&html`<div className="toast" role="status">${toast}</div>`}${showSplash&&html`<${Splash} url=${()=>imageUrl(welcomeEv,'splash')} label=${'Welcome to '+welcomeEv.name} onClose=${welcome}/>`}</div>`}
 function hydrate(data){
  EMPS.length=0;data.people.forEach(e=>{EMPS[e.id]=e});
  EVS.splice(0,EVS.length,...data.events);CLOSE_SUPPORT.on=Array.isArray(data.closedEvents);EVS.forEach(e=>{e.closed=!!(data.closedEvents&&data.closedEvents.includes(e.id))});ROOMS.splice(0,ROOMS.length,...data.rooms);
@@ -409,7 +421,7 @@ function hydrate(data){
  data.activities.forEach(s=>{s.q=data.actAck&&Object.hasOwn(data.actAck,s.id)?data.actAck[s.id]:null});
  SESS.splice(0,SESS.length,...data.activities);Object.keys(SM).forEach(k=>delete SM[k]);SESS.forEach(s=>{SM[s.id]=s});
  FP.length=0;INV.length=0;H.length=0;
- PUSH_SUPPORT.on=!!data.push;LOGO_SUPPORT.on=data.logos===true;FLOOR_SUPPORT.on=Array.isArray(data.floorplans);if(FLOOR_SUPPORT.on)FP.push(...data.floorplans.map(f=>({id:f.id,ev:f.ev,name:f.name,size:f.size,path:f.path})));
+ PUSH_SUPPORT.on=!!data.push;LOGO_SUPPORT.on=data.logos===true;SPLASH_SUPPORT.on=data.splashes===true;FLOOR_SUPPORT.on=Array.isArray(data.floorplans);if(FLOOR_SUPPORT.on)FP.push(...data.floorplans.map(f=>({id:f.id,ev:f.ev,name:f.name,size:f.size,path:f.path})));
  if(EVS.length){if(!evOf(CUR.id))CUR.id=EVS[0].id;syncEv()}
 }
 const Root=CONNECTED?createConnection(React,html,window.eventOpsRepository,App,hydrate):App;

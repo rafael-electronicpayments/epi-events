@@ -1,7 +1,10 @@
-// Event logos: resized in the browser before upload and shown next to module headings.
+// Event images: the logo (shown next to module headings) and the welcome splash (shown after signing in).
+// Both are resized in the browser before upload and kept in the private 'event-logos' bucket.
 
 export const LOGO_SIDE = 400; // longest side in pixels; sharp at the heading size on high-density screens
-export const LOGO_MAX = 2097152; // 2 MB; the event-logos bucket enforces the same limit
+export const SPLASH_SIDE = 1600; // full-screen splash, sharp on phones and laptops
+export const IMAGE_MAX = 2097152; // 2 MB; the event-logos bucket enforces the same limit
+export const LOGO_MAX = IMAGE_MAX;
 
 const decode = f => new Promise(done => {
   const u = URL.createObjectURL(f), i = new Image();
@@ -9,7 +12,7 @@ const decode = f => new Promise(done => {
   i.onerror = () => { URL.revokeObjectURL(u); done(null); };
   i.src = u;
 });
-const encode = (c, type) => new Promise(done => c.toBlob(done, type));
+const encode = (c, type, q) => new Promise(done => c.toBlob(done, type, q));
 
 // Finds the logo inside empty margins: transparent pixels, or white ones when the corners are white.
 // Returns the source rectangle to keep (the whole image if there is nothing to trim).
@@ -36,44 +39,60 @@ function trim(img, w0, h0) {
   } catch (e) { return all; } // e.g. an SVG the browser won't let us read back
 }
 
-// Any image the browser can read (PNG, JPG, WebP, GIF, SVG...) becomes a PNG at most LOGO_SIDE pixels on its
-// longest side, keeping transparency. Returns { data, type } or an error message string.
-export async function prepLogo(f) {
+// Any image the browser can read (PNG, JPG, WebP, GIF, SVG...) is resized to at most `side` pixels on its longest
+// side and re-encoded as the first of `types` that fits in 2 MB. Returns { data, type } or an error message string.
+async function prepImage(f, { side, crop, types, white = false, q = 0.88, label }) {
   if (!f || !/^image\//.test(f.type || '') && !/\.(png|jpe?g|webp|gif|svg|heic|heif)$/i.test(f.name || '')) return 'Choose an image file (PNG, JPG, WebP or SVG).';
   if (f.size > 26214400) return 'That image is over 25 MB. Choose a smaller file.';
   const img = await decode(f);
   const w0 = img && img.naturalWidth, h0 = img && img.naturalHeight;
-  if (!w0 || !h0) return 'This image could not be read on this device. Try a PNG or JPG version of the logo.';
-  const box = trim(img, w0, h0);
-  const s = Math.min(1, LOGO_SIDE / Math.max(box.w, box.h)), c = document.createElement('canvas');
+  if (!w0 || !h0) return 'This image could not be read on this device. Try a PNG or JPG version.';
+  const box = crop ? trim(img, w0, h0) : { x: 0, y: 0, w: w0, h: h0 };
+  const s = Math.min(1, side / Math.max(box.w, box.h)), c = document.createElement('canvas');
   c.width = Math.max(1, Math.round(box.w * s)); c.height = Math.max(1, Math.round(box.h * s));
   const g = c.getContext('2d'); if (!g) return 'This image could not be resized on this device.';
+  // JPEG has no transparency, so the splash is laid on white (the splash screen's background).
+  if (white) { g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); }
   g.imageSmoothingQuality = 'high'; g.drawImage(img, box.x, box.y, box.w, box.h, 0, 0, c.width, c.height);
-  for (const type of ['image/png', 'image/webp']) {
-    const b = await encode(c, type);
-    if (b && b.type === type && b.size <= LOGO_MAX) return { data: new Uint8Array(await b.arrayBuffer()), type };
+  for (const type of types) {
+    const b = await encode(c, type, q);
+    if (b && b.type === type && b.size <= IMAGE_MAX) return { data: new Uint8Array(await b.arrayBuffer()), type };
   }
-  return 'This logo is still over 2 MB after resizing. Try a simpler version of the image.';
+  return `This ${label} is still over 2 MB after resizing. Try a simpler version of the image.`;
 }
 
-// <EventLogo ev=${event}/>: shows the event's logo, or nothing. load(ev) returns { data, type }.
-export function createEventLogo({ React, html, load }) {
-  const { useState, useEffect } = React;
+// Logo: empty margins trimmed, at most 400 px, PNG (keeps transparency) or WebP.
+export const prepLogo = f => prepImage(f, { side: LOGO_SIDE, crop: true, types: ['image/png', 'image/webp'], label: 'logo' });
+// Splash: kept as designed (no trimming), at most 1600 px, WebP or JPEG.
+export const prepSplash = f => prepImage(f, { side: SPLASH_SIDE, crop: false, white: true, types: ['image/webp', 'image/jpeg'], label: 'splash image' });
+
+// Shared loader: object URLs by storage path, so each image downloads once per visit.
+export function createImageUrls(load) {
   const urls = {};
-  return function EventLogo({ ev, className = 'event-logo' }) {
-    const key = ev && ev.logo;
-    const [url, setUrl] = useState(key ? urls[key] || null : null);
+  return async (ev, kind) => {
+    const key = ev && ev[kind];
+    if (!key) return null;
+    if (!urls[key]) {
+      const d = await load(ev, kind);
+      if (!d || !d.data) return null;
+      urls[key] = URL.createObjectURL(new Blob([d.data], { type: d.type }));
+    }
+    return urls[key];
+  };
+}
+
+// <EventLogo ev=${event}/> (or kind="splash" for a thumbnail of the splash): shows the image, or nothing.
+export function createEventLogo({ React, html, url }) {
+  const { useState, useEffect } = React;
+  return function EventLogo({ ev, kind = 'logo', className = 'event-logo' }) {
+    const key = ev && ev[kind];
+    const [src, setSrc] = useState(null);
     useEffect(() => {
-      if (!key) { setUrl(null); return; }
-      if (urls[key]) { setUrl(urls[key]); return; }
+      if (!key) { setSrc(null); return; }
       let live = true;
-      Promise.resolve(load(ev)).then(d => {
-        if (!d || !d.data) return;
-        urls[key] = URL.createObjectURL(new Blob([d.data], { type: d.type }));
-        if (live) setUrl(urls[key]);
-      }).catch(() => {});
+      url(ev, kind).then(u => { if (live) setSrc(u); }).catch(() => {});
       return () => { live = false; };
     }, [key]);
-    return url ? html`<img className=${className} src=${url} alt=${ev.name + ' logo'}/>` : null;
+    return src ? html`<img className=${className} src=${src} alt=${ev.name + (kind === 'splash' ? ' welcome splash' : ' logo')}/>` : null;
   };
 }

@@ -120,7 +120,7 @@ input[type=checkbox]{accent-color:var(--acc)}
 .page-heading h2{font-size:26px;line-height:1.2;margin:0 0 6px;font-weight:750}
 .page-heading p{font-size:13px;margin:0}
 .page-title{display:flex;align-items:center;gap:20px;min-width:0}.event-logo{display:block;height:60px;width:auto;max-width:180px;object-fit:contain;flex-shrink:0}
-.logo-cell .logo-thumb{display:block;height:44px;width:auto;max-width:120px;object-fit:contain;margin-bottom:8px}
+.logo-cell{min-width:240px}.image-slot+.image-slot{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}.image-label{display:block;font-size:11px;font-weight:600;color:var(--mute,#667);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px}.logo-cell .logo-thumb{display:block;height:44px;width:auto;max-width:120px;object-fit:contain;margin-bottom:8px}.logo-cell .splash-thumb{display:block;height:auto;width:180px;max-width:100%;max-height:90px;object-fit:contain;background:#fff;border:1px solid var(--line);border-radius:6px;margin-bottom:8px}
 .summary-strip{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-top:1px solid var(--line);border-bottom:1px solid var(--line);margin-bottom:24px}
 .summary-strip button{display:flex;align-items:center;gap:8px;padding:18px 12px;border:0;border-bottom:2px solid transparent;background:transparent;color:var(--mute);font:inherit;font-size:12px;cursor:pointer;text-align:left;flex-wrap:wrap}
 .summary-strip button b{font-size:22px;color:var(--ink);font-weight:650}
@@ -247,3 +247,6 @@ body:has(dialog[open]) .app-error{display:none}
 .push-column .push-test{display:flex;margin-top:8px;font-size:12px;padding:5px 10px;min-height:32px}
 .delivery-log{margin-top:20px}.delivery-log summary{cursor:pointer;font-weight:700;padding:10px 0;min-height:44px;box-sizing:border-box}
 .delivery-limits{display:grid;gap:12px;margin:0 0 12px}.delivery-limits dt{font-weight:700}.delivery-limits dd{margin:2px 0 0;color:var(--mute);line-height:1.5}
+
+/* Welcome splash after sign-in (src/splash.js) */
+.splash{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;width:100%;height:100dvh;margin:0;padding:24px;border:0;border-radius:0;background:#fff;cursor:pointer;animation:splash-in .25s ease-out both;-webkit-tap-highlight-color:transparent}.splash img{display:block;width:min(1100px,100%);max-height:80dvh;height:auto;object-fit:contain}.splash.leaving{animation:splash-out .2s ease-in both}.splash:focus-visible{outline:3px solid var(--acc);outline-offset:-6px}@keyframes splash-in{from{opacity:0}to{opacity:1}}@keyframes splash-out{from{opacity:1}to{opacity:0}}@media(prefers-reduced-motion:reduce){.splash,.splash.leaving{animation:none}}

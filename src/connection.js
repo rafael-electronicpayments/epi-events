@@ -9,6 +9,7 @@ export function createConnection(React, html, repository, App, hydrate) {
     const [recovery, setRecovery] = useState(repository.passwordRecovery);
     const [error, setError] = useState('');
     const [busy, setBusy] = useState(false);
+    const [splash, setSplash] = useState(false);
     const [eventName, setEventName] = useState('');
     const [start, setStart] = useState('');
     const [days, setDays] = useState(3);
@@ -77,7 +78,7 @@ export function createConnection(React, html, repository, App, hydrate) {
       try { await repository.signOut(); } catch (e) { setError(e.message); }
     };
     if (session === undefined) return html`<main className="wrap m"><h1>Impact Event Ops</h1><p role="status">Connecting...</p></main>`;
-    if (!session || recovery) return html`<${AuthScreen} repository=${repository} recovery=${!!session && recovery} onRecovered=${() => setRecovery(false)} connectionError=${error}/>`;
+    if (!session || recovery) return html`<${AuthScreen} repository=${repository} recovery=${!!session && recovery} onRecovered=${() => setRecovery(false)} onSignedIn=${() => setSplash(true)} connectionError=${error}/>`;
     const banner = html`<${AppHeader} email=${session.user.email} role=${snapshot?.role||'admin'} busy=${busy} onRefresh=${refresh} onSignOut=${signOut}/>${error&&html`<p className="app-error connection-error" role="alert">${error}</p>`}`;
     if (!snapshot) return html`<main>${banner}${!error && html`<p className="wrap" role="status">Loading...</p>`}</main>`;
     if (!snapshot.events.length) return html`<main>${banner}
@@ -89,6 +90,8 @@ export function createConnection(React, html, repository, App, hydrate) {
       <button className="btn" disabled=${busy}>Create event</button></form>` : html`<h2>No assignments yet</h2>
       ${snapshot.notes.filter(n=>!n.done).map(n=>html`<div className="card note" key=${n.id}><p>${n.x}</p><button className="btn" disabled=${busy} onClick=${()=>command('dismiss',[n.id])}>Got it</button></div>`)}`}</div></main>`;
     const testLogins = repository.testLoginsEnabled ? { call: repository.testLogins, refresh } : null;
-    return html`<${App} connected=${{snapshot,command,email:session.user.email,busy,refresh,signOut,error,testLogins}}/>`;
+    // After a sign-in, the app shows the current event's welcome splash once (welcome() ends it).
+    const welcome = splash ? () => setSplash(false) : null;
+    return html`<${App} connected=${{snapshot,command,email:session.user.email,busy,refresh,signOut,error,testLogins,welcome}}/>`;
   };
 }

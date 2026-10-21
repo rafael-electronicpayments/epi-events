@@ -56,6 +56,23 @@ test('event logos: admins set, replace, and remove; everyone sees the logo of op
     data = await command('setEventLogo', [1, null]);
     assert.equal(data.events[0].logo, undefined);
     assert.equal((await db.query('select logo_path, logo_type from public.events where id = 1')).rows[0].logo_type, null);
+    // Welcome splash: same rules, its own command and fields.
+    assert.equal((await snapshot()).splashes, true);
+    data = await command('setEventSplash', [1, '1/splash-a.jpg', 'image/jpeg']);
+    assert.deepEqual([data.events[0].splash, data.events[0].splashType], ['1/splash-a.jpg', 'image/jpeg']);
+    data = await command('setEventLogo', [1, '1/logo-c.png', 'image/png']);
+    assert.deepEqual([data.events[0].logo, data.events[0].splash], ['1/logo-c.png', '1/splash-a.jpg'], 'logo and splash are independent');
+    await assert.rejects(command('setEventSplash', [1, '1/logo-d.jpg', 'image/jpeg']), /Invalid splash location/);
+    await assert.rejects(command('setEventSplash', [1, '2/splash-a.jpg', 'image/jpeg']), /Invalid splash location/);
+    await assert.rejects(command('setEventSplash', [1, '1/splash-a.gif', 'image/gif']), /PNG, WebP, or JPEG/);
+    await asUser(staffUser);
+    data = await snapshot();
+    assert.equal(data.events[0].splash, '1/splash-a.jpg', 'staff get the splash of their open event');
+    await assert.rejects(command('setEventSplash', [1, null]), /Administrator access required/);
+    await asUser(admin);
+    data = await command('setEventSplash', [1, null]);
+    assert.equal(data.events[0].splash, undefined);
+    assert.equal(data.events[0].logo, '1/logo-c.png');
     // Other commands still pass through to the earlier command functions.
     data = await command('editEvent', [1, { n: 'Impact 26', b: '2026-11-07', d: 3, tz: 'America/Halifax' }]);
     assert.deepEqual([data.events[0].name, data.events[0].tz], ['Impact 26', 'America/Halifax']);
