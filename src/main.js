@@ -12,7 +12,11 @@ if (Boolean(url) !== Boolean(key)) {
   window.eventOpsRepository = url && key ? createRepository(createClient(url, key), {
     passwordRecovery,
     testLoginsEnabled: new URL(url).hostname === 'bqdpskxaongqrqmgnzir.supabase.co',
-    testLoginEndpoint: local ? 'https://staging-epi-events.vercel.app/api/test-logins' : '/api/test-logins'
+    testLoginEndpoint: local ? 'https://staging-epi-events.vercel.app/api/test-logins' : '/api/test-logins',
+    // Public half of the push key pair; the private half stays in the server's environment.
+    pushKey: import.meta.env.VITE_VAPID_PUBLIC_KEY || ''
   }) : null;
+  // The service worker shows push notifications; it does not cache the app.
+  if (url && key && 'serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
   await import('./app.js');
 }

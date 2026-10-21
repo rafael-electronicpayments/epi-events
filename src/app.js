@@ -3,6 +3,7 @@ import { createAdminWorkspace } from './admin-workspace.js';
 import { AppHeader, Icon, IconButton, Modal } from './ui.js';
 import { createExpenses, hrReport, RECEIPT_TYPES } from './expenses.js';
 import { xlsx } from './xlsx-writer.js';
+import { PushCard, onOpenAssignment } from './push.js';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import htm from 'htm';
@@ -42,6 +43,9 @@ const ROOMS=['Grand Ballroom',...[1,2,3,4,5,6,7].map(n=>'Salon '+n)];
 const ROOM_ACK={};
 // Connected databases without the 20261019120000 migration don't know these settings; hide them there.
 const ACK_SUPPORT={on:!CONNECTED};
+// Push notifications: shown only on databases with the push migration (the snapshot then includes 'push').
+const PUSH_SUPPORT={on:false};
+const pushOff=(S,e)=>Array.isArray(S.pushStatus)&&!((S.pushStatus.find(p=>p.e===e)||{}).n);
 const need=s=>!s?true:s.q!=null?!!s.q:ROOM_ACK[s.r]!==false;
 // Scheduled lunches/breaks (S.breaks) and clock-outs (S.clocks). Older connected databases send neither.
 const BREAK={lunch:['Lunch','At lunch','Clock out for lunch'],break:['Break','On break','Clock out for break']};
@@ -197,10 +201,14 @@ function MyExport({S,me,day}){
  const print=()=>{const url=URL.createObjectURL(new Blob([myDoc(S,me,day,true)],{type:'text/html'})),w=window.open(url,'_blank');setTimeout(()=>URL.revokeObjectURL(url),60000);setMsg(w?'':'Your browser blocked the print window. Allow pop-ups or use Download.')};
  const label=day==null?'all days':DAYS_SHORT[day];
  return html`<div className="acts my-export"><button className="btn ghost" onClick=${print} aria-label=${'Print my schedule, '+label}><${Icon} name="print"/>Print</button><button className="btn ghost" onClick=${save} aria-label=${'Download my schedule, '+label}><${Icon} name="download"/>Download</button><span className="mute">My assignments, ${label}</span>${msg&&html`<p className="mute" role="status" style=${{flexBasis:'100%',margin:0}}>${msg}</p>`}</div>`}
-function Staff({S,A,me,canFull=false,embedded=false}){
+function Staff({S,A,me,canFull=false,embedded=false,push=null}){
  const [d0,setD]=useState(0),d=Math.min(d0,DAYS.length-1);
  // Staff can switch to the full event schedule; contractors only ever see their own.
  const [view,setView]=useState('mine'),[all,setAll]=useState(false),full=canFull&&view==='full';
+ // Tapping a notification opens the app on that assignment (?asg=ID, or a message from the service worker).
+ const [focus,setFocus]=useState(null),latest=useRef();latest.current={S,me};
+ useEffect(()=>onOpenAssignment(id=>{const {S,me}=latest.current,a=S.asg.find(x=>x.id===id&&x.e===me);if(!a||!SM[a.s])return;if(SM[a.s].ev!==CUR.id)A.switchEv(SM[a.s].ev);setView('mine');setAll(false);setD(SM[a.s].d);setFocus(id)}),[]);
+ useEffect(()=>{if(focus==null)return;const t=setTimeout(()=>{const el=[...document.querySelectorAll('[data-asg="'+focus+'"]')].pop();if(el)el.scrollIntoView({block:'center',behavior:'smooth'})},60);return()=>clearTimeout(t)},[focus]);
  const dayActs=i=>SESS.filter(s=>s.ev===CUR.id&&s.d===i).sort((x,y)=>x.a-y.a||x.b-y.b);
  const FullCard=({s})=>{const who=S.asg.filter(a=>a.s===s.id&&EMPS[a.e]);return html`<div className=${'card'+(who.some(a=>a.e===me)?' mine':'')}>
   <h3>${s.t}</h3><p className="mute">${s.r} · ${span(s)}</p>
@@ -216,11 +224,12 @@ function Staff({S,A,me,canFull=false,embedded=false}){
  const dayItems=i=>[...mine.filter(a=>SM[a.s].d===i).map(a=>({t:SM[a.s].a,a})),...myBreaks.filter(b=>b.d===i).map(b=>({t:b.a,br:b}))].sort((x,y)=>x.t-y.t);
  const BreakCard=({b})=>html`<div className="card break-card"><h3>${BREAK[b.k][1]}</h3><p className="mute">${span(b)} · ${DAYS[b.d]}</p></div>`;
  const late=oc?lateBy(S,oc,now):0,obr=oc&&oc.bid!=null&&breakOf(S,oc.bid);
- const Card=({a,cls})=>{const s=SM[a.s],[k,l]=st(a);return html`<div className=${'card '+(cls||'')}>
+ const Card=({a,cls})=>{const s=SM[a.s],[k,l]=st(a);return html`<div data-asg=${a.id} className=${'card '+(cls||'')+(focus===a.id?' focus':'')}>
   <h3>${s.t}</h3><p className="mute">${s.r} · ${span(s)} · ${DAYS[s.d]}</p><p><${Pill} k=${k}>${l}<//> ${a.cal!=null&&html`<${Pill} k=${a.cal===(a.seq||0)?'ok':'warn'}>${a.cal===(a.seq||0)?'On your calendar':'Calendar out of date'}<//>`}</p>
   <div className="acts">${need(s)&&html`<button className="btn" disabled=${!!a.ack} onClick=${()=>A.ack(a.id)}>Acknowledge</button>
   <button className="btn ghost" disabled=${!a.ack||!!a.in||!!a.conf} onClick=${()=>A.checkIn(a.id)}>Check in</button>`}${(!need(s)||!!a.ack)&&a.cal!==(a.seq||0)&&html`<button className="btn ghost" onClick=${()=>{A.calAdd(a.id);setShown(a.id)}}>${a.cal==null?'Add to calendar':'Update calendar'}</button>`}</div></div>`};
  return html`<div className=${embedded?'my-schedule':'wrap m'}>${!embedded&&html`<h2>Hi, ${EMPS[me].name.split(' ')[0]}</h2><p className="mute">${EMPS[me].role} · ${evOf(CUR.id).name}</p>`}
+ ${push&&html`<${PushCard} push=${push}/>`}
  ${notes.map(n=>html`<div className="card note" key=${n.id} role="status"><b>${n.x}</b>${n.from&&html`<p className="mute">${n.from}</p>`}
   ${(()=>{const na=n.aid&&S.asg.find(a=>a.id===n.aid),ask=!!na&&need(SM[na.s]);return html`<button className="btn" onClick=${()=>ask?A.ack(n.aid):A.dismiss(n.id)}>${ask?'Acknowledge':'Got it'}</button>`})()}</div>`)}
  ${mine.filter(a=>a.pc).map(a=>html`<div className="card note" key=${'c'+a.id} role="status"><b>${a.cal==null?'Add to your calendar?':'Update your calendar?'}</b><p className="mute">${SM[a.s].t}, ${SM[a.s].r}, ${span(SM[a.s])} (${DAYS[SM[a.s].d]}). Reminder 30 minutes before.</p><div className="acts"><button className="btn" onClick=${()=>{A.calAdd(a.id);setShown(a.id)}}>${a.cal==null?'Add to calendar':'Update calendar'}</button><button className="btn ghost" onClick=${()=>A.calSkip(a.id)}>Not now</button></div></div>`)}
@@ -243,7 +252,7 @@ function AdminSession({s,S,A,coordinator=false}){
  const as=S.asg.filter(x=>x.s===s.id), free=EMPS.filter(e=>!e.gone&&!as.some(x=>x.e===e.id)), same=SESS.filter(o=>o.ev===s.ev&&o.d===s.d&&o.id!==s.id);
  return html`<div className="session-panel"><${Head} s=${s} asg=${S.asg}/>
  <ul className="rows">${as.map(a=>{const c=clash(S.asg,a),[k,l]=st(a);return html`<li key=${a.id} className="lead-actions"><${IconButton} name="delete" label=${'Remove '+EMPS[a.e].name} onClick=${()=>A.remove(a.id)}/><div>
-  <div><b>${nm(a.e)}</b> <${Pill} k=${k}>${l}<//> ${c.length>0&&html`<${Pill} k="bad">Overlaps ${c.map(o=>o.t).join(', ')}<//>`}${breaksDuring(S,a.e,s).map(b=>html` <${Pill} key=${'b'+b.id}>${BREAK[b.k][0]} ${span(b)}<//>`)}${(()=>{const o=openClock(S,a.e),lt=o&&lateBy(S,o);return o&&html` <${Pill} k=${lt?'bad':'warn'}>${BREAK[o.k][1]} now${lt?' · '+lt+' min late':''}<//>`})()}</div>
+  <div><b>${nm(a.e)}</b> <${Pill} k=${k}>${l}<//>${pushOff(S,a.e)&&html` <${Pill} k="warn">Notifications off<//>`} ${c.length>0&&html`<${Pill} k="bad">Overlaps ${c.map(o=>o.t).join(', ')}<//>`}${breaksDuring(S,a.e,s).map(b=>html` <${Pill} key=${'b'+b.id}>${BREAK[b.k][0]} ${span(b)}<//>`)}${(()=>{const o=openClock(S,a.e),lt=o&&lateBy(S,o);return o&&html` <${Pill} k=${lt?'bad':'warn'}>${BREAK[o.k][1]} now${lt?' · '+lt+' min late':''}<//>`})()}</div>
   <div className="acts"><select aria-label=${'Move '+EMPS[a.e].name} value="" onChange=${ev=>ev.target.value&&A.move(a.id,+ev.target.value)}>
    <option value="">Move to…</option>${same.map(o=>html`<option key=${o.id} value=${o.id}>${o.r}, ${span(o)}, ${o.t}</option>`)}</select>
   ${coordinator&&need(s)&&html`<button className="btn ghost" disabled=${!!a.in||!!a.conf} onClick=${()=>A.confirm(a.id)}>Confirm present</button>`}</div></div></li>`})}</ul>
@@ -280,7 +289,7 @@ function Grid({S}){
  ${!rows.length&&html`<p className="mute">No activities yet for this event.</p>`}
  <h3 style=${{marginTop:16}}>Staff colors</h3><div className="legend">${used.map(e=>html`<span key=${e}><i className="sw" style=${{background:col(e,1)}}></i>${EMPS[e].name}</span>`)}</div></div>`}
 const EXP=createExpenses({React,html,Modal,Icon,IconButton,people:EMPS,events:EVS,current:CUR});
-const Admin=createAdminWorkspace({people:EMPS,events:EVS,rooms:ROOMS,activities:SESS,current:CUR,days:DAYS,daysShort:DAYS_SHORT,cover,clash,span,evEnd,evStatus,need,roomAck:ROOM_ACK,ackSupport:ACK_SUPPORT,BREAK,breaksOn,breaksDuring,openClock,lateBy,liveNow,clockTime,breakOf,todayIndex,breakExport,floorSupport:FLOOR_SUPPORT,closeSupport:CLOSE_SUPPORT,hrPdf:(list,scope)=>{const url=URL.createObjectURL(new Blob([hrReport({list,people:EMPS,eventName:evOf(CUR.id).name,scope,autoPrint:true})],{type:'text/html'})),w=window.open(url,'_blank');setTimeout(()=>URL.revokeObjectURL(url),60000);return w?'':'Your browser blocked the report window. Allow pop-ups for this site and try again.'},connected:CONNECTED},{AdminSession,Grid,Floorplans,Incoming,Staff,ExpensesAdmin:EXP.ExpensesAdmin});
+const Admin=createAdminWorkspace({people:EMPS,events:EVS,rooms:ROOMS,activities:SESS,current:CUR,days:DAYS,daysShort:DAYS_SHORT,cover,clash,span,evEnd,evStatus,need,roomAck:ROOM_ACK,ackSupport:ACK_SUPPORT,BREAK,breaksOn,breaksDuring,openClock,lateBy,liveNow,clockTime,breakOf,todayIndex,breakExport,floorSupport:FLOOR_SUPPORT,closeSupport:CLOSE_SUPPORT,pushSupport:PUSH_SUPPORT,hrPdf:(list,scope)=>{const url=URL.createObjectURL(new Blob([hrReport({list,people:EMPS,eventName:evOf(CUR.id).name,scope,autoPrint:true})],{type:'text/html'})),w=window.open(url,'_blank');setTimeout(()=>URL.revokeObjectURL(url),60000);return w?'':'Your browser blocked the report window. Allow pop-ups for this site and try again.'},connected:CONNECTED},{AdminSession,Grid,Floorplans,Incoming,Staff,ExpensesAdmin:EXP.ExpensesAdmin});
 function App({connected}){
  const [demoS,setS]=useState(()=>connected?connected.snapshot:seed()),[demoRole,setRole]=useState('admin'),[demoMe,setMe]=useState(0),[toast,setToast]=useState('');
  const S=connected?connected.snapshot:demoS,role=connected?connected.snapshot.role:demoRole,me=connected?connected.snapshot.me:demoMe;
@@ -335,6 +344,7 @@ function App({connected}){
    setS(s=>{const l=s.expenses||[];if(old)return L({...s,expenses:l.map(x=>x.id===id?{...x,...rec}:x)},'Updated expense for '+EMPS[owner].name);const nid=Math.max(0,...l.map(x=>x.id))+1;return L({...s,expenses:[...l,{id:nid,e:owner,ev:CUR.id,ok:false,okAt:null,...rec}]},'Added expense for '+EMPS[owner].name)});say(old?'Expense saved':'Expense added');return true},
   delExpense:id=>{const x=(S.expenses||[]).find(y=>y.id===id);setS(s=>L({...s,expenses:s.expenses.filter(y=>y.id!==id)},'Deleted expense'+(x&&EMPS[x.e]?' for '+EMPS[x.e].name:'')));say('Expense deleted');return true},
   approveExpense:(id,ok)=>{setS(s=>L({...s,expenses:s.expenses.map(x=>x.id===id?{...x,ok:!!ok,okAt:ok?new Date().toISOString():null}:x)},(ok?'Approved':'Unapproved')+' expense'));return true},
+  pushTest:()=>{say('Test notifications need the connected app');return false},
   receiptFile:async x=>RECEIPTS[x.rp]||RECEIPT_CACHE[x.rp]||(RECEIPT_CACHE[x.rp]={data:await window.eventOpsRepository.receiptFile(x.rp),type:x.rt}),
   setStart:v=>{if(!v)return false;EVD.d=v;setS(s=>L({...s},'Set event start date to '+v));say('Start date saved');return true},
   setDays:n=>{n=Math.floor(+n);if(!(n>=1&&n<=14)){say('Enter 1 to 14 days');return false}if(n===DAYS.length){say('Already '+n+' days');return false}const bad=SESS.find(s=>s.d>=n);if(bad){say('Move or delete activities on '+DAYS[bad.d]+' first');return false}const was=DAYS.length;fillDays(EVD.d,n);setS(s=>L({...s},'Changed event length from '+was+' to '+n+' days'));say('Event is now '+n+' days');return true}};
@@ -365,9 +375,12 @@ function App({connected}){
    if(!ok){if(up){delete RECEIPT_CACHE[up];repo.receiptRemove(up).catch(()=>{})}return false}
    if(old&&old.rp&&old.rp!==rp){delete RECEIPT_CACHE[old.rp];repo.receiptRemove(old.rp).catch(()=>{})}say(old?'Expense saved':'Expense added');return true};
   A.delExpense=async id=>{const old=(S.expenses||[]).find(x=>x.id===id),ok=await cmd('delExpense',[id]);if(ok&&old&&old.rp){delete RECEIPT_CACHE[old.rp];repo.receiptRemove(old.rp).catch(()=>{})}if(ok)say('Expense deleted');return ok};
+  A.pushTest=async id=>{const ok=await cmd('pushTest',[id]);if(ok)say('Test notification queued. It should arrive within a minute.');return ok};
   A.delFloorplan=async id=>{const f=FP.find(x=>x.id===id),ok=await cmd('delFloorplan',[id]);if(ok&&f){delete FP_CACHE[f.path];repo.floorplanRemove(f.path).catch(()=>{});say(f.name+' removed')}return ok};}
  // Staff and contractors never land on a closed event (the server already omits them when connected).
  const openEvs=EVS.filter(e=>!e.closed);
+ // Push settings for this device (connected databases with push support, people on the roster, and a configured key).
+ const push=connected&&PUSH_SUPPORT.on&&window.eventOpsRepository?.pushKey&&me!=null&&EMPS[me]&&!EMPS[me].gone?{repo:window.eventOpsRepository,refresh:connected.refresh,devices:S.push?.devices||0}:null;
  if(role!=='admin'&&evOf(CUR.id)?.closed&&openEvs.length){CUR.id=openEvs[0].id;syncEv()}
  const ul=H.length?(H[H.length-1].label||'last change'):'';
  const R=[['admin','Admin'],['staff','Staff'],['contractor','Contractor']];
@@ -377,7 +390,7 @@ function App({connected}){
  <//>
  ${connected?.error&&html`<p className="app-error connection-error" role="alert">${connected.error}</p>`}
  ${!connected&&role!=='admin'&&html`<div className="wrap m" style=${{paddingBottom:0}}><label>Viewing as <select value=${me} onChange=${e=>setMe(+e.target.value)}>${EMPS.filter(e=>!e.gone&&e.acct===role).map(e=>html`<option key=${e.id} value=${e.id}>${nm(e.id)}</option>`)}</select></label></div>`}
- <fieldset className="workspace" disabled=${!!connected?.busy}>${role!=='admin'&&(openEvs.length?html`<${Staff} S=${S} A=${A} me=${me} canFull=${role==='staff'}/>`:html`<div className="wrap m"><h2>No open events</h2><p className="mute">There are no events for you right now.</p></div>`)}${role==='admin'&&html`<${Admin} S=${S} A=${A} me=${me!=null&&EMPS[me]&&!EMPS[me].gone&&EMPS[me].acct==='admin'?me:null} error=${connected?.error} testLogins=${connected?.testLogins}/>`}</fieldset>
+ <fieldset className="workspace" disabled=${!!connected?.busy}>${role!=='admin'&&(openEvs.length?html`<${Staff} S=${S} A=${A} me=${me} canFull=${role==='staff'} push=${push}/>`:html`<div className="wrap m"><h2>No open events</h2><p className="mute">There are no events for you right now.</p></div>`)}${role==='admin'&&html`<${Admin} S=${S} A=${A} me=${me!=null&&EMPS[me]&&!EMPS[me].gone&&EMPS[me].acct==='admin'?me:null} error=${connected?.error} testLogins=${connected?.testLogins} push=${push}/>`}</fieldset>
  ${toast&&html`<div className="toast" role="status">${toast}</div>`}</div>`}
 function hydrate(data){
  EMPS.length=0;data.people.forEach(e=>{EMPS[e.id]=e});
@@ -386,7 +399,7 @@ function hydrate(data){
  data.activities.forEach(s=>{s.q=data.actAck&&Object.hasOwn(data.actAck,s.id)?data.actAck[s.id]:null});
  SESS.splice(0,SESS.length,...data.activities);Object.keys(SM).forEach(k=>delete SM[k]);SESS.forEach(s=>{SM[s.id]=s});
  FP.length=0;INV.length=0;H.length=0;
- FLOOR_SUPPORT.on=Array.isArray(data.floorplans);if(FLOOR_SUPPORT.on)FP.push(...data.floorplans.map(f=>({id:f.id,ev:f.ev,name:f.name,size:f.size,path:f.path})));
+ PUSH_SUPPORT.on=!!data.push;FLOOR_SUPPORT.on=Array.isArray(data.floorplans);if(FLOOR_SUPPORT.on)FP.push(...data.floorplans.map(f=>({id:f.id,ev:f.ev,name:f.name,size:f.size,path:f.path})));
  if(EVS.length){if(!evOf(CUR.id))CUR.id=EVS[0].id;syncEv()}
 }
 const Root=CONNECTED?createConnection(React,html,window.eventOpsRepository,App,hydrate):App;

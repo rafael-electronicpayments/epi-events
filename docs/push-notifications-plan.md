@@ -1,6 +1,9 @@
 # Push notifications plan (PWA + Web Push)
 
-Status: **proposal, not yet approved for build** (2026-10-20). No code has been changed for this yet.
+Status: **approved and built** (2026-10-20) on `push-notification-feature`; see `docs/PUSH_NOTIFICATIONS.md` for how it works
+and how to set it up. Decisions taken: events default to Eastern time (America/New_York), sender on Vercel, same
+behaviour on iPhone and Android, immediate push only for assignments made under 30 minutes before start, and the
+optional admin delivery log is included.
 Work happens on the `push-notification-feature` branch (see `context.md`), which shares the staging database
 with `staging`, so every migration for this feature must keep the current `staging` code working.
 

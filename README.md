@@ -6,7 +6,7 @@ A clickable, mobile-first prototype of an event operations web app for an annual
 
 **Staging:** [staging-epi-events.vercel.app](https://staging-epi-events.vercel.app), with an independent Supabase database and login accounts. Use staging for team testing.
 
-**Status:** Connected POC. Both environments use email/password login. Only staging includes the admin-only temporary-login tool for synthetic accounts; see [testing credentials](docs/TEST_LOGINS.md). Production users use their own passwords or Forgot password recovery. Scheduling data is saved in Postgres. Without configuration, the original fictional, in-memory demo runs. Notifications are in-app; assignment emails and push notifications are not implemented.
+**Status:** Connected POC. Both environments use email/password login. Only staging includes the admin-only temporary-login tool for synthetic accounts; see [testing credentials](docs/TEST_LOGINS.md). Production users use their own passwords or Forgot password recovery. Scheduling data is saved in Postgres. Without configuration, the original fictional, in-memory demo runs. Notifications are in-app; on the `push-notification-feature` branch the app is also installable and sends push notifications (see [push notifications](docs/PUSH_NOTIFICATIONS.md)). Assignment emails are not implemented.
 
 **Direction:** Evolve this repo step by step, with GitHub for collaboration, Vercel hosting, and Supabase's free tier until POC approval. The connected slice includes login, event setup, people/rooms/activities, assignments, acknowledgment, check-in, contacts, schedule printing, and activity logging. Floorplans, incoming goods, and demo undo/reset remain in demo mode only. See `docs/SUPABASE.md` for setup and access provisioning.
 

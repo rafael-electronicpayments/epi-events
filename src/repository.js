@@ -1,4 +1,4 @@
-export function createRepository(client, { testLoginsEnabled = false, testLoginEndpoint = '/api/test-logins', passwordRecovery = false } = {}) {
+export function createRepository(client, { testLoginsEnabled = false, testLoginEndpoint = '/api/test-logins', passwordRecovery = false, pushKey = '' } = {}) {
   const result = async request => {
     const { data, error } = await request;
     if (error) throw error;
@@ -28,6 +28,10 @@ export function createRepository(client, { testLoginsEnabled = false, testLoginE
     },
     signOut: () => result(client.auth.signOut()),
     load: () => result(client.rpc('ops_snapshot')),
+    // Push notifications: each person registers or removes only their own devices.
+    pushKey,
+    pushRegister: (subscription, device) => result(client.rpc('push_register', { subscription, device })),
+    pushUnregister: endpoint => result(client.rpc('push_unregister', { endpoint })),
     // Floorplan PDFs live in the private 'floorplans' Storage bucket; access is enforced by Storage policies.
     floorplanUpload: (path, data) => result(client.storage.from('floorplans').upload(path, new Blob([data], { type: 'application/pdf' }), { contentType: 'application/pdf', upsert: false })),
     floorplanFile: async path => new Uint8Array(await (await result(client.storage.from('floorplans').download(path))).arrayBuffer()),
