@@ -79,7 +79,7 @@ export function createConnection(React, html, repository, App, hydrate) {
     };
     if (session === undefined) return html`<main className="wrap m"><h1>Impact Event Ops</h1><p role="status">Connecting...</p></main>`;
     if (!session || recovery) return html`<${AuthScreen} repository=${repository} recovery=${!!session && recovery} onRecovered=${() => setRecovery(false)} onSignedIn=${() => setSplash(true)} connectionError=${error}/>`;
-    const banner = html`<${AppHeader} email=${session.user.email} role=${snapshot?.role||'admin'} busy=${busy} onRefresh=${refresh} onSignOut=${signOut}/>${error&&html`<p className="app-error connection-error" role="alert">${error}</p>`}`;
+    const banner = html`<${AppHeader} email=${session.user.email} role=${snapshot?.role||'admin'} busy=${busy} onRefresh=${refresh} onSignOut=${signOut} onChangePassword=${repository.changePassword}/>${error&&html`<p className="app-error connection-error" role="alert">${error}</p>`}`;
     if (!snapshot) return html`<main>${banner}${!error && html`<p className="wrap" role="status">Loading...</p>`}</main>`;
     if (!snapshot.events.length) return html`<main>${banner}
       <div className="wrap m">${snapshot.role === 'admin' ? html`<h2>Create your first event</h2><form className="form" onSubmit=${async e => {
@@ -92,6 +92,6 @@ export function createConnection(React, html, repository, App, hydrate) {
     const testLogins = repository.testLoginsEnabled ? { call: repository.testLogins, refresh } : null;
     // After a sign-in, the app shows the current event's welcome splash once (welcome() ends it).
     const welcome = splash ? () => setSplash(false) : null;
-    return html`<${App} connected=${{snapshot,command,email:session.user.email,busy,refresh,signOut,error,testLogins,welcome}}/>`;
+    return html`<${App} connected=${{snapshot,command,email:session.user.email,busy,refresh,signOut,error,testLogins,welcome,changePassword:repository.changePassword}}/>`;
   };
 }

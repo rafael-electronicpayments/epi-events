@@ -25,6 +25,8 @@ The public Supabase URL must equal staging project `bqdpskxaongqrqmgnzir`, and t
 
 Passwords are hashed by Supabase Auth. No plaintext passwords are added to the database, snapshot, activity log, Git, localStorage, or sessionStorage. The server derives temporary passwords from the private random secret, person/email, and a random version stored in server-controlled Auth app metadata. Only an admin's explicit editor request returns one password, with no-store response headers. Bulk results never contain passwords. Closing the editor removes the credential from the rendered UI.
 
+People can replace their temporary password themselves with Account menu › Change password (current password required). After that, the temporary password shown here no longer works; Reset temporary password issues a new one if they forget theirs.
+
 Keep the derivation secret stable while these accounts are in use. Rotating it or changing a password outside this feature requires resetting the managed account's temporary password here to synchronize it. Existing real administrator passwords cannot be recovered or displayed; use Supabase password recovery instead.
 
 ## Verification and Retirement

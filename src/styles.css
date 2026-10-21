@@ -257,3 +257,4 @@ body:has(dialog[open]) .app-error{display:none}
 .document-editor .choice-list{border:0;padding:0;margin:16px 0 0;display:grid;gap:10px}.document-editor .choice-list legend{font-weight:600;margin-bottom:6px;padding:0}.document-editor .choice-list .chk{min-height:44px}.document-editor .receipt-field{margin-bottom:16px}
 .documents-card .rows li{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
 @media(max-width:900px){.documents-admin td:last-child{width:auto}.documents-admin .doc-acts{justify-content:flex-start}}@media(max-width:640px){.documents-admin .data-table td:first-child{min-width:0}}
+.change-password .editor-fields{grid-template-columns:1fr}

@@ -421,7 +421,7 @@ function App({connected}){
  if(role!=='admin'&&evOf(CUR.id)?.closed&&openEvs.length){CUR.id=openEvs[0].id;syncEv()}
  const ul=H.length?(H[H.length-1].label||'last change'):'';
  const R=[['admin','Admin'],['staff','Staff'],['contractor','Contractor']];
- return html`<div><${AppHeader} events=${role==='admin'?EVS.map(e=>e.closed?{...e,name:e.name+' (closed)'}:e):openEvs} current=${CUR.id} onEventChange=${A.switchEv} email=${connected?.email} role=${role} busy=${connected?.busy} error=${connected?.error} onRefresh=${connected?.refresh} onSignOut=${connected?.signOut}>
+ return html`<div><${AppHeader} events=${role==='admin'?EVS.map(e=>e.closed?{...e,name:e.name+' (closed)'}:e):openEvs} current=${CUR.id} onEventChange=${A.switchEv} email=${connected?.email} role=${role} busy=${connected?.busy} error=${connected?.error} onRefresh=${connected?.refresh} onSignOut=${connected?.signOut} onChangePassword=${connected?.changePassword}>
   ${!connected&&html`<${IconButton} name="undo" label=${H.length?'Undo: '+ul:'Nothing to undo'} disabled=${!H.length} onClick=${A.undo}/>
   <div className="seg" role="group" aria-label="Demo role">${R.map(([k,l])=>html`<button key=${k} aria-pressed=${role===k} onClick=${()=>{setRole(k);const f=EMPS.find(e=>!e.gone&&e.acct===k);if(f)setMe(f.id)}}>${l}</button>`)}</div><${IconButton} name="reset" label="Reset demo" onClick=${()=>{H.length=0;setS(seed());say('Demo reset')}}/>`}
  <//>

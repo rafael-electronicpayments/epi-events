@@ -15,6 +15,14 @@ export function createRepository(client, { testLoginsEnabled = false, testLoginE
     signIn: (email, password) => result(client.auth.signInWithPassword({ email, password })),
     resetPassword: email => result(client.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + '/' })),
     updatePassword: password => result(client.auth.updateUser({ password })),
+    // Signed-in password change: confirm the current password first, then set the new one.
+    changePassword: async (current, next) => {
+      const session = (await result(client.auth.getSession())).session;
+      if (!session?.user?.email) throw Object.assign(new Error('Sign in again to change your password.'), { code: 'no_session' });
+      const check = await client.auth.signInWithPassword({ email: session.user.email, password: current });
+      if (check.error) throw Object.assign(new Error('Your current password is not correct.'), { code: 'wrong_password' });
+      await result(client.auth.updateUser({ password: next }));
+    },
     testLogins: async (action, personId) => {
       if (!testLoginsEnabled) throw new Error('Test logins are available on staging only.');
       const session = (await result(client.auth.getSession())).session;
