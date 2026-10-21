@@ -6,6 +6,7 @@ import { xlsx } from './xlsx-writer.js';
 import { PushCard, onOpenAssignment } from './push.js';
 import { createEventLogo, createImageUrls, prepLogo, prepSplash } from './event-logo.js';
 import { Splash } from './splash.js';
+import { createDocuments, docExt } from './documents.js';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import htm from 'htm';
@@ -28,6 +29,8 @@ const FP=[];
 const FP_CACHE={},FLOOR_SUPPORT={on:!CONNECTED};
 // Expense receipts: demo keeps bytes here; connected caches downloaded files by path.
 const RECEIPTS={},RECEIPT_CACHE={};
+// Event documents: demo keeps bytes here by path; connected caches downloaded files by path.
+const DOC_DATA={},DOC_CACHE={};
 const uuid=()=>window.crypto&&crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+'-'+Math.random().toString(36).slice(2);
 const fpData=async f=>f.data||FP_CACHE[f.path]||(FP_CACHE[f.path]=await window.eventOpsRepository.floorplanFile(f.path));
 const INV=[{id:1,ev:1,type:'Swag',vendor:'Northwind Apparel',inv:'NW-20418',date:'2027-01-15',amt:2450,unit:'lb',files:[],lines:[{q:300,d:'Event t-shirts',c:6.5,w:0.4,sb:'',disp:'Promotional Give Away - No Return'},{q:100,d:'Tote bags',c:5,w:0.5,sb:'',disp:'Promotional Give Away - No Return'}]},{id:2,ev:1,type:'Equipment',vendor:'Brightline Systems (supplier loan)',inv:'',date:'2027-01-20',amt:0,unit:'lb',files:[],lines:[{q:4,d:'Demo tablets',c:0,w:1.5,sb:'',disp:'Temporary Use - Returning'}]}];
@@ -76,7 +79,7 @@ const ntext=(a,p)=>p+': '+SM[a.s].t+', '+SM[a.s].r+', '+span(SM[a.s])+' ('+dayDa
 let uid=100;
 const H=[];
 const seed=()=>{const asg=SEED.map((r,i)=>({id:i+1,e:r[0],s:r[1],ack:r[2],in:r[3],conf:0,tag:r[4]}));
- return {asg,log:[],breaks:[],clocks:[],expenses:[],notes:asg.filter(a=>!a.ack).map(a=>({id:++uid,e:a.e,aid:a.id,done:0,x:ntext(a,a.tag==='new'?'New assignment':'Changed assignment')}))}};
+ return {asg,log:[],breaks:[],clocks:[],expenses:[],documents:[],notes:asg.filter(a=>!a.ack).map(a=>({id:++uid,e:a.e,aid:a.id,done:0,x:ntext(a,a.tag==='new'?'New assignment':'Changed assignment')}))}};
 const clash=(asg,a)=>asg.filter(x=>x.id!==a.id&&x.e===a.e&&SM[x.s].ev===SM[a.s].ev&&SM[x.s].d===SM[a.s].d&&SM[x.s].a<SM[a.s].b&&SM[a.s].a<SM[x.s].b).map(x=>SM[x.s]);
 const st=a=>!need(SM[a.s])?['ok','No check-in needed']:a.in||a.conf?['ok',a.conf&&!a.in?'Confirmed by coordinator':'Checked in']:a.ack?['','Acknowledged']:['warn',(a.tag==='changed'?'Changed':'New')+', needs acknowledgment'];
 const cover=(s,asg)=>{const as=asg.filter(x=>x.s===s.id),p=need(s)?as.filter(x=>x.in||x.conf).length:as.length;
@@ -245,6 +248,7 @@ function Staff({S,A,me,canFull=false,embedded=false,push=null}){
  ${sa&&html`<div className="card"><b>Calendar event ready</b><p className="mute">${SM[sa.s].t}, ${SM[sa.s].r}, ${span(SM[sa.s])}. Reminder 30 minutes before.</p><p className="mute">In the real app this opens your phone's calendar (Apple, Google, or Outlook). This preview can't open a phone calendar, so the file it would send is shown below.</p><details><summary>Calendar file (for developers)</summary><pre style=${{whiteSpace:'pre-wrap',fontSize:'.8rem'}}>${ics(sa)}</pre></details><button className="btn ghost" onClick=${()=>setShown(null)}>Close</button></div>`}
  ${!embedded&&html`<div className="card"><b>Venue floorplan</b>${EMPS[me].map?(FP.some(f=>f.ev===CUR.id)?html`<div className="acts">${FP.filter(f=>f.ev===CUR.id).map(f=>html`<button key=${f.id} className="btn ghost" onClick=${()=>setFv(f.id)}>${f.name}</button>`)}</div>`:html`<p className="mute">No floorplan has been added for this event yet.</p>`):html`<p className="mute">Your administrator has not turned on access for you.</p>`}</div>`}
  ${!embedded&&!!EMPS[me].map&&FP.find(f=>f.id===fv&&f.ev===CUR.id)&&html`<${PdfView} f=${FP.find(f=>f.id===fv)} onClose=${()=>setFv(null)}/>`}
+ ${!embedded&&Array.isArray(S.documents)&&html`<${DOCS.DocumentList} S=${S} A=${A} me=${me}/>`}
  <h2>Next assignment</h2>${next?html`<${Card} a=${next} cls="next"/>`:html`<p className="mute">Nothing coming up. Your admin will notify you of new assignments.</p>`}
  <h2>${full?'Full schedule':'My schedule'}</h2>
  ${canFull&&html`<div className="seg" role="group" aria-label="Schedule view" style=${{marginBottom:8}}><button aria-pressed=${!full} onClick=${()=>setView('mine')}>My schedule</button><button aria-pressed=${full} onClick=${()=>setView('full')}>Full schedule</button></div>`}
@@ -296,7 +300,8 @@ function Grid({S}){
  ${!rows.length&&html`<p className="mute">No activities yet for this event.</p>`}
  <h3 style=${{marginTop:16}}>Staff colors</h3><div className="legend">${used.map(e=>html`<span key=${e}><i className="sw" style=${{background:col(e,1)}}></i>${EMPS[e].name}</span>`)}</div></div>`}
 const EXP=createExpenses({React,html,Modal,Icon,IconButton,people:EMPS,events:EVS,current:CUR});
-const Admin=createAdminWorkspace({people:EMPS,events:EVS,rooms:ROOMS,activities:SESS,current:CUR,days:DAYS,daysShort:DAYS_SHORT,cover,clash,span,evEnd,evStatus,need,roomAck:ROOM_ACK,ackSupport:ACK_SUPPORT,BREAK,breaksOn,breaksDuring,openClock,lateBy,liveNow,clockTime,breakOf,todayIndex,breakExport,floorSupport:FLOOR_SUPPORT,closeSupport:CLOSE_SUPPORT,pushSupport:PUSH_SUPPORT,logoSupport:LOGO_SUPPORT,splashSupport:SPLASH_SUPPORT,prepLogo,prepSplash,imageUrl,hrPdf:(list,scope)=>{const url=URL.createObjectURL(new Blob([hrReport({list,people:EMPS,eventName:evOf(CUR.id).name,scope,autoPrint:true})],{type:'text/html'})),w=window.open(url,'_blank');setTimeout(()=>URL.revokeObjectURL(url),60000);return w?'':'Your browser blocked the report window. Allow pop-ups for this site and try again.'},connected:CONNECTED},{AdminSession,Grid,Floorplans,Incoming,Staff,ExpensesAdmin:EXP.ExpensesAdmin,EventLogo,Splash});
+const DOCS=createDocuments({React,html,Modal,Icon,people:EMPS,events:EVS,activities:SESS,current:CUR});
+const Admin=createAdminWorkspace({people:EMPS,events:EVS,rooms:ROOMS,activities:SESS,current:CUR,days:DAYS,daysShort:DAYS_SHORT,cover,clash,span,evEnd,evStatus,need,roomAck:ROOM_ACK,ackSupport:ACK_SUPPORT,BREAK,breaksOn,breaksDuring,openClock,lateBy,liveNow,clockTime,breakOf,todayIndex,breakExport,floorSupport:FLOOR_SUPPORT,closeSupport:CLOSE_SUPPORT,pushSupport:PUSH_SUPPORT,logoSupport:LOGO_SUPPORT,splashSupport:SPLASH_SUPPORT,prepLogo,prepSplash,imageUrl,hrPdf:(list,scope)=>{const url=URL.createObjectURL(new Blob([hrReport({list,people:EMPS,eventName:evOf(CUR.id).name,scope,autoPrint:true})],{type:'text/html'})),w=window.open(url,'_blank');setTimeout(()=>URL.revokeObjectURL(url),60000);return w?'':'Your browser blocked the report window. Allow pop-ups for this site and try again.'},connected:CONNECTED},{AdminSession,Grid,Floorplans,Incoming,Staff,ExpensesAdmin:EXP.ExpensesAdmin,EventLogo,Splash,DocumentsAdmin:DOCS.DocumentsAdmin});
 function App({connected}){
  const [demoS,setS]=useState(()=>connected?connected.snapshot:seed()),[demoRole,setRole]=useState('admin'),[demoMe,setMe]=useState(0),[toast,setToast]=useState('');
  const S=connected?connected.snapshot:demoS,role=connected?connected.snapshot.role:demoRole,me=connected?connected.snapshot.me:demoMe;
@@ -333,6 +338,10 @@ function App({connected}){
   editEvent:(id,o)=>{if(!evv(o))return false;const n=Math.floor(o.d),bad=SESS.find(s=>s.ev===id&&s.d>=n);if(bad){say('Move or delete activities on '+dayDate(evOf(id).start,bad.d)+' first');return false}Object.assign(evOf(id),{name:o.n,start:o.b,days:n});if(id===CUR.id)syncEv();setS(s=>L({...s},'Updated event '+o.n));say('Saved');return true},
   delEvent:id=>{if(EVS.length<2){say('At least one event must remain');return false}const e=evOf(id),ids=SESS.filter(s=>s.ev===id).map(s=>s.id);setS(s=>{const g=s.asg.filter(a=>ids.includes(a.s));return L({...s,asg:s.asg.filter(a=>!ids.includes(a.s)),notes:[...s.notes.filter(n=>!g.some(a=>a.id===n.aid)),...[...new Set(g.map(a=>a.e))].map(x=>({id:++uid,e:x,aid:null,done:0,x:'Event removed: '+e.name}))]},'Deleted event '+e.name+' with '+ids.length+' activities')});for(let i=SESS.length-1;i>=0;i--)if(ids.includes(SESS[i].id)){delete SM[SESS[i].id];SESS.splice(i,1)}for(let i=FP.length-1;i>=0;i--)if(FP[i].ev===id)FP.splice(i,1);for(let i=INV.length-1;i>=0;i--)if(INV[i].ev===id)INV.splice(i,1);EVS.splice(EVS.indexOf(e),1);if(CUR.id===id){CUR.id=EVS[0].id;syncEv()}say(e.name+' deleted');return true},
   setEventLogo:(ev,logo)=>{const e=evOf(ev);if(!e)return false;if(logo){Object.assign(e,{logo:'demo/'+uuid()+'.png',logoType:logo.type,logoData:logo.data})}else{delete e.logo;delete e.logoType;delete e.logoData}setS(s=>L({...s},(logo?'Set logo for ':'Removed logo from ')+e.name));say(logo?'Logo saved':'Logo removed');return true},
+  addDocument:(ev,f,all,who)=>{const path=ev+'/'+uuid()+'.'+docExt(f.type);DOC_DATA[path]=f.data;setS(s=>{const id=Math.max(0,...(s.documents||[]).map(d=>d.id))+1;return L({...s,documents:[...(s.documents||[]),{id,ev,name:f.name,path,size:f.size,type:f.type,all:!!all,who:all?[]:[...who].sort((a,b)=>a-b)}].sort((a,b)=>a.ev-b.ev||a.name.localeCompare(b.name))},'Added document '+f.name+' to '+evOf(ev).name)});say(f.name+' added');return true},
+  editDocument:(id,name,all,who)=>{setS(s=>L({...s,documents:(s.documents||[]).map(d=>d.id===id?{...d,name,all:!!all,who:all?[]:[...who].sort((a,b)=>a-b)}:d)},'Updated document '+name));say('Saved');return true},
+  delDocument:id=>{setS(s=>{const d=(s.documents||[]).find(x=>x.id===id);if(d)delete DOC_DATA[d.path];return L({...s,documents:(s.documents||[]).filter(x=>x.id!==id)},'Deleted document '+(d?d.name:''))});say('Document deleted');return true},
+  documentFile:async d=>DOC_DATA[d.path]||DOC_CACHE[d.path]||(DOC_CACHE[d.path]=await window.eventOpsRepository.documentFile(d.path)),
   setEventSplash:(ev,img)=>{const e=evOf(ev);if(!e)return false;if(img){Object.assign(e,{splash:'demo/'+uuid()+'.img',splashType:img.type,splashData:img.data})}else{delete e.splash;delete e.splashType;delete e.splashData}setS(s=>L({...s},(img?'Set welcome splash for ':'Removed welcome splash from ')+e.name));say(img?'Welcome splash saved':'Welcome splash removed');return true},
   addFloorplan:(f,ev)=>{if(String.fromCharCode(...f.data.slice(0,4))!=='%PDF'){say(f.name+' is not a PDF file');return false}if(f.data.length>26214400){say(f.name+' is over 25 MB');return false}FP.push({id:Math.max(0,...FP.map(x=>x.id))+1,ev,name:/\.pdf$/i.test(f.name)?f.name:f.name+'.pdf',size:f.data.length,data:f.data});setS(s=>L({...s},'Added floorplan '+f.name+' to '+evOf(ev).name));say(f.name+' added to '+evOf(ev).name);return true},
   renameFloorplan:(id,n)=>{const f=FP.find(x=>x.id===id);if(!n){say('Enter a name');return false}const was=f.name;f.name=n;setS(s=>L({...s},'Renamed floorplan '+was+' to '+n));say('Renamed');return true},
@@ -360,10 +369,10 @@ function App({connected}){
   receiptFile:async x=>RECEIPTS[x.rp]||RECEIPT_CACHE[x.rp]||(RECEIPT_CACHE[x.rp]={data:await window.eventOpsRepository.receiptFile(x.rp),type:x.rt}),
   setStart:v=>{if(!v)return false;EVD.d=v;setS(s=>L({...s},'Set event start date to '+v));say('Start date saved');return true},
   setDays:n=>{n=Math.floor(+n);if(!(n>=1&&n<=14)){say('Enter 1 to 14 days');return false}if(n===DAYS.length){say('Already '+n+' days');return false}const bad=SESS.find(s=>s.d>=n);if(bad){say('Move or delete activities on '+DAYS[bad.d]+' first');return false}const was=DAYS.length;fillDays(EVD.d,n);setS(s=>L({...s},'Changed event length from '+was+' to '+n+' days'));say('Event is now '+n+' days');return true}};
- Object.keys(A).forEach(k=>{if(['dismiss','calAdd','calSkip','switchEv','clockOut','clockIn','receiptFile'].includes(k))return;const f=A[k];A[k]=(...a)=>{snap();const r=f(...a);if(r===false)H.pop();return r}});
+ Object.keys(A).forEach(k=>{if(['dismiss','calAdd','calSkip','switchEv','clockOut','clockIn','receiptFile','documentFile'].includes(k))return;const f=A[k];A[k]=(...a)=>{snap();const r=f(...a);if(r===false)H.pop();return r}});
  A.undo=()=>{const h=H.pop();if(!h)return;EMPS.length=0;EMPS.push(...h.emps);ROOMS.length=0;ROOMS.push(...h.rooms);Object.keys(ROOM_ACK).forEach(k=>delete ROOM_ACK[k]);Object.assign(ROOM_ACK,h.roomAck);SESS.length=0;SESS.push(...h.sess);Object.keys(SM).forEach(k=>delete SM[k]);SESS.forEach(o=>{SM[o.id]=o});EVS.length=0;EVS.push(...h.evs);CUR.id=h.cur;FP.length=0;FP.push(...h.fp);INV.length=0;INV.push(...h.inv);syncEv();setS(Lg(h.s,'Undid: '+h.label));say('Undid: '+h.label)};
  if(connected)Object.keys(A).forEach(k=>{
-  if(k==='switchEv'||k==='receiptFile')return;
+  if(k==='switchEv'||k==='receiptFile'||k==='documentFile')return;
   A[k]=async(...args)=>{
    const options=args.at(-1);
    const expectedRevision=k.startsWith('edit')&&options&&typeof options==='object'&&Object.hasOwn(options,'expectedRevision')?args.pop().expectedRevision:undefined;
@@ -393,6 +402,12 @@ function App({connected}){
    const ok=await cmd('setEventLogo',logo?[ev,path,logo.type]:[ev,null]);
    if(!ok){if(path){delete LOGO_CACHE[path];repo.logoRemove(path).catch(()=>{})}return false}
    if(old&&old!==path){delete LOGO_CACHE[old];repo.logoRemove(old).catch(()=>{})}say(logo?'Logo saved':'Logo removed');return true};
+  A.addDocument=async(ev,f,all,who)=>{const path=ev+'/'+uuid()+'.'+docExt(f.type);
+   try{await repo.documentUpload(path,f.data,f.type)}catch(e){say('Upload failed: '+(e&&e.message||'try again'));return false}
+   DOC_CACHE[path]=f.data;const ok=await cmd('addDocument',[ev,f.name,path,f.size,f.type,!!all,all?[]:[...who]]);
+   if(!ok){delete DOC_CACHE[path];repo.documentRemove(path).catch(()=>{});return false}say(f.name+' added');return true};
+  A.editDocument=async(id,name,all,who)=>{const ok=await cmd('editDocument',[id,name,!!all,all?[]:[...who]]);if(ok)say('Saved');return ok};
+  A.delDocument=async id=>{const d=(S.documents||[]).find(x=>x.id===id),ok=await cmd('delDocument',[id]);if(ok&&d){delete DOC_CACHE[d.path];repo.documentRemove(d.path).catch(()=>{});say('Document deleted')}return ok};
   A.setEventSplash=async(ev,img)=>{const old=evOf(ev)?.splash;let path=null;
    if(img){path=ev+'/splash-'+uuid()+({'image/webp':'.webp','image/jpeg':'.jpg'}[img.type]||'.png');try{await repo.logoUpload(path,img.data,img.type)}catch(e){say('Splash upload failed: '+(e&&e.message||'try again'));return false}LOGO_CACHE[path]=img.data}
    const ok=await cmd('setEventSplash',img?[ev,path,img.type]:[ev,null]);

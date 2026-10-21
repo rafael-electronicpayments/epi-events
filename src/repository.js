@@ -40,6 +40,10 @@ export function createRepository(client, { testLoginsEnabled = false, testLoginE
     logoUpload: (path, data, type) => result(client.storage.from('event-logos').upload(path, new Blob([data], { type }), { contentType: type, upsert: false })),
     logoFile: async path => new Uint8Array(await (await result(client.storage.from('event-logos').download(path))).arrayBuffer()),
     logoRemove: path => result(client.storage.from('event-logos').remove([path])),
+    // Event documents live in the private 'documents' bucket under '<event id>/'; viewing is limited by Storage policies.
+    documentUpload: (path, data, type) => result(client.storage.from('documents').upload(path, new Blob([data], { type }), { contentType: type, upsert: false })),
+    documentFile: async path => new Uint8Array(await (await result(client.storage.from('documents').download(path))).arrayBuffer()),
+    documentRemove: path => result(client.storage.from('documents').remove([path])),
     // Expense receipts live in the private 'receipts' bucket under '<person id>/'.
     receiptUpload: (path, data, type) => result(client.storage.from('receipts').upload(path, new Blob([data], { type }), { contentType: type, upsert: false })),
     receiptFile: async path => new Uint8Array(await (await result(client.storage.from('receipts').download(path))).arrayBuffer()),
