@@ -47,10 +47,10 @@ function fixture() {
   };
   let clients = 0;
   const handler = createTestLoginHandler({ env, createClient: () => { clients++; return client; } });
-  const request = (body, token = 'admin', origin = 'https://staging-epi-events.vercel.app', method = 'POST') => {
+  const request = (body, token = 'admin', origin = 'https://staging-epi-events.vercel.app', method = 'POST', site = 'https://staging-epi-events.vercel.app') => {
     const headers = { 'Content-Type': 'application/json', Origin: origin };
     if (token) headers.Authorization = 'Bearer ' + token;
-    return handler(new Request('https://staging-epi-events.vercel.app/api/test-logins', {
+    return handler(new Request(site + '/api/test-logins', {
       method, headers, ...(method === 'POST' ? { body: JSON.stringify(body) } : {})
     }));
   };
@@ -67,6 +67,11 @@ test('test credential API is staging-only, admin-only, and noncacheable', async 
   assert.equal((await f.request({},'invalid')).status,401);
   assert.equal((await f.request({},'staff')).status,403);
   assert.equal((await f.request({},'admin','https://unapproved.invalid')).status,403);
+  // A branch domain may call its own API, but not another site's.
+  const branch = 'https://push-staging-epi-events.vercel.app';
+  assert.equal((await f.request({action:'credentials',personId:0},'admin',branch,'POST',branch)).status,200);
+  assert.equal((await f.request({action:'credentials',personId:0},'admin',branch)).status,403);
+  assert.equal((await f.request({action:'credentials',personId:0},'admin','https://unapproved.invalid','POST',branch)).status,403);
   const options = await f.request(null,null,'http://localhost:3000','OPTIONS');
   assert.equal(options.status,204);
   assert.equal(options.headers.get('access-control-allow-origin'),'http://localhost:3000');

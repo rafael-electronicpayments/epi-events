@@ -20,6 +20,8 @@ export function createTestLoginHandler({ createClient, env, uuid = randomUUID })
       const origin = request.headers.get('origin');
       const origins = ['https://staging-epi-events.vercel.app', 'http://localhost:3000', 'http://127.0.0.1:3000'];
       if (env.VERCEL_URL) origins.push('https://' + env.VERCEL_URL);
+      // The page calling its own site's API (for example a branch domain such as push-staging-epi-events.vercel.app).
+      origins.push(new URL(request.url).origin);
       if (origin && !origins.includes(origin)) return reply({ error: 'Origin not allowed.' }, 403);
       if (origin) headers['Access-Control-Allow-Origin'] = origin;
       if (request.method === 'OPTIONS') {
