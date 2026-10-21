@@ -56,10 +56,12 @@ export function createTestLoginHandler({ createClient, env, uuid = randomUUID })
       const records = people.filter(p => personId === undefined || p.id === personId);
       if (personId !== undefined && !records.length) return reply({ error: 'Person no longer exists.' }, 404);
       const inviteFor = p => invitations.find(i => i.person_id === p.id);
+      // Any roster person with an email whose invitation matches their type (Admin, Staff, or Contractor).
+      // Logins created elsewhere (for example in Supabase directly) stay "unmanaged" and are never shown or reset.
       const eligible = p => {
         const invite = inviteFor(p);
-        return invite && /^[a-z0-9]+@epieventstest\.com$/.test(invite.email) && invite.role === p.account_type
-          && ['staff', 'contractor'].includes(p.account_type);
+        return invite && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(invite.email || '') && invite.role === p.account_type
+          && ['staff', 'contractor', 'admin'].includes(p.account_type);
       };
       const inspect = async p => {
         const linked = profiles.find(f => f.person_id === p.id);

@@ -102,13 +102,19 @@ test('bulk provisioning creates real linked test accounts without returning or l
   assert.equal(testPassword(f.env.STAGING_TEST_PASSWORD_SECRET,0,reset.email,[...f.users.values()][0].app_metadata.epi_test_login.version),reset.password);
 });
 
-test('real accounts, mismatched roles, archived people, and preexisting unmanaged logins are never reset', async () => {
+test('real addresses and admin-type people get test logins; mismatched roles, archived people, and preexisting logins are never reset', async () => {
   const f = fixture();
-  f.tables.access_invites[0].email = 'real@example.test';
+  f.tables.access_invites[0].email = 'real.person@electronicpayments.example';
+  f.tables.people.push({ id: 2, name: 'Ada Admin', account_type: 'admin', archived: false }, { id: 3, name: 'Mo Mismatch', account_type: 'staff', archived: false });
+  f.tables.access_invites.push({ person_id: 2, email: 'ada@example.test', role: 'admin' }, { person_id: 3, email: 'mo@example.test', role: 'contractor' });
   f.tables.profiles.push({ user_id:'existing',person_id:1,role:'contractor' });
   f.users.set('existing',{ id:'existing',email:'pquinn@epieventstest.com',app_metadata:{},password:'unchanged' });
-  assert.deepEqual(await (await f.request({action:'provision'})).json(),{created:0,ready:0,skipped:2,errors:[]});
-  assert.deepEqual(await (await f.request({action:'reset',personId:0})).json(),{status:'unmanaged'});
+  assert.deepEqual(await (await f.request({action:'provision'})).json(),{created:2,ready:0,skipped:2,errors:[]}, 'real address + admin created; existing login and mismatch skipped');
+  const real = await (await f.request({action:'credentials',personId:0})).json();
+  assert.deepEqual([real.status, real.email], ['ready', 'real.person@electronicpayments.example']);
+  assert.equal((await (await f.request({action:'credentials',personId:2})).json()).status, 'ready');
+  assert.equal(f.tables.profiles.find(p=>p.person_id===2).role, 'admin');
+  assert.deepEqual(await (await f.request({action:'reset',personId:3})).json(),{status:'unmanaged'});
   assert.equal((await f.request({action:'reset',personId:1})).status,409);
   assert.equal(f.users.get('existing').password,'unchanged');
   f.tables.people[1].archived = true;

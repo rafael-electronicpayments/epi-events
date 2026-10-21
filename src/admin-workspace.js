@@ -177,7 +177,7 @@ export function createAdminWorkspace(m,components){
      <label className="chk"><input type="checkbox" checked=${draft.req} onChange=${set('req')}/>Requires acknowledgment and check-in</label>
      <p className="mute ack-hint">Default for this room's activities. Each activity can override it.</p>`}
    </div>`}
-   ${!editor.remove&&editing&&editor.type==='person'&&testLogins&&editor.draft.email.endsWith('@epieventstest.com')&&html`<${TestLoginPanel} personId=${editor.id} api=${testLogins} dirty=${draft.email.trim().toLowerCase()!==editor.draft.email||draft.type!==editor.draft.type}/>`}
+   ${!editor.remove&&editing&&editor.type==='person'&&testLogins&&!!editor.draft.email&&html`<${TestLoginPanel} personId=${editor.id} api=${testLogins} dirty=${draft.email.trim().toLowerCase()!==editor.draft.email||draft.type!==editor.draft.type}/>`}
    ${(failed||error)&&html`<p className="connection-error editor-error" role="alert">${error||'Could not save. Check the values and try again.'}</p>`}
    <div className="dialog-actions"><button type="button" className="btn ghost" onClick=${onClose}>Cancel</button><button type="submit" className=${'btn '+(editor.remove?'danger':'')}>${editor.remove?'Confirm delete':editing?'Save changes':editor.type==='person'?'Add person':editor.type==='event'?'Create event':editor.type==='room'?'Add room':'Create activity'}</button></div>
   </form><//>`;
