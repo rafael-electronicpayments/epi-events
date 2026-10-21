@@ -4,7 +4,33 @@
 export const CATS = [['breakfast', 'Meal: Breakfast'], ['lunch', 'Meal: Lunch'], ['dinner', 'Meal: Dinner'], ['baggage', 'Baggage'], ['transportation', 'Transportation'], ['parking', 'Parking'], ['other', 'Other']];
 export const PAYS = [['cash', 'Cash'], ['corporate_amex', 'Corporate AMEX'], ['personal_card', 'Personal credit card'], ['guest_room', 'Billed to guest room']];
 export const RECEIPT_TYPES = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/heic': 'heic', 'image/heif': 'heif', 'application/pdf': 'pdf' };
-export const RECEIPT_MAX = 10485760;
+export const RECEIPT_MAX = 7340032; // 7 MB; the receipts bucket enforces the same limit.
+export const sizeText = n => (n / 1048576).toFixed(1) + ' MB';
+// Re-encode a photo over the limit as a JPEG, stepping down size and quality until it fits.
+// Returns a File, or null when this browser cannot read the photo (some HEIC files) or it still doesn't fit.
+export async function shrinkPhoto(f, max = RECEIPT_MAX) {
+  let img = null;
+  try { img = await createImageBitmap(f); } catch (e) {
+    img = await new Promise(done => { const u = URL.createObjectURL(f), i = new Image();
+      i.onload = () => { URL.revokeObjectURL(u); done(i); }; i.onerror = () => { URL.revokeObjectURL(u); done(null); }; i.src = u; });
+  }
+  const w0 = img && (img.naturalWidth || img.width), h0 = img && (img.naturalHeight || img.height);
+  if (!w0 || !h0) return null;
+  const name = (f.name || 'receipt').replace(/\.[^.]*$/, '') + '.jpg';
+  try {
+    // 4000 px keeps receipt text sharp and stays under the iPhone canvas size limit.
+    for (const [side, q] of [[4000, 0.85], [3200, 0.8], [2600, 0.75], [2000, 0.7], [1600, 0.65]]) {
+      const s = Math.min(1, side / Math.max(w0, h0)), c = document.createElement('canvas');
+      c.width = Math.round(w0 * s); c.height = Math.round(h0 * s);
+      const g = c.getContext('2d'); if (!g) return null;
+      g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height);
+      const b = await new Promise(done => c.toBlob(done, 'image/jpeg', q));
+      c.width = c.height = 0;
+      if (b && b.size <= max) return new File([b], name, { type: 'image/jpeg' });
+    }
+    return null;
+  } finally { if (img.close) img.close(); }
+}
 const label = (list, k) => (list.find(([v]) => v === k) || [k, k])[1];
 export const catText = k => label(CATS, k), payText = k => label(PAYS, k);
 export const money = n => Number(n || 0).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
@@ -64,12 +90,17 @@ export function createExpenses({ React, html, Modal, Icon, IconButton, people, e
     const [d, setD] = useState(() => x ? { cat: x.cat, loc: x.loc, ref: x.ref, date: x.date, amt: String(Number(x.amt).toFixed(2)), pay: x.pay, reimb: !!x.reimb, notes: x.notes }
       : { cat: 'lunch', loc: '', ref: '', date: editor.date || today(), amt: '', pay: 'personal_card', reimb: true, notes: '' });
     const [who, setWho] = useState(x ? x.e : editor.e ?? '');
-    const [file, setFile] = useState(null), [err, setErr] = useState(''), [busy, setBusy] = useState(false);
+    const [file, setFile] = useState(null), [err, setErr] = useState(''), [busy, setBusy] = useState(false), [shrinking, setShrinking] = useState(false);
     const set = k => e => setD(v => ({ ...v, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }));
-    const pick = e => { const f = e.target.files[0]; e.target.value = ''; if (!f) return; const t = receiptType(f);
+    const pick = async e => { const f = e.target.files[0]; e.target.value = ''; if (!f) return; const t = receiptType(f);
       if (!t) { setErr('Receipts must be a photo (JPG, PNG, HEIC, WebP) or a PDF.'); return; }
-      if (f.size > RECEIPT_MAX) { setErr('Receipts must be 10 MB or smaller.'); return; }
-      setErr(''); setFile({ f, type: t }); };
+      if (f.size <= RECEIPT_MAX) { setErr(''); setFile({ f, type: t }); return; }
+      if (t === 'application/pdf') { setErr('This PDF is ' + sizeText(f.size) + '. Receipts must be 7 MB or smaller. Scan it at a lower quality, or take a photo of the receipt instead.'); return; }
+      setErr(''); setShrinking(true);
+      const small = await shrinkPhoto(f).catch(() => null);
+      setShrinking(false);
+      if (small) setFile({ f: small, type: 'image/jpeg', from: f.size });
+      else setErr('This photo is ' + sizeText(f.size) + ' and could not be made smaller on this device. Receipts must be 7 MB or smaller. Take the photo again, or choose a smaller one.'); };
     const submit = async e => { e.preventDefault(); const o = { ...d, amt: d.amt.trim().replace(/^\$/, '').replace(/,/g, ''), loc: d.loc.trim(), ref: d.ref.trim(), notes: d.notes.trim() };
       const m = checkExpense(o) || (chooser && !x && who === '' ? 'Choose who this expense is for.' : '') || (!file && !(x && x.rp) ? 'Attach a photo or PDF of the receipt before saving.' : ''); if (m) { setErr(m); return; }
       setBusy(true); setErr('');
@@ -90,14 +121,15 @@ export function createExpenses({ React, html, Modal, Icon, IconButton, people, e
        ${field('Notes', html`<textarea rows="3" maxLength="1000" value=${d.notes} onChange=${set('notes')}></textarea>`, d.cat === 'other' ? 'Required: describe the expense (for example gas, mileage, tolls).' : ['breakfast', 'lunch', 'dinner'].includes(d.cat) ? 'List others included, or note team, ISO hosting, or personal meal.' : d.cat === 'transportation' ? 'For example: Uber from A to B, rental car.' : '')}
       </div>
       <div className="receipt-field"><b>Receipt <span className="required-tag">Required</span></b>
-       ${file ? html`<p>${file.f.name} <span className="mute">(${file.type === 'application/pdf' ? 'PDF' : 'photo'}, ready to upload)</span> <button type="button" className="btn ghost" onClick=${() => setFile(null)}>Remove</button></p>`
+       ${shrinking ? html`<p className="mute" role="status">Making the photo smaller…</p>`
+        : file ? html`<p>${file.f.name} <span className="mute">(${file.type === 'application/pdf' ? 'PDF' : 'photo'}, ${file.from ? 'made smaller from ' + sizeText(file.from) + ' to ' + sizeText(file.f.size) + ', ' : ''}ready to upload)</span> <button type="button" className="btn ghost" onClick=${() => setFile(null)}>Remove</button></p>`
         : x && x.rp ? html`<p><button type="button" className="btn ghost" onClick=${() => openReceipt(A, x, setErr)}><${Icon} name="eye"/>View current receipt</button></p>`
         : html`<p className="receipt-missing">No receipt attached yet. Attach a photo or PDF to save this expense.</p>`}
-       <label className="btn ghost file-pick"><${Icon} name="upload"/>${file || (x && x.rp) ? 'Replace with photo or PDF' : 'Attach photo or PDF'}<input type="file" accept="image/*,application/pdf,.heic,.heif" onChange=${pick}/></label>
-       <p className="mute field-hint">Take a photo of the receipt or choose a PDF (10 MB max). Only you and administrators can see it.</p>
+       <label className="btn ghost file-pick"><${Icon} name="upload"/>${file || (x && x.rp) ? 'Replace with photo or PDF' : 'Attach photo or PDF'}<input type="file" accept="image/*,application/pdf,.heic,.heif" disabled=${shrinking || busy} onChange=${pick}/></label>
+       <p className="mute field-hint">Take a photo of the receipt or choose a PDF (7 MB max; larger photos are made smaller automatically). Only you and administrators can see it.</p>
       </div>
       ${err && html`<p className="connection-error editor-error" role="alert">${err}</p>`}
-      <div className="dialog-actions"><button type="button" className="btn ghost" disabled=${busy} onClick=${onClose}>Cancel</button><button type="submit" className="btn" disabled=${busy}>${busy ? 'Saving…' : x ? 'Save changes' : 'Add expense'}</button></div>
+      <div className="dialog-actions"><button type="button" className="btn ghost" disabled=${busy} onClick=${onClose}>Cancel</button><button type="submit" className="btn" disabled=${busy || shrinking}>${busy ? 'Saving…' : x ? 'Save changes' : 'Add expense'}</button></div>
     </form><//>`;
   }
 
