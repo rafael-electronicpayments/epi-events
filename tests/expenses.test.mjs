@@ -80,7 +80,10 @@ test('expenses: own entry, receipts, approval lock, and admin visibility', async
     data = await command('approveExpense', [1, true]);
     assert.equal(data.expenses.find(x => x.id === 1).ok, true);
     assert.ok(data.expenses.find(x => x.id === 1).okAt);
+    assert.equal(data.expenses.find(x => x.id === 1).okBy, 'admin@example.test', 'an admin without a roster record shows as their email to admins');
+    assert.equal(data.expenses.find(x => x.id === 2).okBy, null, 'unapproved expenses have no approver');
     await asUser(staffUser);
+    assert.equal((await snapshot()).expenses.find(x => x.id === 1).okBy, 'an administrator', 'staff never see an admin email');
     await assert.rejects(command('editExpense', [1, { ...meal, ...rc(0, 1), amt: '99' }]), /approved and can no longer be changed/);
     await assert.rejects(command('delExpense', [1]), /approved/);
     data = await command('editExpense', [2, { cat: 'parking', loc: 'Garage B', ref: 'P-9', date: '2027-03-03', amt: '30.5', pay: 'cash', reimb: true, notes: '', ...rc(0, 2, 'application/pdf') }]);
@@ -91,6 +94,16 @@ test('expenses: own entry, receipts, approval lock, and admin visibility', async
     await asUser(admin);
     data = await command('approveExpense', [1, false]);
     assert.equal(data.expenses.find(x => x.id === 1).ok, false);
+    assert.equal(data.expenses.find(x => x.id === 1).okBy, null);
+    // An admin on the roster shows by name.
+    await command('addStaff', [{ n: 'Steve Messemer', r: 'Director', acct: 'admin', phone: '', map: true }]);
+    await db.exec(`insert into public.access_invites(email,role,person_id) values('steve@example.test','admin',2);
+      insert into auth.users values('00000000-0000-0000-0000-000000000009','steve@example.test');`);
+    await asUser('00000000-0000-0000-0000-000000000009');
+    data = await command('approveExpense', [1, true]);
+    assert.equal(data.expenses.find(x => x.id === 1).okBy, 'Steve Messemer');
+    data = await command('approveExpense', [1, false]);
+    await asUser(admin);
     assert.equal(data.expenses.find(x => x.id === 1).okAt, null);
     data = await command('addExpense', [1, { ...meal, ...rc(1, 6), e: 1, notes: 'Entered by admin' }]);
     assert.ok(data.expenses.some(x => x.e === 1 && x.notes === 'Entered by admin'));

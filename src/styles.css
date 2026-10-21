@@ -258,3 +258,4 @@ body:has(dialog[open]) .app-error{display:none}
 .documents-card .rows li{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
 @media(max-width:900px){.documents-admin td:last-child{width:auto}.documents-admin .doc-acts{justify-content:flex-start}}@media(max-width:640px){.documents-admin .data-table td:first-child{min-width:0}}
 .change-password .editor-fields{grid-template-columns:1fr}
+.approved-by{color:var(--ok)}

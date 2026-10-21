@@ -33,6 +33,9 @@ export async function shrinkPhoto(f, max = RECEIPT_MAX) {
 }
 const label = (list, k) => (list.find(([v]) => v === k) || [k, k])[1];
 export const catText = k => label(CATS, k), payText = k => label(PAYS, k);
+// "05:17pm 10/21/26" in the viewer's local time.
+export const approvedText = at => { const d = new Date(at); if (isNaN(d)) return ''; const q = n => String(n).padStart(2, '0'), h = d.getHours();
+  return q(h % 12 || 12) + ':' + q(d.getMinutes()) + (h < 12 ? 'am' : 'pm') + ' ' + q(d.getMonth() + 1) + '/' + q(d.getDate()) + '/' + String(d.getFullYear()).slice(-2); };
 export const money = n => Number(n || 0).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 export const dateText = d => d ? new Date(d + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) : '';
 const cents = n => Math.round(Number(n || 0) * 100);
@@ -167,7 +170,7 @@ export function createExpenses({ React, html, Modal, Icon, IconButton, people, e
        return html`<section key=${g.e} className="expense-group"><div className="section-heading"><h3>${g.p.name} <span className="mute">${g.p.role || ''}</span></h3><span className="group-actions"><span className="mute">${money(sum(g.items))} total · ${money(sum(ok))} approved · ${money(sum(g.items.filter(x => x.reimb)))} to reimburse</span><button className="btn ghost" onClick=${() => setMsg(printPerson(S, g.e))} aria-label=${'Print expense report for ' + g.p.name}><${Icon} name="print"/>Print</button></span></div>
         ${table([{ text: 'Approved', className: 'approve-col' }, { text: 'Date' }, { text: 'Expense' }, { text: 'Location / receipt ID' }, { text: 'Payment' }, { text: 'Notes' }, { text: 'Amount', className: 'amount-col' }, { text: '', className: 'setup-actions' }],
           g.items.map(x => html`<tr key=${x.id}><td className="approve-col"><input type="checkbox" aria-label=${'Approve ' + catText(x.cat) + ' ' + money(x.amt) + ' for ' + g.p.name} checked=${!!x.ok} onChange=${e => A.approveExpense(x.id, e.target.checked)}/></td>
-           <td>${dateText(x.date)}</td><td>${catText(x.cat)}</td><td>${x.loc || html`<span className="mute">No location</span>`}<span className="cell-secondary">${x.ref ? 'Receipt ' + x.ref : 'No receipt ID'}</span></td>
+           <td>${dateText(x.date)}${x.ok && x.okAt && html`<span className="cell-secondary approved-by">Approved by ${x.okBy || 'an administrator'}, ${approvedText(x.okAt)}</span>`}</td><td>${catText(x.cat)}</td><td>${x.loc || html`<span className="mute">No location</span>`}<span className="cell-secondary">${x.ref ? 'Receipt ' + x.ref : 'No receipt ID'}</span></td>
            <td>${payText(x.pay)}<span className="cell-secondary">${x.reimb ? 'Reimburse' : 'No reimbursement'}</span></td><td className="notes-col">${x.notes}</td><td className="amount-col"><b>${money(x.amt)}</b></td>
            <td className="setup-actions"><div className="row-actions">${x.rp && html`<${IconButton} name="eye" label=${'View receipt for ' + catText(x.cat) + ' ' + money(x.amt)} onClick=${() => openReceipt(A, x, setMsg)}/>`}<${IconButton} name="edit" label=${'Edit ' + catText(x.cat) + ' ' + money(x.amt)} onClick=${() => setEd({ x })}/>${del === x.id ? html`<button className="btn danger" onClick=${async () => { setDel(null); await A.delExpense(x.id); }}>Confirm</button>` : html`<${IconButton} name="delete" label=${'Delete ' + catText(x.cat) + ' ' + money(x.amt)} onClick=${() => setDel(x.id)}/>`}</div></td></tr>`))}
        </section>`; })
