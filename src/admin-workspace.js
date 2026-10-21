@@ -20,7 +20,7 @@ export function createAdminWorkspace(m,components){
  const login=p=>p.login?['ok','Login active']:p.email?['warn','Login pending']:['','No email'];
  const Badge=({kind='',children})=>html`<span className=${'pill '+kind}>${children}</span>`;
  // Event time zones (reminders go out 30 minutes before each activity in the event's zone).
- const ZONES=[['America/New_York','Eastern (New York)'],['America/Chicago','Central (Chicago)'],['America/Denver','Mountain (Denver)'],['America/Phoenix','Arizona (Phoenix)'],['America/Los_Angeles','Pacific (Los Angeles)'],['America/Anchorage','Alaska (Anchorage)'],['Pacific/Honolulu','Hawaii (Honolulu)']];
+ const ZONES=[['America/Halifax','Atlantic (Halifax)'],['America/Puerto_Rico','Atlantic, no daylight saving (Puerto Rico)'],['America/New_York','Eastern (New York)'],['America/Chicago','Central (Chicago)'],['America/Denver','Mountain (Denver)'],['America/Phoenix','Arizona (Phoenix)'],['America/Los_Angeles','Pacific (Los Angeles)'],['America/Anchorage','Alaska (Anchorage)'],['Pacific/Honolulu','Hawaii (Honolulu)']];
  const zoneName=tz=>(ZONES.find(z=>z[0]===tz)||[tz,tz])[1];
  const when=iso=>new Date(iso).toLocaleString([],{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
  const testText=t=>t.st==='sent'?'Test sent '+when(t.at):t.st==='failed'?'Test failed: '+(t.err||'unknown error'):t.st==='skipped'?'Test not sent: '+(t.err||''):'Test waiting to send';
