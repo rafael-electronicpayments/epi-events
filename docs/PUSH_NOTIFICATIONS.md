@@ -1,6 +1,7 @@
 # Push notifications
 
-Built 2026-10-20 on `push-notification-feature` from the approved plan in `docs/push-notifications-plan.md`.
+Built 2026-10-20 on `push-notification-feature` from the approved plan in `docs/push-notifications-plan.md`, tested on
+phones from the preview site, and merged into `staging` the same day. Not yet in production.
 The app is installable (manifest, icons, service worker) and sends Web Push notifications for:
 
 - **New, changed, and removed assignments**, right away (including cancelled activities and removed events).
@@ -44,8 +45,9 @@ Use separate keys and secrets for staging and production. Never commit them.
 
 1. **Generate** a VAPID key pair (`npx web-push generate-vapid-keys`) and a random dispatch secret of at least 32
    characters (`node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`).
-2. **Vercel environment variables** on the project that serves the sender (for the feature preview: Preview scope,
-   branch `push-notification-feature`):
+2. **Vercel environment variables** on the project that serves the sender. On `staging-epi-events` they are set for
+   **Production** (the staging site) and **Preview** (branch previews), with the same values so that devices
+   registered on either address work with one sender:
    - `VITE_VAPID_PUBLIC_KEY`: public key (it is built into the app; that is expected).
    - `VAPID_PRIVATE_KEY`: private key. Sensitive. Never give it a `VITE_` name.
    - `VAPID_SUBJECT`: a contact address, for example `mailto:events@electronicpayments.com`.
@@ -65,9 +67,10 @@ Use separate keys and secrets for staging and production. Never commit them.
    order by start_time desc limit 5;` and `select * from net._http_response order by id desc limit 5;` show the scheduler
    calls and the sender's answers.
 
-Only one site can be the sender for a database. On staging that is the feature site
-(`https://push-staging-epi-events.vercel.app/api/push-dispatch`) until the feature is merged into `staging`; then point
-`push_dispatch_url` at `https://staging-epi-events.vercel.app/api/push-dispatch`.
+Only one site can be the sender for a database. On staging that is `https://staging-epi-events.vercel.app/api/push-dispatch`
+(it was the preview site `push-staging-epi-events.vercel.app` until the merge). Browser subscriptions belong to the
+address they were made on, so people turn notifications on again on the staging site; devices registered on the
+preview keep working as long as both use the same VAPID keys.
 
 ## Delivery limits (also shown in the app)
 
