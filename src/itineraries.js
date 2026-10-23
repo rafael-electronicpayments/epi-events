@@ -16,6 +16,31 @@ export const transferHelp = (k, way) => k === 'car' ? (way === 'in' ? 'A car ser
   : k === 'shuttle' ? (way === 'in' ? 'Take the event\'s group shuttle from the airport to the hotel.' : 'Take the event\'s group shuttle from the hotel to the airport.')
   : 'Arrange your own ride (cab, Uber, or the hotel\'s shuttle if offered). Submit any fare as a Transportation expense with the receipt.';
 
+// US airports (the 50 states, DC, Puerto Rico, USVI, Guam), for telling domestic from international departures.
+// A code not on this list counts as international (the safer, earlier pickup); the tick on the flight can correct it.
+const US_AIRPORTS = new Set(('ATL LAX ORD DFW DEN JFK SFO SEA LAS MCO EWR CLT PHX IAH MIA BOS MSP FLL DTW PHL LGA BWI SLC SAN IAD DCA MDW TPA BNA AUS HNL DAL '
+  + 'PDX STL HOU RDU MSY SJC SMF SNA MCI OAK SAT RSW CLE IND PIT CMH CVG JAX OGG BDL MKE ONT BUR PBI ABQ OMA ANC BOI RNO TUS CHS SDF OKC RIC ELP '
+  + 'BUF ORF GRR MEM BHM PVD SAV TUL DSM ALB GSP PSP KOA SFB LGB MYR ROC SYR LIT CAK ICT LIH GEG MHT PWM SRQ COS PIE TYS PNS CID MSN XNA DAY HSV '
+  + 'BZN JAN LEX GSO FAT SBA ECP VPS ITO CHA AVL MDT ILM HPN ISP MAF LBB AMA SGF FAR FSD GPT MOB SHV BTR LFT CRP BRO HRL MFE SBN FWA TOL EVV '
+  + 'PIA BMI CMI DBQ MLI RST FNT LAN AZO TVC MKG MBS ELM ITH BGM SWF ACY ABE AVP BTV BGR PVC ACK MVY ORH TTN EYW MLB DAB GNV TLH JAX SAV AGS CAE '
+  + 'FAY OAJ EWN PGV ROA CHO LYH SHD CRW HTS CKB BKW LNS SCE ERI JST AOO IPT DUJ MGW BLI PSC YKM ALW EAT PUW SUN IDA PIH TWF LWS MSO GTF HLN BIL '
+  + 'FCA JAC CPR CYS COD GJT ASE EGE HDN DRO MTJ GUC ALS PUB RAP GFK BIS MOT MHK GCK SLN JLN SPI LAW SJT ABI ACT TYR GGG CLL BPT AEX MLU LCH '
+  + 'TXK FSM HOT JBR GTR CBM TUP MEI PIB HBG DHN ABY VLD BQK SSI CSG MCN PGD PIB FLG YUM PRC GCN SAF ROW HOB SVC FMN CDC SGU OGD PVU EKO ELY '
+  + 'MRY SBP SMX STS ACV RDD CEC MOD MCE VIS BFL IYK TVL MMH SCK JNU FAI KTN SIT BET OME OTZ ADQ CDV DLG AKN BRW SCC YAK WRG PSG LNY MKK HNM '
+  + 'JHM SJU BQN PSE MAZ VQS CPX STT STX GUM SPN').split(' '));
+export const isIntl = (from, to) => [from, to].some(c => c && c.length === 3 && !US_AIRPORTS.has(c));
+// Default pickup for the hotel-to-airport car or shuttle: 3 hours before the flight (4 if international),
+// rounded down to the hour. Same rule as the server. "2026-11-12T16:10" -> "2026-11-12T13:00".
+export function pickupDefault(f) {
+  if (!f || !f.outDepart) return '';
+  const [d, t] = f.outDepart.split('T'), [y, m, day] = d.split('-').map(Number), [hh] = (t || '00:00').split(':').map(Number);
+  const at = new Date(Date.UTC(y, m - 1, day, hh - (f.intl ? 4 : 3)));
+  return at.toISOString().slice(0, 13) + ':00';
+}
+// The rides that get a pickup time and the 30-minute reminder.
+export const hasPickup = k => k === 'car' || k === 'shuttle';
+export const rideText = k => k === 'car' ? 'car service' : 'shuttle';
+
 const money = n => Number(n || 0).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 const cents = v => Math.round(Number(String(v || '0').replace(/[$,]/g, '')) * 100) || 0;
 // "2026-11-06T14:35" in the event's zone -> "Fri, Nov 6, 2:35 PM AST".
@@ -38,6 +63,9 @@ export function createItineraries({ React, html, Modal, Icon, people, events, ac
   const evOf = id => events.find(e => e.id === id) || {};
   const active = () => people.filter(p => p && !p.gone).sort((a, b) => a.name.localeCompare(b.name));
   const nameOf = e => people[e]?.name || 'Unknown person';
+  const pickOn = S => !!S.travelInfo || demo; // database with the pickup-time migration
+  // "Thu, Nov 12, 1:00 PM AST", or why there's none yet.
+  const pickupLine = (h, tz) => h.pickup ? whenText(h.pickup, tz) : 'set once the departing flight is entered';
   const booker = b => b.byEvent ? 'Event' : b.by != null ? nameOf(b.by) : '';
   const CarrierField = ({ text, value, onChange }) => {
     const known = !value || CARRIERS.includes(value), [other, setOther] = useState(!known);
@@ -84,19 +112,22 @@ export function createItineraries({ React, html, Modal, Icon, people, events, ac
     const [d, setD] = useState({ inCarrier: b.inCarrier || '', inFlight: b.inFlight || '', inFrom: b.inFrom || '', inTo: b.inTo || '', inArrive: b.inArrive || '',
       outCarrier: b.outCarrier || '', outFlight: b.outFlight || '', outFrom: b.outFrom || '', outTo: b.outTo || '', outDepart: b.outDepart || '',
       byEvent: !!b.byEvent, by: b.by ?? (me ?? who), paid: b.paid || 'personal_card', ref: b.ref || '', cost: b.cost != null ? Number(b.cost).toFixed(2) : '', bags: b.bags != null && Number(b.bags) ? Number(b.bags).toFixed(2) : '',
-      addExpense: !!b.addExp, reimb: b.reimb ?? (b.paid || 'personal_card') === 'personal_card', reimbTouched: !!booking });
+      addExpense: !!b.addExp, reimb: b.reimb ?? (b.paid || 'personal_card') === 'personal_card', reimbTouched: !!booking,
+      intl: booking ? !!b.intl : false, intlTouched: !!booking && !!b.intl !== isIntl(b.outFrom, b.outTo) });
     const [file, setFile] = useState(null), linked = linkedOf(S, booking, 'flight'), locked = !admin && linked.some(x => x.ok);
     const [outTouched, setOutTouched] = useState(!!booking), [busy, setBusy] = useState(false), [err, setErr] = useState(''), [confirm, setConfirm] = useState(false);
-    const set = patch => setD(v => { const n = { ...v, ...patch }; if ('paid' in patch && !n.reimbTouched) n.reimb = n.paid === 'personal_card'; return n; });
+    // International follows the departing airports until the tick is changed by hand.
+    const auto = n => { if (!n.intlTouched) n.intl = isIntl(n.outFrom, n.outTo); return n; };
+    const set = patch => setD(v => { const n = { ...v, ...patch }; if ('paid' in patch && !n.reimbTouched) n.reimb = n.paid === 'personal_card'; return auto(n); });
     // The departing carrier follows the arriving one until it's changed; airports default to the reverse trip.
-    const setIn = patch => setD(v => { const n = { ...v, ...patch }; if (!outTouched) { n.outCarrier = n.inCarrier; n.outFrom = n.inTo; n.outTo = n.inFrom; } return n; });
+    const setIn = patch => setD(v => { const n = { ...v, ...patch }; if (!outTouched) { n.outCarrier = n.inCarrier; n.outFrom = n.inTo; n.outTo = n.inFrom; } return auto(n); });
     const code = k => e => (k.startsWith('in') ? setIn : set)({ [k]: e.target.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3) });
     const total = (cents(d.cost) + cents(d.bags)) / 100, e0 = evOf(ev);
     const submit = async e => { e.preventDefault(); setErr('');
       if (!d.inFlight.trim() && !d.outFlight.trim() && !d.inArrive && !d.outDepart) { setErr('Enter the arriving or departing flight.'); return; }
       if (d.inArrive && d.outDepart && d.outDepart <= d.inArrive) { setErr('The departing flight must be after the arrival.'); return; }
       for (const [k, t] of [['cost', 'Flight cost'], ['bags', 'Bag fee']]) if (d[k] && !/^\$?\d{1,6}(\.\d{1,2})?$/.test(d[k].trim().replace(/,/g, ''))) { setErr(t + ' must be an amount up to two decimals.'); return; }
-      const clean = { ...d, cost: d.cost.trim().replace(/[$,]/g, ''), bags: d.bags.trim().replace(/[$,]/g, '') }; delete clean.reimbTouched;
+      const clean = { ...d, cost: d.cost.trim().replace(/[$,]/g, ''), bags: d.bags.trim().replace(/[$,]/g, '') }; delete clean.reimbTouched; delete clean.intlTouched;
       if (d.addExpense && !expenseOk('flight', d)) clean.addExpense = false;
       if (clean.addExpense && !file && !linked.length) { setErr('Attach a photo or PDF of the receipt to add this to expenses.'); return; }
       setBusy(true); const r = await A.saveFlight(ev, who, clean, file); setBusy(false);
@@ -117,6 +148,7 @@ export function createItineraries({ React, html, Modal, Icon, people, events, ac
         ${field('From (airport)', html`<input maxLength="3" value=${d.outFrom} placeholder="SJU" onChange=${e => { setOutTouched(true); code('outFrom')(e); }}/>`)}
         ${field('To (airport)', html`<input maxLength="3" value=${d.outTo} placeholder="BOS" onChange=${e => { setOutTouched(true); code('outTo')(e); }}/>`)}
         ${field('Departure date and time', html`<input type="datetime-local" value=${d.outDepart} onChange=${e => set({ outDepart: e.target.value })}/>`)}
+        ${pickOn(S) && html`<label className="chk wide-field"><input type="checkbox" checked=${d.intl} onChange=${e => set({ intl: e.target.checked, intlTouched: true })}/>International flight<span className="mute field-hint">${d.intlTouched ? 'Set by hand.' : 'Set from the airports.'} A hotel car or shuttle picks up ${d.intl ? '4' : '3'} hours before the flight.</span></label>`}
       </div></fieldset>
       <fieldset className="travel-leg"><legend>Purchase</legend><div className="editor-fields">
         <${BookedBy} d=${d} set=${set} allowEvent=${admin}/>
@@ -138,8 +170,10 @@ export function createItineraries({ React, html, Modal, Icon, people, events, ac
       by: b.by ?? (admin ? null : me), paid: b.paid || (admin ? 'event' : 'personal_card'), ref: b.ref || '',
       nightly: b.nightly != null && Number(b.nightly) ? Number(b.nightly).toFixed(2) : '', charges: b.charges != null && Number(b.charges) ? Number(b.charges).toFixed(2) : '',
       total: b.total != null && Number(b.total) ? Number(b.total).toFixed(2) : '', tIn: b.tIn || 'own', tOut: b.tOut || 'own', tNotes: b.tNotes || '',
-      addExpense: !!b.addExp, reimb: b.reimb ?? (b.paid || (admin ? 'event' : 'personal_card')) === 'personal_card', reimbTouched: !!booking });
+      addExpense: !!b.addExp, reimb: b.reimb ?? (b.paid || (admin ? 'event' : 'personal_card')) === 'personal_card', reimbTouched: !!booking,
+      pickupManual: !!b.pickupManual, pickup: b.pickupManual ? b.pickup || '' : '' });
     const [busy, setBusy] = useState(false), [err, setErr] = useState(''), [confirm, setConfirm] = useState(false);
+    const fl = (S.flights || []).find(x => x.ev === ev && x.e === who), auto = pickupDefault(fl);
     const [file, setFile] = useState(null), linked = linkedOf(S, booking, 'hotel'), locked = !admin && linked.some(x => x.ok);
     const set = patch => setD(v => { const x = { ...v, ...patch }; if ('paid' in patch && !x.reimbTouched) x.reimb = x.paid === 'personal_card'; return x; }), n = nights(d.in, d.out);
     const estimate = (cents(d.nightly) * n + cents(d.charges)) / 100;
@@ -148,6 +182,9 @@ export function createItineraries({ React, html, Modal, Icon, people, events, ac
       if (d.out <= d.in) { setErr('The hotel departure date must be after the arrival date.'); return; }
       for (const [k, t] of [['nightly', 'Nightly cost'], ['charges', 'Room charges'], ['total', 'Total cost']]) if (d[k] && !/^\$?\d{1,7}(\.\d{1,2})?$/.test(d[k].trim().replace(/,/g, ''))) { setErr(t + ' must be an amount up to two decimals.'); return; }
       const clean = k => d[k].trim().replace(/[$,]/g, ''), o = { ...d, nightly: clean('nightly'), charges: clean('charges'), total: clean('total') }; delete o.reimbTouched;
+      if (admin && pickOn(S)) { o.pickupManual = hasPickup(d.tOut) && d.pickupManual; if (!o.pickupManual) o.pickup = '';
+        else if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(d.pickup)) { setErr('Enter the pickup date and time.'); return; } }
+      else { delete o.pickupManual; delete o.pickup; }
       if (d.addExpense && !expenseOk('hotel', d)) o.addExpense = false;
       if (o.addExpense && !file && !linked.length) { setErr('Attach a photo or PDF of the receipt to add this to expenses.'); return; }
       setBusy(true); const r = await A.saveHotel(ev, who, o, file); setBusy(false);
@@ -174,6 +211,12 @@ export function createItineraries({ React, html, Modal, Icon, people, events, ac
       ${admin ? html`<fieldset className="travel-leg"><legend>Airport transfer</legend><div className="editor-fields">
         ${field('Airport to hotel', html`<select value=${d.tIn} onChange=${e => set({ tIn: e.target.value })}>${TRANSFERS.map(([k, t]) => html`<option key=${k} value=${k}>${t}</option>`)}</select>`)}
         ${field('Hotel to airport', html`<select value=${d.tOut} onChange=${e => set({ tOut: e.target.value })}>${TRANSFERS.map(([k, t]) => html`<option key=${k} value=${k}>${t}</option>`)}</select>`)}
+        ${pickOn(S) && hasPickup(d.tOut) && html`<div className="wide-field pickup-field"><b>Pickup time at the hotel</b>
+          ${d.pickupManual ? html`<input type="datetime-local" aria-label="Pickup date and time" value=${d.pickup} onChange=${e => set({ pickup: e.target.value })}/>
+            <span className="mute field-hint">Set by hand; it stays even if the flight changes.${auto ? ' Default: ' + whenText(auto, e0.tz) + '.' : ''} <button type="button" className="link-button" onClick=${() => set({ pickupManual: false })}>Use the default</button></span>`
+          : html`<p className="pickup-time">${auto ? whenText(auto, e0.tz) : 'Set automatically once the departing flight is entered.'}</p>
+            <span className="mute field-hint">${auto ? (fl.intl ? '4' : '3') + ' hours before ' + (fl.outFlight || 'the departing flight') + (fl.intl ? ' (international)' : '') + ', rounded down to the hour; it moves if the flight changes. ' : ''}<button type="button" className="link-button" onClick=${() => set({ pickupManual: true, pickup: auto || (d.out ? d.out + 'T09:00' : '') })}>Set a different time</button></span>`}
+          <span className="mute field-hint">The traveler gets a reminder 30 minutes before pickup.</span></div>`}
         <label className="wide-field">Transfer details<input maxLength="300" value=${d.tNotes} placeholder="Company, meeting point, phone" onChange=${e => set({ tNotes: e.target.value })}/><span className="mute field-hint">Shown to the traveler. Own arrangement tells them to submit any fare as a Transportation expense.</span></label>
       </div></fieldset>` : html`<p className="mute">Your administrator sets how you'll get between the airport and the hotel.</p>`}
       <${Footer} busy=${busy} err=${err} onClose=${onClose} onDelete=${booking && del} saveText=${booking ? 'Save hotel' : 'Add hotel'}/>
@@ -213,7 +256,7 @@ export function createItineraries({ React, html, Modal, Icon, people, events, ac
         <div className="break-people-tools"><input type="search" aria-label="Filter people" placeholder="Filter people" value=${q} onChange=${e => setQ(e.target.value)}/>
           <button type="button" className="btn ghost" onClick=${() => setIds(new Set(shown.map(p => p.id)))}>Select everyone shown</button>${ids.size > 0 && html`<button type="button" className="btn ghost" onClick=${() => setIds(new Set())}>Clear</button>`}</div>
         <div className="break-people-list">${pool.filter(p => p.name.toLowerCase().includes(q.toLowerCase())).map(p => html`<label key=${p.id} className="chk"><input type="checkbox" checked=${ids.has(p.id)} onChange=${() => toggle(p.id)}/>${p.name}<span className="mute">${p.role || ''}</span></label>`)}</div></fieldset>`}
-      <div className="editor-fields">${field('View', html`<select value=${view} onChange=${e => setView(e.target.value)}>${VIEWS.map(([k, t]) => html`<option key=${k} value=${k}>${t}</option>`)}</select>`, view === 'arrivals' || view === 'departures' ? 'Grouped by day and time, with each person\'s airport transfer, for planning cars and shuttles.' : '')}
+      <div className="editor-fields">${field('View', html`<select value=${view} onChange=${e => setView(e.target.value)}>${VIEWS.map(([k, t]) => html`<option key=${k} value=${k}>${t}</option>`)}</select>`, view === 'departures' ? 'Grouped by day and hotel pickup time, so people riding together are listed together, with each flight and transfer.' : view === 'arrivals' ? 'Grouped by day and time, with each person\'s airport transfer, for planning cars and shuttles.' : '')}
         <label className="chk"><input type="checkbox" checked=${costs} disabled=${view === 'arrivals' || view === 'departures'} onChange=${e => setCosts(e.target.checked)}/>Include costs and receipts</label></div>
       ${msg && html`<p className="connection-error" role="alert">${msg}</p>`}
       <div className="dialog-actions"><button type="button" className="btn ghost" onClick=${onClose}>Close</button>
@@ -247,7 +290,7 @@ export function createItineraries({ React, html, Modal, Icon, people, events, ac
         <td>${h ? html`<${HotelSummary} h=${h}/>` : html`<span className="mute">No hotel</span>`}
           <div className="acts"><button className="btn ghost" onClick=${() => setEd({ kind: 'hotel', who: p.id, b: h })}>${h ? 'Edit hotel' : 'Add hotel'}</button>${h && html`<button className="btn ghost" aria-expanded=${open === 'h' + p.id} onClick=${() => setOpen(open === 'h' + p.id ? null : 'h' + p.id)}>Details</button>`}</div>
           ${h && open === 'h' + p.id && html`<${Details} b=${h} kind="hotel"/>`}</td>
-        <td>${h ? html`<p>To hotel: <b>${transferText(h.tIn)}</b></p><p>To airport: <b>${transferText(h.tOut)}</b></p>${h.tNotes && html`<span className="cell-secondary">${h.tNotes}</span>`}` : html`<span className="mute">Set with the hotel</span>`}</td></tr>`; })
+        <td>${h ? html`<p>To hotel: <b>${transferText(h.tIn)}</b></p><p>To airport: <b>${transferText(h.tOut)}</b></p>${pickOn(S) && hasPickup(h.tOut) && html`<p>Pickup: <b>${pickupLine(h, e0.tz)}</b>${h.pickupManual ? ' (set by hand)' : ''}</p>`}${h.tNotes && html`<span className="cell-secondary">${h.tNotes}</span>`}` : html`<span className="mute">Set with the hotel</span>`}</td></tr>`; })
         : html`<tr><td colSpan="4" className="empty-table">No people match.</td></tr>`}
       </tbody></table></div>
       ${report && html`<${ReportDialog} S=${S} shown=${list} onClose=${() => setReport(false)}/>`}
@@ -264,7 +307,7 @@ export function createItineraries({ React, html, Modal, Icon, people, events, ac
     if (!f && !h && !canF && !canH) return null;
     return html`<div className="card travel-card"><b>My travel</b>
       ${f ? html`<${FlightSummary} f=${f} tz=${e0.tz}/>` : canF && html`<p className="mute">No flight entered yet.</p>`}
-      ${h ? html`<${HotelSummary} h=${h}/><div className="travel-transfer"><p><b>Airport to hotel:</b> ${transferText(h.tIn)}. ${transferHelp(h.tIn, 'in')}</p><p><b>Hotel to airport:</b> ${transferText(h.tOut)}. ${transferHelp(h.tOut, 'out')}</p>${h.tNotes && html`<p className="mute">${h.tNotes}</p>`}</div>`
+      ${h ? html`<${HotelSummary} h=${h}/><div className="travel-transfer"><p><b>Airport to hotel:</b> ${transferText(h.tIn)}. ${transferHelp(h.tIn, 'in')}</p><p><b>Hotel to airport:</b> ${transferText(h.tOut)}. ${transferHelp(h.tOut, 'out')}</p>${pickOn(S) && hasPickup(h.tOut) && html`<p className="pickup-line"><b>Your pickup:</b> ${pickupLine(h, e0.tz)}${h.pickup ? ' at the hotel. You\'ll get a reminder 30 minutes before.' : '.'}</p>`}${h.tNotes && html`<p className="mute">${h.tNotes}</p>`}</div>`
         : canH && html`<p className="mute">No hotel entered yet.</p>`}
       ${!f && !canF && html`<p className="mute">Your flight hasn't been added yet.</p>`}${!h && !canH && html`<p className="mute">Your hotel hasn't been added yet.</p>`}
       <div className="acts">${canF && html`<button className="btn ghost" onClick=${() => setEd('flight')}>${f ? 'Edit my flight' : 'Add my flight'}</button>`}${canH && html`<button className="btn ghost" onClick=${() => setEd('hotel')}>${h ? 'Edit my hotel' : 'Add my hotel'}</button>`}

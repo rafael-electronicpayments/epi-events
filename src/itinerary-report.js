@@ -1,28 +1,36 @@
 // Itineraries report: who (people list) x view (combined, flights, hotel, arrivals by day, departures by day),
 // with or without costs. Printable (save as PDF) or Excel. Staff and contractors get only their own combined view.
 import { xlsx } from './xlsx-writer.js';
-import { whenText, dayText, nights, payText, transferText, transferHelp } from './itineraries.js';
+import { whenText, dayText, nights, payText, transferText, transferHelp, hasPickup } from './itineraries.js';
 
 export const VIEWS = [['combined', 'Flights and hotel'], ['flights', 'Flights only'], ['hotel', 'Hotel only'], ['arrivals', 'Arrivals by day'], ['departures', 'Departures by day']];
 const esc = t => String(t ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const money = n => Number(n || 0).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 const leg = (c, n, a, b) => [[c, n].filter(Boolean).join(' '), a || b ? (a || '?') + ' → ' + (b || '?') : ''].filter(Boolean).join(' · ');
 const time = local => local ? local.slice(11, 16) : '';
+// The hotel-to-airport ride, with its pickup time when there is one.
+const outText = h => transferText(h.tOut) + (hasPickup(h.tOut) && h.pickup ? ', pickup ' + hm(h.pickup) : '');
 const hm = local => { if (!local) return ''; const [h, m] = local.slice(11, 16).split(':').map(Number); return (h % 12 || 12) + ':' + String(m).padStart(2, '0') + (h < 12 ? ' AM' : ' PM'); };
 
 // rows for one view; each row is { cells: [...], group?: 'date heading' }
 export function reportTable({ view, list, flights, hotels, tz, costs, booker }) {
   const fOf = e => flights.find(x => x.e === e), hOf = e => hotels.find(x => x.e === e);
   const flightCols = f => f ? [leg(f.inCarrier, f.inFlight, f.inFrom, f.inTo), whenText(f.inArrive, tz), leg(f.outCarrier, f.outFlight, f.outFrom, f.outTo), whenText(f.outDepart, tz)] : ['No flight', '', '', ''];
-  const hotelCols = h => h ? [h.name || 'Hotel', h.conf || '', dayText(h.in), dayText(h.out), String(nights(h.in, h.out)), transferText(h.tIn), transferText(h.tOut)] : ['No hotel', '', '', '', '', '', ''];
+  const hotelCols = h => h ? [h.name || 'Hotel', h.conf || '', dayText(h.in), dayText(h.out), String(nights(h.in, h.out)), transferText(h.tIn), outText(h)] : ['No hotel', '', '', '', '', '', ''];
   const fCost = f => f ? [booker(f), payText(f.paid), f.ref || '', money(f.cost), money(f.bags), money(Number(f.cost) + Number(f.bags))] : ['', '', '', '', '', ''];
   const hCost = h => h ? [booker(h), payText(h.paid), h.ref || '', money(h.nightly), money(h.charges), money(h.total)] : ['', '', '', '', '', ''];
   if (view === 'arrivals' || view === 'departures') {
     const out = view === 'departures', key = f => out ? f.outDepart : f.inArrive;
-    const rows = list.map(p => ({ p, f: fOf(p.id), h: hOf(p.id) })).filter(r => r.f && key(r.f)).sort((a, b) => key(a.f).localeCompare(key(b.f)) || a.p.name.localeCompare(b.p.name));
-    return { head: ['Time', 'Person', 'Flight', out ? 'To airport' : 'To hotel', 'Transfer details'], rows: rows.map(r => ({
-      group: dayText(key(r.f).slice(0, 10)), cells: [hm(key(r.f)), r.p.name, out ? leg(r.f.outCarrier, r.f.outFlight, r.f.outFrom, r.f.outTo) : leg(r.f.inCarrier, r.f.inFlight, r.f.inFrom, r.f.inTo),
-        r.h ? transferText(out ? r.h.tOut : r.h.tIn) : 'No hotel', r.h?.tNotes || ''] })),
+    // Departures are listed by hotel pickup time (people on the same car or shuttle together), then flight time.
+    const pick = r => out && r.h && hasPickup(r.h.tOut) && r.h.pickup ? r.h.pickup : '', sortKey = r => pick(r) || key(r.f);
+    const rows = list.map(p => ({ p, f: fOf(p.id), h: hOf(p.id) })).filter(r => r.f && key(r.f)).sort((a, b) => sortKey(a).localeCompare(sortKey(b)) || key(a.f).localeCompare(key(b.f)) || a.p.name.localeCompare(b.p.name));
+    if (out) return { head: ['Hotel pickup', 'Flight departs', 'Person', 'Flight', 'To airport', 'Transfer details'], rows: rows.map(r => ({
+      group: dayText(sortKey(r).slice(0, 10)), cells: [pick(r) ? hm(pick(r)) : '', hm(key(r.f)), r.p.name, leg(r.f.outCarrier, r.f.outFlight, r.f.outFrom, r.f.outTo),
+        r.h ? transferText(r.h.tOut) : 'No hotel', r.h?.tNotes || ''] })),
+      missing: list.filter(p => !fOf(p.id) || !key(fOf(p.id))).map(p => p.name) };
+    return { head: ['Time', 'Person', 'Flight', 'To hotel', 'Transfer details'], rows: rows.map(r => ({
+      group: dayText(key(r.f).slice(0, 10)), cells: [hm(key(r.f)), r.p.name, leg(r.f.inCarrier, r.f.inFlight, r.f.inFrom, r.f.inTo),
+        r.h ? transferText(r.h.tIn) : 'No hotel', r.h?.tNotes || ''] })),
       missing: list.filter(p => !fOf(p.id) || !key(fOf(p.id))).map(p => p.name) };
   }
   if (view === 'flights') return { head: ['Person', 'Arriving', 'Arrives', 'Departing', 'Departs', ...(costs ? ['Booked by', 'How paid', 'Receipt #', 'Flight', 'Bag fee', 'Total'] : [])],
@@ -47,7 +55,7 @@ export function reportDoc({ title, scope, view, list, flights, hotels, tz, costs
           : '<tr><th>Flight</th><td colspan="2" class="m">No flight entered</td></tr>'}
         ${h ? `<tr><th>Hotel</th><td>${esc(h.name || 'Hotel')}${h.conf ? ' · Confirmation ' + esc(h.conf) : ''}</td><td>${esc(dayText(h.in))} – ${esc(dayText(h.out))} · ${nights(h.in, h.out)} nights</td></tr>
           <tr><th>Airport to hotel</th><td colspan="2">${esc(transferText(h.tIn))}. ${esc(transferHelp(h.tIn, 'in'))}</td></tr>
-          <tr><th>Hotel to airport</th><td colspan="2">${esc(transferText(h.tOut))}. ${esc(transferHelp(h.tOut, 'out'))}${h.tNotes ? '<br><span class="m">' + esc(h.tNotes) + '</span>' : ''}</td></tr>
+          <tr><th>Hotel to airport</th><td colspan="2">${esc(transferText(h.tOut))}. ${esc(transferHelp(h.tOut, 'out'))}${hasPickup(h.tOut) && h.pickup ? ' <b>Pickup ' + esc(whenText(h.pickup, tz)) + ' at the hotel.</b>' : ''}${h.tNotes ? '<br><span class="m">' + esc(h.tNotes) + '</span>' : ''}</td></tr>
           ${costs ? `<tr><th>Hotel cost</th><td>Total (folio) <b>${esc(money(h.total))}</b>${Number(h.nightly) ? ' · Nightly ' + esc(money(h.nightly)) : ''}</td><td>${esc(payText(h.paid))}${h.ref ? ' · Receipt ' + esc(h.ref) : ''} · Booked by ${esc(booker(h))}</td></tr>` : ''}`
           : '<tr><th>Hotel</th><td colspan="2" class="m">No hotel entered</td></tr>'}
       </tbody></table></section>`; }).join('');
