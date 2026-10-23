@@ -32,7 +32,7 @@ export const dayText = d => d ? new Date(d + 'T12:00:00').toLocaleDateString('en
 export const nights = (a, b) => a && b ? Math.max(0, Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / 86400000)) : 0;
 const leg = (carrier, num, from, to) => [carrier, num].filter(Boolean).join(' ') + (from || to ? ' · ' + (from || '?') + ' → ' + (to || '?') : '');
 
-export function createItineraries({ React, html, Modal, Icon, people, events, activities, current }) {
+export function createItineraries({ React, html, Modal, Icon, people, events, activities, current, demo = false }) {
   const { useState } = React;
   const field = (text, input, hint) => html`<label>${text}${input}${hint && html`<span className="mute field-hint">${hint}</span>`}</label>`;
   const evOf = id => events.find(e => e.id === id) || {};
@@ -53,7 +53,8 @@ export function createItineraries({ React, html, Modal, Icon, people, events, ac
 
   // "Add to expenses" for a booking: eligibility, reimburse, required receipt, and the linked expenses' status.
   const expenseOk = (kind, d) => kind === 'flight' ? (!['points', 'event'].includes(d.paid) && cents(d.cost) > 0) || cents(d.bags) > 0 : !['points', 'event'].includes(d.paid) && cents(d.total) > 0;
-  function ExpenseBox({ kind, d, set, linked, locked, file, setFile }) {
+  function ExpenseBox({ kind, d, set, linked, locked, file, setFile, on }) {
+    if (!on) return null; // database without the Add to expenses migration
     const ok = expenseOk(kind, d), has = linked.length > 0, [shrinking, setShrinking] = useState(false), [msg, setMsg] = useState('');
     const pick = async e => { const f = e.target.files[0]; e.target.value = ''; if (!f) return; const t = receiptType(f); setMsg('');
       if (!t) { setMsg('Receipts must be a photo (JPG, PNG, HEIC, WebP) or a PDF.'); return; }
@@ -125,7 +126,7 @@ export function createItineraries({ React, html, Modal, Icon, people, events, ac
         ${field('Bag fee (USD)', html`<input inputMode="decimal" value=${d.bags} placeholder="0.00" disabled=${locked} onChange=${e => set({ bags: e.target.value })}/>`)}
         <div className="travel-total"><span className="mute">Total cost</span><b>${money(total)}</b></div>
       </div></fieldset>
-      <${ExpenseBox} kind="flight" d=${d} set=${set} linked=${linked} locked=${locked} file=${file} setFile=${f => { setErr(''); setFile(f); }}/>
+      <${ExpenseBox} kind="flight" d=${d} set=${set} linked=${linked} locked=${locked} file=${file} setFile=${f => { setErr(''); setFile(f); }} on=${!!S.travelExpenses || demo}/>
       <${Footer} busy=${busy} err=${err} onClose=${onClose} onDelete=${booking && del} saveText=${booking ? 'Save flight' : 'Add flight'}/>
       ${confirm && html`<p className="mute" role="status">Tap Delete booking again to remove this flight.</p>`}
     </form><//>`;
@@ -169,7 +170,7 @@ export function createItineraries({ React, html, Modal, Icon, people, events, ac
         ${field('Room charges (USD)', html`<input inputMode="decimal" value=${d.charges} placeholder="0.00" onChange=${e => set({ charges: e.target.value })}/>`)}
         ${field('Total cost (USD)', html`<input inputMode="decimal" value=${d.total} placeholder="0.00" disabled=${locked} onChange=${e => set({ total: e.target.value })}/>`, 'From the hotel folio: the whole stay, including taxes and fees.' + (estimate ? ' Nightly × nights + room charges = ' + money(estimate) + '.' : ''))}
       </div></fieldset>
-      <${ExpenseBox} kind="hotel" d=${d} set=${set} linked=${linked} locked=${locked} file=${file} setFile=${f => { setErr(''); setFile(f); }}/>
+      <${ExpenseBox} kind="hotel" d=${d} set=${set} linked=${linked} locked=${locked} file=${file} setFile=${f => { setErr(''); setFile(f); }} on=${!!S.travelExpenses || demo}/>
       ${admin ? html`<fieldset className="travel-leg"><legend>Airport transfer</legend><div className="editor-fields">
         ${field('Airport to hotel', html`<select value=${d.tIn} onChange=${e => set({ tIn: e.target.value })}>${TRANSFERS.map(([k, t]) => html`<option key=${k} value=${k}>${t}</option>`)}</select>`)}
         ${field('Hotel to airport', html`<select value=${d.tOut} onChange=${e => set({ tOut: e.target.value })}>${TRANSFERS.map(([k, t]) => html`<option key=${k} value=${k}>${t}</option>`)}</select>`)}

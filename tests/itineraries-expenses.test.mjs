@@ -39,6 +39,7 @@ test('itinerary bookings add the traveler\'s expenses with receipts, and approva
     // A receipt is required to add expenses.
     await assert.rejects(command('saveFlight', [1, 0, { ...flight, addExpense: true, reimb: true }]), /Attach a photo or PDF of the receipt/);
     let data = await command('saveFlight', [1, 0, { ...flight, addExpense: true, reimb: true, rp: '0/air-1.jpg', rt: 'image/jpeg', rp2: '0/bag-1.jpg' }]);
+    assert.equal(data.travelExpenses, true);
     let f = data.flights[0];
     const air = data.expenses.find(x => x.id === f.exp), bag = data.expenses.find(x => x.id === f.bagExp);
     assert.deepEqual([air.cat, Number(air.amt), air.pay, air.reimb, air.loc, air.ref, air.rp], ['airfare', 412.3, 'personal_card', true, 'JetBlue Airways', 'ABC123', '0/air-1.jpg']);

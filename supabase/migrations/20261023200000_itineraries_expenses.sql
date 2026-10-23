@@ -51,7 +51,8 @@ declare snapshot jsonb;
 begin
   snapshot := ops_private.ops_snapshot_v13();
   if jsonb_typeof(snapshot->'flights') <> 'array' then return snapshot; end if;
-  return snapshot || jsonb_build_object(
+  -- "travelExpenses": true tells the app this database supports Add to expenses.
+  return snapshot || jsonb_build_object('travelExpenses', true,
     'flights', coalesce((select jsonb_agg(x || coalesce((select jsonb_build_object('addExp', f.add_expense, 'reimb', f.reimburse, 'exp', f.expense_id, 'bagExp', f.bag_expense_id)
         from public.flights f where f.id = (x->>'id')::integer), '{}'::jsonb) order by n) from jsonb_array_elements(snapshot->'flights') with ordinality t(x, n)), '[]'::jsonb),
     'hotels', coalesce((select jsonb_agg(x || coalesce((select jsonb_build_object('addExp', h.add_expense, 'reimb', h.reimburse, 'exp', h.expense_id)
