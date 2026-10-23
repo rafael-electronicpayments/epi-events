@@ -11,6 +11,7 @@ const {useState,useEffect,useRef}=React;
 
 export function createAdminWorkspace(m,components){
  const {people,events,rooms,activities,current,days,cover,clash,span,evEnd,evStatus,need,roomAck,ackSupport}=m;
+ if(!m.infoSupport)m.infoSupport={on:false};
  const ackText=on=>on?'Required':'Not required';
  const qOf={room:null,yes:true,no:false};
  const {AdminSession,Grid,Floorplans,Incoming,Staff,ExpensesAdmin,EventLogo,Splash,DocumentsAdmin}=components;
@@ -146,6 +147,8 @@ export function createAdminWorkspace(m,components){
    }else if(editor.type==='room')result=await(editing?A.editRoom(editor.id,draft.name.trim(),!!draft.req,version):A.addRoom(draft.name.trim(),!!draft.req));
    else{
     const args=[draft.name.trim(),draft.room,Number(draft.day),minutes(draft.start),minutes(draft.end),Number(draft.needed),qOf[draft.q]];
+    // Details (everyone) and notes (admins only) ride along as one last argument on databases that support them.
+    if(m.infoSupport.on)args.push({det:(draft.det||'').trim(),nt:(draft.nt||'').trim()});
     result=await(editing?A.editSession(editor.id,...args,version):A.addSession(...args));
    }
    if(result!==false)onClose();else setFailed(true);
@@ -172,7 +175,10 @@ export function createAdminWorkspace(m,components){
      ${field('End time',html`<input type="time" required value=${draft.end} onChange=${set('end')}/> `)}
      ${field('Staff needed',html`<input type="number" required min="1" value=${draft.needed} onChange=${set('needed')}/> `)}
      ${ackSupport.on&&field('Acknowledgment and check-in',html`<select value=${draft.q} onChange=${set('q')}><option value="room">Same as room (${roomAck[draft.room]!==false?'required':'not required'})</option><option value="yes">Required</option><option value="no">Not required</option></select>`)}
-     ${ackSupport.on&&html`<p className="mute ack-hint">When not required, assigned people are told about the activity but are not asked to acknowledge or check in.</p>`}`}
+     ${ackSupport.on&&html`<p className="mute ack-hint">When not required, assigned people are told about the activity but are not asked to acknowledge or check in.</p>`}
+     ${m.infoSupport.on&&html`<label className="wide-field">Details<textarea rows="3" maxLength="2000" value=${draft.det} onChange=${set('det')}></textarea><span className="mute field-hint">Everyone assigned sees this on their schedule.</span></label>
+     <label className="wide-field">Notes<textarea rows="3" maxLength="2000" value=${draft.nt} onChange=${set('nt')}></textarea><span className="mute field-hint">Only admins see these notes.</span></label>
+     <p className="mute ack-hint">Team leads are chosen from the people assigned, in the activity's panel on the Schedule page.</p>`}`}
     ${editor.type==='room'&&ackSupport.on&&html`
      <label className="chk"><input type="checkbox" checked=${draft.req} onChange=${set('req')}/>Requires acknowledgment and check-in</label>
      <p className="mute ack-hint">Default for this room's activities. Each activity can override it.</p>`}
@@ -214,7 +220,7 @@ export function createAdminWorkspace(m,components){
    if(entity==='person'){id=record?.id;draft={name:record?.name||'',email:record?.email||'',title:record?.role||'Room Host',type:record?.acct||'staff',phone:record?.phone||'',map:record?!!record.map:true};}
    else if(entity==='event'){id=record?.id;draft={name:record?.name||'',start:record?.start||'',days:record?.days||3,tz:record?.tz||'America/New_York'};}
    else if(entity==='room'){id=record;draft={name:record||'',req:record?roomAck[record]!==false:true};}
-   else{id=record?.id;draft={name:record?.t||'',room:record?.r||rooms[0]||'',day:record?.d??dayIndex,start:time(record?.a??540),end:time(record?.b??600),needed:record?.n||2,q:record?.q==null?'room':record.q?'yes':'no'};}
+   else{id=record?.id;draft={name:record?.t||'',room:record?.r||rooms[0]||'',day:record?.d??dayIndex,start:time(record?.a??540),end:time(record?.b??600),needed:record?.n||2,q:record?.q==null?'room':record.q?'yes':'no',det:record?.det||'',nt:record?.nt||''};}
    setEditor({type:entity,id,draft,revision:S.revision});
   };
   const shownPeople=people.filter(p=>!p.gone&&(type==='all'||p.acct===type)&&(p.name+' '+p.email+' '+p.role).toLowerCase().includes(query.toLowerCase()));

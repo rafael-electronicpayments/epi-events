@@ -50,6 +50,11 @@ const ROOM_ACK={};
 const ACK_SUPPORT={on:!CONNECTED};
 // Push notifications: shown only on databases with the push migration (the snapshot then includes 'push').
 const PUSH_SUPPORT={on:false};
+// Activity details (everyone), notes (admins), and team leads (assignments marked lead). Needs the 20261023120000 migration.
+const INFO_SUPPORT={on:!CONNECTED};
+const isInfo=x=>!!x&&typeof x==='object'&&!Array.isArray(x)&&'det' in x;
+// Team lead names for an activity: from the server's list when connected (it covers people a contractor can't see), else from assignments.
+const leadsOf=(S,s)=>s.leads?s.leads.map(l=>({e:l.e,n:l.n})):S.asg.filter(a=>a.s===s.id&&a.lead&&EMPS[a.e]&&!EMPS[a.e].gone).map(a=>({e:a.e,n:EMPS[a.e].name}));
 // Event images: the logo (next to module headings) and the welcome splash (after signing in).
 // Demo keeps bytes on the event; connected databases need the matching migrations (snapshot 'logos' / 'splashes').
 const LOGO_SUPPORT={on:!CONNECTED},SPLASH_SUPPORT={on:!CONNECTED},LOGO_CACHE={};
@@ -85,6 +90,9 @@ const st=a=>!need(SM[a.s])?['ok','No check-in needed']:a.in||a.conf?['ok',a.conf
 const cover=(s,asg)=>{const as=asg.filter(x=>x.s===s.id),p=need(s)?as.filter(x=>x.in||x.conf).length:as.length;
  return {as,p,k:p>=s.n?'ok':p>0?'warn':'bad',l:p>=s.n?'Covered':p>0?'Partly covered':'Not covered'}};
 const Pill=({k,children})=>html`<span className=${'pill '+(k||'')}>${children}</span>`;
+// Details and team leads, shown to everyone on the activity; notes only when admin is true.
+function ActInfo({s,S,me=null,admin=false}){const l=leadsOf(S,s);if(!s.det&&!l.length&&!(admin&&s.nt))return null;
+ return html`<div className="act-info">${l.length>0&&html`<p><b>Team lead${l.length>1?'s':''}:</b> ${l.map((x,j)=>html`<span key=${x.e}>${j?', ':''}${x.e===me?html`<b>You</b>`:x.n}</span>`)}</p>`}${s.det&&html`<p className="act-details">${s.det}</p>`}${admin&&s.nt&&html`<p className="act-notes"><b>Admin notes:</b> ${s.nt}</p>`}</div>`}
 function Head({s,asg}){const c=cover(s,asg);
  return html`<div><h3>${s.t}</h3><p className="mute">${s.r} · ${span(s)} · ${DAYS[s.d]}</p>
  <p className="mute"><${Pill} k=${c.k}>${c.l}<//> ${c.as.length<s.n&&html`<${Pill} k="warn">${s.n-c.as.length} short<//>`} Assigned ${c.as.length} of ${s.n} · Present ${c.p}</p></div>`}
@@ -221,7 +229,7 @@ function Staff({S,A,me,canFull=false,embedded=false,push=null}){
  useEffect(()=>{if(focus==null)return;const t=setTimeout(()=>{const el=[...document.querySelectorAll('[data-asg="'+focus+'"]')].pop();if(el)el.scrollIntoView({block:'center',behavior:'smooth'})},60);return()=>clearTimeout(t)},[focus]);
  const dayActs=i=>SESS.filter(s=>s.ev===CUR.id&&s.d===i).sort((x,y)=>x.a-y.a||x.b-y.b);
  const FullCard=({s})=>{const who=S.asg.filter(a=>a.s===s.id&&EMPS[a.e]);return html`<div className=${'card'+(who.some(a=>a.e===me)?' mine':'')}>
-  <h3>${s.t}</h3><p className="mute">${s.r} · ${span(s)}</p>
+  <h3>${s.t}</h3><p className="mute">${s.r} · ${span(s)}</p><${ActInfo} s=${s} S=${S} me=${me}/>
   <p>${who.length?who.map((a,j)=>html`<span key=${a.id}>${j?', ':''}${a.e===me?html`<b>You</b>`:EMPS[a.e].name}</span>`):html`<span className="mute">No one assigned yet</span>`}</p></div>`};
  const mine=S.asg.filter(a=>a.e===me&&SM[a.s].ev===CUR.id).sort((x,y)=>SM[x.s].d-SM[y.s].d||SM[x.s].a-SM[y.s].a);
  const ended=s=>{const t=new Date(evOf(s.ev).start+'T00:00:00');t.setDate(t.getDate()+s.d);t.setMinutes(s.b);return t<new Date()};
@@ -235,7 +243,7 @@ function Staff({S,A,me,canFull=false,embedded=false,push=null}){
  const BreakCard=({b})=>html`<div className="card break-card"><h3>${BREAK[b.k][1]}</h3><p className="mute">${span(b)} · ${DAYS[b.d]}</p></div>`;
  const late=oc?lateBy(S,oc,now):0,obr=oc&&oc.bid!=null&&breakOf(S,oc.bid);
  const Card=({a,cls})=>{const s=SM[a.s],[k,l]=st(a);return html`<div data-asg=${a.id} className=${'card '+(cls||'')+(focus===a.id?' focus':'')}>
-  <h3>${s.t}</h3><p className="mute">${s.r} · ${span(s)} · ${DAYS[s.d]}</p><p><${Pill} k=${k}>${l}<//> ${a.cal!=null&&html`<${Pill} k=${a.cal===(a.seq||0)?'ok':'warn'}>${a.cal===(a.seq||0)?'On your calendar':'Calendar out of date'}<//>`}</p>
+  <h3>${s.t}</h3><p className="mute">${s.r} · ${span(s)} · ${DAYS[s.d]}</p><${ActInfo} s=${s} S=${S} me=${me}/><p><${Pill} k=${k}>${l}<//> ${a.cal!=null&&html`<${Pill} k=${a.cal===(a.seq||0)?'ok':'warn'}>${a.cal===(a.seq||0)?'On your calendar':'Calendar out of date'}<//>`}</p>
   <div className="acts">${need(s)&&html`<button className="btn" disabled=${!!a.ack} onClick=${()=>A.ack(a.id)}>Acknowledge</button>
   <button className="btn ghost" disabled=${!a.ack||!!a.in||!!a.conf} onClick=${()=>A.checkIn(a.id)}>Check in</button>`}${(!need(s)||!!a.ack)&&a.cal!==(a.seq||0)&&html`<button className="btn ghost" onClick=${()=>{A.calAdd(a.id);setShown(a.id)}}>${a.cal==null?'Add to calendar':'Update calendar'}</button>`}</div></div>`};
  return html`<div className=${embedded?'my-schedule':'wrap m'}>${!embedded&&html`<h2>Hi, ${EMPS[me].name.split(' ')[0]}</h2><p className="mute">${EMPS[me].role} · ${evOf(CUR.id).name}</p>`}
@@ -261,12 +269,12 @@ function Staff({S,A,me,canFull=false,embedded=false,push=null}){
 function AdminSession({s,S,A,coordinator=false}){
  const [pick,setPick]=useState('');
  const as=S.asg.filter(x=>x.s===s.id), free=EMPS.filter(e=>!e.gone&&!as.some(x=>x.e===e.id)), same=SESS.filter(o=>o.ev===s.ev&&o.d===s.d&&o.id!==s.id);
- return html`<div className="session-panel"><${Head} s=${s} asg=${S.asg}/>
+ return html`<div className="session-panel"><${Head} s=${s} asg=${S.asg}/><${ActInfo} s=${s} S=${S} admin=${true}/>
  <ul className="rows">${as.map(a=>{const c=clash(S.asg,a),[k,l]=st(a);return html`<li key=${a.id} className="lead-actions"><${IconButton} name="delete" label=${'Remove '+EMPS[a.e].name} onClick=${()=>A.remove(a.id)}/><div>
-  <div><b>${nm(a.e)}</b> <${Pill} k=${k}>${l}<//>${pushOff(S,a.e)&&html` <${Pill} k="warn">Notifications off<//>`} ${c.length>0&&html`<${Pill} k="bad">Overlaps ${c.map(o=>o.t).join(', ')}<//>`}${breaksDuring(S,a.e,s).map(b=>html` <${Pill} key=${'b'+b.id}>${BREAK[b.k][0]} ${span(b)}<//>`)}${(()=>{const o=openClock(S,a.e),lt=o&&lateBy(S,o);return o&&html` <${Pill} k=${lt?'bad':'warn'}>${BREAK[o.k][1]} now${lt?' · '+lt+' min late':''}<//>`})()}</div>
+  <div><b>${nm(a.e)}</b>${a.lead&&html` <${Pill} k="ok">Team lead<//>`} <${Pill} k=${k}>${l}<//>${pushOff(S,a.e)&&html` <${Pill} k="warn">Notifications off<//>`} ${c.length>0&&html`<${Pill} k="bad">Overlaps ${c.map(o=>o.t).join(', ')}<//>`}${breaksDuring(S,a.e,s).map(b=>html` <${Pill} key=${'b'+b.id}>${BREAK[b.k][0]} ${span(b)}<//>`)}${(()=>{const o=openClock(S,a.e),lt=o&&lateBy(S,o);return o&&html` <${Pill} k=${lt?'bad':'warn'}>${BREAK[o.k][1]} now${lt?' · '+lt+' min late':''}<//>`})()}</div>
   <div className="acts"><select aria-label=${'Move '+EMPS[a.e].name} value="" onChange=${ev=>ev.target.value&&A.move(a.id,+ev.target.value)}>
    <option value="">Move to…</option>${same.map(o=>html`<option key=${o.id} value=${o.id}>${o.r}, ${span(o)}, ${o.t}</option>`)}</select>
-  ${coordinator&&need(s)&&html`<button className="btn ghost" disabled=${!!a.in||!!a.conf} onClick=${()=>A.confirm(a.id)}>Confirm present</button>`}</div></div></li>`})}</ul>
+  ${coordinator&&need(s)&&html`<button className="btn ghost" disabled=${!!a.in||!!a.conf} onClick=${()=>A.confirm(a.id)}>Confirm present</button>`}${INFO_SUPPORT.on&&['staff','admin'].includes(EMPS[a.e].acct)&&html`<button className="btn ghost" aria-pressed=${!!a.lead} onClick=${()=>A.setLead(a.id,!a.lead)}>${a.lead?'Remove as lead':'Make team lead'}</button>`}</div></div></li>`})}</ul>
  ${!as.length&&html`<p className="mute">No one assigned yet.</p>`}
  <div className="acts"><select aria-label=${'Employee to assign to '+s.t} value=${pick} onChange=${e=>setPick(e.target.value)}><option value="">Choose employee…</option>
   ${free.map(e=>html`<option key=${e.id} value=${e.id}>${nm(e.id)}</option>`)}</select>
@@ -301,7 +309,7 @@ function Grid({S}){
  <h3 style=${{marginTop:16}}>Staff colors</h3><div className="legend">${used.map(e=>html`<span key=${e}><i className="sw" style=${{background:col(e,1)}}></i>${EMPS[e].name}</span>`)}</div></div>`}
 const EXP=createExpenses({React,html,Modal,Icon,IconButton,people:EMPS,events:EVS,current:CUR});
 const DOCS=createDocuments({React,html,Modal,Icon,people:EMPS,events:EVS,activities:SESS,current:CUR});
-const Admin=createAdminWorkspace({people:EMPS,events:EVS,rooms:ROOMS,activities:SESS,current:CUR,days:DAYS,daysShort:DAYS_SHORT,cover,clash,span,evEnd,evStatus,need,roomAck:ROOM_ACK,ackSupport:ACK_SUPPORT,BREAK,breaksOn,breaksDuring,openClock,lateBy,liveNow,clockTime,breakOf,todayIndex,breakExport,floorSupport:FLOOR_SUPPORT,closeSupport:CLOSE_SUPPORT,pushSupport:PUSH_SUPPORT,logoSupport:LOGO_SUPPORT,splashSupport:SPLASH_SUPPORT,prepLogo,prepSplash,imageUrl,hrPdf:(list,scope)=>{const url=URL.createObjectURL(new Blob([hrReport({list,people:EMPS,eventName:evOf(CUR.id).name,scope,autoPrint:true})],{type:'text/html'})),w=window.open(url,'_blank');setTimeout(()=>URL.revokeObjectURL(url),60000);return w?'':'Your browser blocked the report window. Allow pop-ups for this site and try again.'},connected:CONNECTED},{AdminSession,Grid,Floorplans,Incoming,Staff,ExpensesAdmin:EXP.ExpensesAdmin,EventLogo,Splash,DocumentsAdmin:DOCS.DocumentsAdmin});
+const Admin=createAdminWorkspace({people:EMPS,events:EVS,rooms:ROOMS,activities:SESS,current:CUR,days:DAYS,daysShort:DAYS_SHORT,cover,clash,span,evEnd,evStatus,need,roomAck:ROOM_ACK,ackSupport:ACK_SUPPORT,BREAK,breaksOn,breaksDuring,openClock,lateBy,liveNow,clockTime,breakOf,todayIndex,breakExport,floorSupport:FLOOR_SUPPORT,closeSupport:CLOSE_SUPPORT,pushSupport:PUSH_SUPPORT,infoSupport:INFO_SUPPORT,logoSupport:LOGO_SUPPORT,splashSupport:SPLASH_SUPPORT,prepLogo,prepSplash,imageUrl,hrPdf:(list,scope)=>{const url=URL.createObjectURL(new Blob([hrReport({list,people:EMPS,eventName:evOf(CUR.id).name,scope,autoPrint:true})],{type:'text/html'})),w=window.open(url,'_blank');setTimeout(()=>URL.revokeObjectURL(url),60000);return w?'':'Your browser blocked the report window. Allow pop-ups for this site and try again.'},connected:CONNECTED},{AdminSession,Grid,Floorplans,Incoming,Staff,ExpensesAdmin:EXP.ExpensesAdmin,EventLogo,Splash,DocumentsAdmin:DOCS.DocumentsAdmin});
 function App({connected}){
  const [demoS,setS]=useState(()=>connected?connected.snapshot:seed()),[demoRole,setRole]=useState('admin'),[demoMe,setMe]=useState(0),[toast,setToast]=useState('');
  const S=connected?connected.snapshot:demoS,role=connected?connected.snapshot.role:demoRole,me=connected?connected.snapshot.me:demoMe;
@@ -320,6 +328,7 @@ function App({connected}){
    setS(s=>{const a={id:++uid,e,s:sid,ack:0,in:0,conf:0,tag:'new'};return L({...s,asg:[...s.asg,a],notes:[...s.notes,{id:++uid,e,aid:a.id,done:0,x:ntext(a,'New assignment')}]},'Assigned '+EMPS[e].name+' to '+SM[sid].r+' ('+SM[sid].t+', '+span(SM[sid])+')')})},
   move:(id,sid)=>{say('Change published. Employee notified.');setS(s=>{const o=s.asg.find(a=>a.id===id),old=SM[o.s],n={...o,s:sid,ack:0,in:0,conf:0,tag:'changed',seq:(o.seq||0)+1,pc:0};
    return L({...s,asg:s.asg.map(a=>a.id===id?n:a),notes:[...s.notes.filter(x=>x.aid!==id),{id:++uid,e:o.e,aid:id,done:0,x:ntext(n,'Changed assignment'),from:'Was '+old.t+', '+old.r+', '+span(old)}]},'Moved '+EMPS[o.e].name+' from '+old.r+' to '+SM[sid].r+' ('+SM[sid].t+')')})},
+  setLead:(id,on)=>{const a=S.asg.find(x=>x.id===id);if(!a)return false;if(on&&!['staff','admin'].includes(EMPS[a.e].acct)){say('Team leads must be Staff or Admin people');return false}setS(s=>L({...s,asg:s.asg.map(x=>x.id===id?{...x,lead:!!on}:x)},(on?'Made ':'Removed ')+EMPS[a.e].name+(on?' team lead for ':' as team lead for ')+SM[a.s].t));say(on?EMPS[a.e].name.split(' ')[0]+' is now a team lead':'Team lead removed');return true},
   remove:id=>{setS(s=>{const o=s.asg.find(a=>a.id===id);return L({...s,asg:s.asg.filter(a=>a.id!==id),notes:[...s.notes.filter(x=>x.aid!==id),{id:++uid,e:o.e,aid:null,done:0,x:'Removed from '+SM[o.s].t+', '+SM[o.s].r+' ('+DAYS[SM[o.s].d]+')'+(o.cal!=null?'. Delete it from your calendar.':'')}]},'Removed '+EMPS[o.e].name+' from '+SM[o.s].r+' ('+SM[o.s].t+')')});say('Assignment removed. Employee notified.')},
   ack:id=>setS(s=>{const o=s.asg.find(a=>a.id===id);return L({...s,asg:s.asg.map(a=>a.id===id?{...a,ack:1,pc:1}:a),notes:s.notes.map(n=>n.aid===id?{...n,done:1}:n)},EMPS[o.e].name+' acknowledged '+SM[o.s].t+' in '+SM[o.s].r)}),
   dismiss:id=>setS(s=>({...s,notes:s.notes.map(n=>n.id===id?{...n,done:1}:n)})),
@@ -327,12 +336,12 @@ function App({connected}){
   confirm:id=>{setS(s=>{const o=s.asg.find(a=>a.id===id);return L({...s,asg:s.asg.map(a=>a.id===id?{...a,conf:1}:a)},'Coordinator confirmed '+EMPS[o.e].name+' present in '+SM[o.s].r)});say('Attendance confirmed')},
   addStaff:o=>{if(!o.n){say('Enter a name');return false}EMPS.push({id:EMPS.length,name:o.n,email:o.email,role:o.r,acct:o.acct,phone:o.phone,map:o.map?1:0});setS(s=>L({...s},'Added '+o.acct+' '+o.n+' ('+o.r+')'));say(o.n+' added');return true},
   addRoom:(n,req=true)=>{if(!n||ROOMS.includes(n)){say(n?'That room already exists':'Enter a room name');return false}ROOMS.push(n);ROOM_ACK[n]=req!==false;setS(s=>L({...s},'Added room '+n+(req===false?' (no acknowledgment or check-in)':'')));say(n+' added');return true},
-  addSession:(t,r,d,a,b,n,q=null)=>{if(!t){say('Enter an activity name');return false}if(!(b>a)){say('End time must be after start time');return false}if(!(n>=1)){say('Staff needed must be at least 1');return false}const o={id:Math.max(0,...SESS.map(x=>x.id))+1,ev:CUR.id,d:+d,t,r,a,b,n,q};SESS.push(o);SM[o.id]=o;setS(s=>L({...s},'Created activity '+t+' in '+r+', '+DAYS[o.d]+', '+span(o)));say(t+' created');return true},
+  addSession:(t,r,d,a,b,n,q=null,info)=>{if(!t){say('Enter an activity name');return false}if(!(b>a)){say('End time must be after start time');return false}if(!(n>=1)){say('Staff needed must be at least 1');return false}const o={id:Math.max(0,...SESS.map(x=>x.id))+1,ev:CUR.id,d:+d,t,r,a,b,n,q,...(isInfo(info)?{det:info.det,nt:info.nt}:{})};SESS.push(o);SM[o.id]=o;setS(s=>L({...s},'Created activity '+t+' in '+r+', '+DAYS[o.d]+', '+span(o)));say(t+' created');return true},
   editStaff:(id,o)=>{if(!o.n){say('Enter a name');return false}Object.assign(EMPS[id],{name:o.n,email:o.email,role:o.r,acct:o.acct,phone:o.phone,map:o.map?1:0});setS(s=>L({...s},'Updated '+o.n+' ('+o.r+', '+o.acct+', map access '+(o.map?'on':'off')+')'));say('Saved');return true},
   delStaff:id=>{const n=EMPS[id].name;EMPS[id].gone=1;if(me===id)setMe(EMPS.find(e=>!e.gone).id);setS(s=>L({...s,asg:s.asg.filter(a=>a.e!==id),notes:s.notes.filter(x=>x.e!==id)},'Deleted staff member '+n+' and cancelled their assignments'));say(n+' deleted');return true},
   editRoom:(o,n,req)=>{if(!n||(n!==o&&ROOMS.includes(n))){say(n?'That room already exists':'Enter a room name');return false}const flag=req===undefined?ROOM_ACK[o]!==false:req!==false,ss=n!==o?SESS.filter(s=>s.r===o).map(s=>[s.id,desc(s)]):[];ROOMS[ROOMS.indexOf(o)]=n;delete ROOM_ACK[o];ROOM_ACK[n]=flag;ss.forEach(([id])=>{SM[id].r=n});setS(s=>L(ss.reduce((x,[id,f])=>bump(x,id,f),s),n!==o?'Renamed room '+o+' to '+n:'Updated room '+n+(flag?' (acknowledgment and check-in required)':' (no acknowledgment or check-in)')));say('Saved');return true},
   delRoom:r=>{if(SESS.some(s=>s.r===r)){say('Move or delete its activities first');return false}ROOMS.splice(ROOMS.indexOf(r),1);setS(s=>L({...s},'Deleted room '+r));say(r+' deleted');return true},
-  editSession:(id,t,r,d,a,b,n,q)=>{if(!t){say('Enter an activity name');return false}if(!(b>a)){say('End time must be after start time');return false}if(!(n>=1)){say('Staff needed must be at least 1');return false}const o=SM[id],f=desc(o),ch=o.t!==t||o.r!==r||o.d!==+d||o.a!==a||o.b!==b;Object.assign(o,{t,r,d:+d,a,b,n},q===undefined?{}:{q});setS(s=>L(ch?bump(s,id,f):s,'Updated activity '+t+' in '+r+', '+DAYS[o.d]+', '+span(o)));say(ch?'Saved. Assigned staff notified.':'Saved');return true},
+  editSession:(id,t,r,d,a,b,n,q,info)=>{if(isInfo(q)){info=q;q=undefined}if(!t){say('Enter an activity name');return false}if(!(b>a)){say('End time must be after start time');return false}if(!(n>=1)){say('Staff needed must be at least 1');return false}const o=SM[id],f=desc(o),ch=o.t!==t||o.r!==r||o.d!==+d||o.a!==a||o.b!==b;Object.assign(o,{t,r,d:+d,a,b,n},q===undefined?{}:{q},isInfo(info)?{det:info.det,nt:info.nt}:{});setS(s=>L(ch?bump(s,id,f):s,'Updated activity '+t+' in '+r+', '+DAYS[o.d]+', '+span(o)));say(ch?'Saved. Assigned staff notified.':'Saved');return true},
   delSession:id=>{const o=SM[id],txt=ntext({s:id},'Cancelled');setS(s=>{const g=s.asg.filter(a=>a.s===id);return L({...s,asg:s.asg.filter(a=>a.s!==id),notes:[...s.notes.filter(n=>!g.some(a=>a.id===n.aid)),...g.map(a=>({id:++uid,e:a.e,aid:null,done:0,x:txt+(a.cal!=null?'. Delete it from your calendar.':'')}))]},'Deleted activity '+o.t+' ('+g.length+' staff notified)')});SESS.splice(SESS.indexOf(o),1);delete SM[id];say(o.t+' deleted');return true},
   addEvent:o=>{if(!evv(o))return false;const id=Math.max(0,...EVS.map(e=>e.id))+1;EVS.push({id,name:o.n,start:o.b,days:Math.floor(o.d)});CUR.id=id;syncEv();setS(s=>L({...s},'Created event '+o.n));say(o.n+' created and opened');return true},
   editEvent:(id,o)=>{if(!evv(o))return false;const n=Math.floor(o.d),bad=SESS.find(s=>s.ev===id&&s.d>=n);if(bad){say('Move or delete activities on '+dayDate(evOf(id).start,bad.d)+' first');return false}Object.assign(evOf(id),{name:o.n,start:o.b,days:n});if(id===CUR.id)syncEv();setS(s=>L({...s},'Updated event '+o.n));say('Saved');return true},
@@ -376,9 +385,11 @@ function App({connected}){
   A[k]=async(...args)=>{
    const options=args.at(-1);
    const expectedRevision=k.startsWith('edit')&&options&&typeof options==='object'&&Object.hasOwn(options,'expectedRevision')?args.pop().expectedRevision:undefined;
+   const info=(k==='addSession'||k==='editSession')&&isInfo(args.at(-1))?args.pop():null;
    // Older databases take the original argument lists, without the acknowledgment setting.
    if(!ACK_SUPPORT.on&&({addRoom:2,editRoom:3,addSession:7,editSession:8})[k]===args.length)args.pop();
    if(k==='addSession'||k==='addBreak')args.push(CUR.id);
+   if(info&&INFO_SUPPORT.on)args.push(info);
    return connected.command(k,args,expectedRevision);
   };
  });
@@ -436,7 +447,7 @@ function hydrate(data){
  data.activities.forEach(s=>{s.q=data.actAck&&Object.hasOwn(data.actAck,s.id)?data.actAck[s.id]:null});
  SESS.splice(0,SESS.length,...data.activities);Object.keys(SM).forEach(k=>delete SM[k]);SESS.forEach(s=>{SM[s.id]=s});
  FP.length=0;INV.length=0;H.length=0;
- PUSH_SUPPORT.on=!!data.push;LOGO_SUPPORT.on=data.logos===true;SPLASH_SUPPORT.on=data.splashes===true;FLOOR_SUPPORT.on=Array.isArray(data.floorplans);if(FLOOR_SUPPORT.on)FP.push(...data.floorplans.map(f=>({id:f.id,ev:f.ev,name:f.name,size:f.size,path:f.path})));
+ PUSH_SUPPORT.on=!!data.push;INFO_SUPPORT.on=data.activityInfo===true;LOGO_SUPPORT.on=data.logos===true;SPLASH_SUPPORT.on=data.splashes===true;FLOOR_SUPPORT.on=Array.isArray(data.floorplans);if(FLOOR_SUPPORT.on)FP.push(...data.floorplans.map(f=>({id:f.id,ev:f.ev,name:f.name,size:f.size,path:f.path})));
  if(EVS.length){if(!evOf(CUR.id))CUR.id=EVS[0].id;syncEv()}
 }
 const Root=CONNECTED?createConnection(React,html,window.eventOpsRepository,App,hydrate):App;
