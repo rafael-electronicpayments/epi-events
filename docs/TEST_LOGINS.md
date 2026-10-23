@@ -5,11 +5,11 @@ The staging app now signs in provisioned Admin, Staff, and Contractor accounts u
 ## Testing Workflow
 
 1. Keep an existing staging admin session, or sign in using the password set when creating that administrator in Supabase. Use Forgot password for recovery if needed; the recovery email must return to the staging Site URL.
-2. Open People and choose Create test logins. This creates actual email-confirmed Supabase Auth users for eligible `@epieventstest.com` roster people, linked through the existing trusted invitation trigger. It is safe to retry: existing managed accounts keep their passwords.
-3. Edit a test person to reveal or copy their masked Temporary password. Reset temporary password requires confirmation and changes only that managed test account. Creating or resetting access is separate from saving person details.
+2. Open People and choose Create test logins. This creates actual email-confirmed Supabase Auth users for every eligible roster person (any email address, Admin, Staff, or Contractor; widened from `@epieventstest.com` Staff/Contractors only at the owner's request on 2026-10-21), linked through the existing trusted invitation trigger. It is safe to retry: existing managed accounts keep their passwords.
+3. Edit a person to reveal or copy their masked Temporary password. Reset temporary password requires confirmation and changes only that managed test account. Creating or resetting access is separate from saving person details.
 4. Use a separate browser profile or private window to sign in as the person. Staff and contractors still receive only their authorized schedule and actions.
 
-Login active means a real login/profile has been provisioned, not that a person has signed in already. No last-sign-in timestamps are fabricated. Account creation and password reset here send no email. Test addresses are not mailboxes.
+Login active means a real login/profile has been provisioned, not that a person has signed in already. No last-sign-in timestamps are fabricated. Account creation and password reset here send no email, so share the temporary password with the person directly. `@epieventstest.com` addresses are not mailboxes.
 
 ## Server Configuration
 
@@ -21,9 +21,11 @@ Only the `staging-epi-events` Vercel project has these variables, in its Product
 
 The public Supabase URL must equal staging project `bqdpskxaongqrqmgnzir`, and the Vercel project ID must match the staging project. The API returns 404 elsewhere, even if someone copies the variables to production. The browser has no privileged key. Local Vite uses the deployed staging API with an authorized staging session; the API allows the approved staging host and localhost:3000 origins.
 
-`api/test-logins.js` calls `server/test-logins.js`. Every credential/provision/reset request verifies the bearer token with Supabase and checks the trusted `profiles` admin role. Staff, contractors, anonymous callers, and unapproved origins cannot access credentials. Only synthetic roster emails with matching Staff/Contractor invitations are eligible. Existing unmanaged users, real-email accounts, administrator profiles, and archived people are not reset or exposed.
+`api/test-logins.js` calls `server/test-logins.js`. Every credential/provision/reset request verifies the bearer token with Supabase and checks the trusted `profiles` admin role. Staff, contractors, anonymous callers, and unapproved origins cannot access credentials. Roster people with an email and a matching Admin, Staff, or Contractor invitation are eligible. Logins created outside this tool (for example in Supabase directly, including existing administrator logins), people whose invitation type doesn't match, and archived people are never reset or exposed.
 
 Passwords are hashed by Supabase Auth. No plaintext passwords are added to the database, snapshot, activity log, Git, localStorage, or sessionStorage. The server derives temporary passwords from the private random secret, person/email, and a random version stored in server-controlled Auth app metadata. Only an admin's explicit editor request returns one password, with no-store response headers. Bulk results never contain passwords. Closing the editor removes the credential from the rendered UI.
+
+People can replace their temporary password themselves with Account menu › Change password (current password required). After that, the temporary password shown here no longer works; Reset temporary password issues a new one if they forget theirs.
 
 Keep the derivation secret stable while these accounts are in use. Rotating it or changing a password outside this feature requires resetting the managed account's temporary password here to synchronize it. Existing real administrator passwords cannot be recovered or displayed; use Supabase password recovery instead.
 

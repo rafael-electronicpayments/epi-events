@@ -3,7 +3,7 @@ import htm from 'htm';
 import { Icon, IconButton } from './ui.js';
 
 const html = htm.bind(React.createElement);
-export function AuthScreen({ repository, recovery = false, onRecovered, connectionError = '' }) {
+export function AuthScreen({ repository, recovery = false, onRecovered, onSignedIn, connectionError = '' }) {
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [confirm, setConfirm] = React.useState('');
@@ -23,7 +23,7 @@ export function AuthScreen({ repository, recovery = false, onRecovered, connecti
         await repository.resetPassword(email.trim());
         setMessage('If this account can receive email, a password reset link has been sent.');
       } else {
-        await repository.signIn(email.trim(), password); setPassword('');
+        await repository.signIn(email.trim(), password); setPassword(''); if (onSignedIn) onSignedIn();
       }
     } catch {
       setError(recovery ? 'Could not update your password. Try a new reset link.' : forgot ? 'Could not request a reset link. Try again.' : 'Unable to sign in. Check your email and password.');

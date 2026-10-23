@@ -27,7 +27,7 @@ test('roster emails provision access and reject collisions or unauthorized chang
     await assert.rejects(save(null,'staff@example.test'),/already belongs/);
     await assert.rejects(save(null,'admin@example.test'),/already belongs/);
     await assert.rejects(save(null,'invalid'),/valid email/);
-    await assert.rejects(save(person,'staff@example.test','admin'),/check constraint/);
+    await assert.rejects(save(person,'staff@example.test','manager'),/Choose Admin, Staff, or Contractor/);
     await db.exec(`insert into auth.users values('${staff}','staff@example.test')`);
     assert.equal((await db.query('select role from public.profiles where user_id=$1',[staff])).rows[0].role,'staff');
     s=await save(person,'staff@example.test','contractor');
@@ -54,5 +54,26 @@ test('roster emails provision access and reject collisions or unauthorized chang
     // Legacy commands still return the enriched snapshot after the wrapper migration.
     const legacy=(await db.query("select public.ops_command('addRoom','[\"Room\"]'::jsonb,$1) as s",[s.revision])).rows[0].s;
     assert.equal(legacy.people[0].email,'staff@example.test');
+    const role=async id=>(await db.query('select role from public.profiles where user_id=$1',[id])).rows[0]?.role;
+    // Admin is a People type with full administrator access.
+    s=await save(person,'staff@example.test','admin');
+    assert.equal(s.people.find(p=>p.id===person).acct,'admin');
+    assert.equal(await role(staff),'admin');
+    await db.exec(`select set_config('request.jwt.claim.sub','${staff}',false)`);
+    assert.equal((await snapshot()).role,'admin');
+    await assert.rejects(save(person,'staff@example.test','staff'),/your own administrator access/);
+    await assert.rejects(db.query("select public.ops_command('delStaff',$1::jsonb,$2)",[JSON.stringify([person]),(await snapshot()).revision]),/your own access/);
+    // A standalone administrator login can be linked to the roster, but only as Admin.
+    await assert.rejects(save(null,'admin@example.test','staff'),/already belongs|administrator/);
+    s=await save(null,'admin@example.test','admin');
+    const adminPerson=s.people.find(p=>p.email==='admin@example.test').id;
+    assert.equal((await db.query('select person_id from public.profiles where user_id=$1',[admin])).rows[0].person_id,adminPerson);
+    // Demoting or archiving an Admin person removes administrator access.
+    await db.exec(`select set_config('request.jwt.claim.sub','${admin}',false)`);
+    s=await save(person,'staff@example.test','staff');
+    assert.equal(await role(staff),'staff');
+    s=await save(person,'staff@example.test','admin');
+    await db.query("select public.ops_command('delStaff',$1::jsonb,$2)",[JSON.stringify([person]),s.revision]);
+    assert.equal(await role(staff),undefined);
   }finally{await db.close();}
 });

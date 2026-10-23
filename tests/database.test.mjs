@@ -6,6 +6,7 @@ import { PGlite } from '@electric-sql/pglite';
 const admin = '00000000-0000-0000-0000-000000000001';
 const staff = '00000000-0000-0000-0000-000000000002';
 const outsider = '00000000-0000-0000-0000-000000000003';
+const contractor = '00000000-0000-0000-0000-000000000004';
 
 test('database permissions, persistence, acknowledgments, and concurrent edits', async () => {
   const db = new PGlite();
@@ -15,7 +16,7 @@ test('database permissions, persistence, acknowledgments, and concurrent edits',
       create function auth.uid() returns uuid language sql as
       $$select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid$$;
       grant usage on schema auth to authenticated;`);
-    for (const file of ['202610130001_event_ops.sql', '202610130002_access_invites.sql', '202610130003_restrict_auto_rls.sql','20261014114123_roster_login_email.sql']) {
+    for (const file of ['202610130001_event_ops.sql', '202610130002_access_invites.sql', '202610130003_restrict_auto_rls.sql','20261014114123_roster_login_email.sql','20261016120000_admin_people_staff_schedule.sql','20261019120000_ack_checkin_flags.sql','20261019150000_breaks_and_clock.sql','20261019170000_floorplans.sql','20261020100000_expenses.sql','20261020120000_close_events.sql']) {
       await db.exec(await readFile(new URL('../supabase/migrations/' + file, import.meta.url), 'utf8'));
     }
     await db.exec(`insert into public.access_invites(email,role) values('admin@example.test','admin');
@@ -48,10 +49,13 @@ test('database permissions, persistence, acknowledgments, and concurrent edits',
     await assert.rejects(snapshot(), /not been provisioned/);
     await asUser(staff);
     const mine = await snapshot();
-    assert.equal(mine.people.length, 1);
-    assert.equal(mine.people[0].phone, '');
-    assert.equal(mine.activities.length, 1);
-    assert.equal(mine.asg.length, 1);
+    // Staff can view the full schedule, but never phone numbers or other people's emails.
+    assert.equal(mine.people.length, 2);
+    assert.ok(mine.people.every(p => p.phone === ''));
+    assert.equal(mine.people.find(p => p.id === 1).email, '');
+    assert.equal(mine.activities.length, 2);
+    assert.equal(mine.asg.length, 2);
+    assert.equal(mine.notes.every(n => n.e === 0), true);
     assert.deepEqual(mine.log, []);
     await assert.rejects(command('addRoom', ['Forbidden']), /Administrator access/);
     await assert.rejects(command('ack', [2]), /Access denied/);
@@ -82,5 +86,15 @@ test('database permissions, persistence, acknowledgments, and concurrent edits',
     await command('delStaff', [0]);
     await asUser(staff);
     await assert.rejects(snapshot(), /disabled/);
+    // Contractors still see only their own schedule.
+    await db.exec(`insert into public.access_invites(email,role,person_id) values('contractor@example.test','contractor',1);
+      insert into auth.users values('${contractor}','contractor@example.test');`);
+    await asUser(contractor);
+    const theirs = await snapshot();
+    assert.equal(theirs.role, 'contractor');
+    assert.equal(theirs.people.length, 1);
+    assert.equal(theirs.activities.length, 1);
+    assert.deepEqual(theirs.asg.map(a => a.e), [1]);
+    assert.match(theirs.notes[0].x, /\(Wednesday, Mar 3\)$/);
   } finally { await db.close(); }
 });

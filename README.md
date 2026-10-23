@@ -6,7 +6,7 @@ A clickable, mobile-first prototype of an event operations web app for an annual
 
 **Staging:** [staging-epi-events.vercel.app](https://staging-epi-events.vercel.app), with an independent Supabase database and login accounts. Use staging for team testing.
 
-**Status:** Connected POC. Both environments use email/password login. Only staging includes the admin-only temporary-login tool for synthetic accounts; see [testing credentials](docs/TEST_LOGINS.md). Production users use their own passwords or Forgot password recovery. Scheduling data is saved in Postgres. Without configuration, the original fictional, in-memory demo runs. Notifications are in-app; assignment emails and push notifications are not implemented.
+**Status:** Connected POC. Both environments use email/password login. Only staging includes the admin-only temporary-login tool for synthetic accounts; see [testing credentials](docs/TEST_LOGINS.md). Production users use their own passwords or Forgot password recovery. Scheduling data is saved in Postgres. Without configuration, the original fictional, in-memory demo runs. Notifications are in-app; the app is also installable and sends push notifications on staging (see [push notifications](docs/PUSH_NOTIFICATIONS.md)). Assignment emails are not implemented.
 
 **Direction:** Evolve this repo step by step, with GitHub for collaboration, Vercel hosting, and Supabase's free tier until POC approval. The connected slice includes login, event setup, people/rooms/activities, assignments, acknowledgment, check-in, contacts, schedule printing, and activity logging. Floorplans, incoming goods, and demo undo/reset remain in demo mode only. See `docs/SUPABASE.md` for setup and access provisioning.
 
@@ -35,7 +35,7 @@ Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` in `.env.local` to e
 
 This walkthrough applies to the unconfigured demo. The connected POC also contains the original IMPACT27 schedule and empty IMPACT26 event. Use separate provisioned Admin and Staff accounts instead of the role switcher; roster people need an Auth account/profile before signing in. Reload to verify persistence, and use a second browser to verify shared changes.
 
-1. As **Admin**, open Schedule, Day 1, find "POS Lab: demo support" (Salon 3, 9:00-11:00 AM). Assign **Alex Rivera (Employee A)**.
+1. As **Admin**, open Schedule, the first day tab, find "POS Lab: demo support" (Salon 3, 9:00-11:00 AM). Assign **Alex Rivera (Employee A)**.
 2. Switch to **Staff** (Alex is the default). See the new assignment and banner.
 3. Switch to **Admin**, use "Move to..." on Alex's row and pick Salon 5 (Breakout A).
 4. Switch to **Staff**. See the "Changed assignment" banner. Acknowledge, then Check in.

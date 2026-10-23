@@ -20,6 +20,8 @@ export function createTestLoginHandler({ createClient, env, uuid = randomUUID })
       const origin = request.headers.get('origin');
       const origins = ['https://staging-epi-events.vercel.app', 'http://localhost:3000', 'http://127.0.0.1:3000'];
       if (env.VERCEL_URL) origins.push('https://' + env.VERCEL_URL);
+      // The page calling its own site's API (for example a branch domain such as push-staging-epi-events.vercel.app).
+      origins.push(new URL(request.url).origin);
       if (origin && !origins.includes(origin)) return reply({ error: 'Origin not allowed.' }, 403);
       if (origin) headers['Access-Control-Allow-Origin'] = origin;
       if (request.method === 'OPTIONS') {
@@ -54,10 +56,12 @@ export function createTestLoginHandler({ createClient, env, uuid = randomUUID })
       const records = people.filter(p => personId === undefined || p.id === personId);
       if (personId !== undefined && !records.length) return reply({ error: 'Person no longer exists.' }, 404);
       const inviteFor = p => invitations.find(i => i.person_id === p.id);
+      // Any roster person with an email whose invitation matches their type (Admin, Staff, or Contractor).
+      // Logins created elsewhere (for example in Supabase directly) stay "unmanaged" and are never shown or reset.
       const eligible = p => {
         const invite = inviteFor(p);
-        return invite && /^[a-z0-9]+@epieventstest\.com$/.test(invite.email) && invite.role === p.account_type
-          && ['staff', 'contractor'].includes(p.account_type);
+        return invite && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(invite.email || '') && invite.role === p.account_type
+          && ['staff', 'contractor', 'admin'].includes(p.account_type);
       };
       const inspect = async p => {
         const linked = profiles.find(f => f.person_id === p.id);
