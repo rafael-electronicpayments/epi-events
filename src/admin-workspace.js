@@ -14,9 +14,10 @@ export function createAdminWorkspace(m,components){
  if(!m.infoSupport)m.infoSupport={on:false};
  if(!m.eventInfoSupport)m.eventInfoSupport={on:false};
  if(!m.brandSupport)m.brandSupport={on:false};
+ if(!m.itinSupport)m.itinSupport={on:false};
  const ackText=on=>on?'Required':'Not required';
  const qOf={room:null,yes:true,no:false};
- const {AdminSession,Grid,Floorplans,Incoming,Staff,ExpensesAdmin,EventLogo,Splash,DocumentsAdmin,AppSettings}=components;
+ const {AdminSession,Grid,Floorplans,Incoming,Staff,ExpensesAdmin,EventLogo,Splash,DocumentsAdmin,AppSettings,ItinerariesAdmin}=components;
  const dateLabel=day=>{const event=events.find(e=>e.id===current.id);const date=new Date(event.start+'T12:00:00');date.setDate(date.getDate()+day);return date.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});};
  const field=(label,input)=>html`<label>${label}${input}</label>`;
  const minutes=value=>{const [h,n]=value.split(':').map(Number);return h*60+n;};
@@ -144,7 +145,7 @@ export function createAdminWorkspace(m,components){
     const value={n:draft.name.trim(),email:draft.email.trim().toLowerCase(),r:draft.title.trim(),acct:draft.type,phone:draft.phone.trim(),map:draft.map};
     result=await(editing?A.editStaff(editor.id,value,version):A.addStaff(value));
    }else if(editor.type==='event'){
-    const value={n:draft.name.trim(),b:draft.start,d:Number(draft.days),...(m.pushSupport.on?{tz:draft.tz}:{}),...(m.eventInfoSupport.on?{venue:draft.venue.trim(),addr:draft.addr.trim(),notes:draft.notes.trim()}:{})};
+    const value={n:draft.name.trim(),b:draft.start,d:Number(draft.days),...(m.pushSupport.on?{tz:draft.tz}:{}),...(m.eventInfoSupport.on?{venue:draft.venue.trim(),addr:draft.addr.trim(),notes:draft.notes.trim()}:{}),...(m.itinSupport.on?{staffFlights:!!draft.sf,staffHotels:!!draft.sh}:{})};
     result=await(editing?A.editEvent(editor.id,value,version):A.addEvent(value));
    }else if(editor.type==='room')result=await(editing?A.editRoom(editor.id,draft.name.trim(),!!draft.req,version):A.addRoom(draft.name.trim(),!!draft.req));
    else{
@@ -172,7 +173,8 @@ export function createAdminWorkspace(m,components){
      ${m.pushSupport.on&&html`<p className="mute ack-hint">Reminders go out 30 minutes before each activity, in this time zone.</p>`}
      ${m.eventInfoSupport.on&&html`<label className="wide-field">Venue name<input maxLength="200" value=${draft.venue} placeholder="For example, El Conquistador Resort" onChange=${set('venue')}/></label>
      <label className="wide-field">Address<textarea rows="2" maxLength="500" value=${draft.addr} placeholder="Street, city, state, ZIP" onChange=${set('addr')}></textarea></label>
-     <label className="wide-field">Notes<textarea rows="4" maxLength="4000" value=${draft.notes} onChange=${set('notes')}></textarea><span className="mute field-hint">Only admins see these notes.</span></label>`}`}
+     <label className="wide-field">Notes<textarea rows="4" maxLength="4000" value=${draft.notes} onChange=${set('notes')}></textarea><span className="mute field-hint">Only admins see these notes.</span></label>`}
+     ${m.itinSupport.on&&html`<fieldset className="choice-list wide-field"><legend>Travel (Itineraries)</legend><label className="chk"><input type="checkbox" checked=${draft.sf} onChange=${set('sf')}/>People can enter their own flights</label><label className="chk"><input type="checkbox" checked=${draft.sh} onChange=${set('sh')}/>People can enter their own hotel</label><span className="mute field-hint">Admins can always enter anyone's. People can change only bookings they entered, and only while this is on.</span></fieldset>`}`}
     ${editor.type==='activity'&&html`
      ${field('Room',html`<select required value=${draft.room} onChange=${set('room')}><option value="" disabled>Choose room</option>${rooms.map(r=>html`<option key=${r}>${r}</option>`)}</select>`)}
      ${field('Day',html`<select value=${draft.day} onChange=${set('day')}>${days.map((d,i)=>html`<option key=${i} value=${i}>${d}</option>`)}</select>`)}
@@ -223,7 +225,7 @@ export function createAdminWorkspace(m,components){
   const open=(entity,record=null)=>{
    let draft,id;
    if(entity==='person'){id=record?.id;draft={name:record?.name||'',email:record?.email||'',title:record?.role||'Room Host',type:record?.acct||'staff',phone:record?.phone||'',map:record?!!record.map:true};}
-   else if(entity==='event'){id=record?.id;draft={name:record?.name||'',start:record?.start||'',days:record?.days||3,tz:record?.tz||'America/New_York',venue:record?.venue||'',addr:record?.addr||'',notes:record?.notes||''};}
+   else if(entity==='event'){id=record?.id;draft={name:record?.name||'',start:record?.start||'',days:record?.days||3,tz:record?.tz||'America/New_York',venue:record?.venue||'',addr:record?.addr||'',notes:record?.notes||'',sf:!!record?.staffFlights,sh:!!record?.staffHotels};}
    else if(entity==='room'){id=record;draft={name:record||'',req:record?roomAck[record]!==false:true};}
    else{id=record?.id;draft={name:record?.t||'',room:record?.r||rooms[0]||'',day:record?.d??dayIndex,start:time(record?.a??540),end:time(record?.b??600),needed:record?.n||2,q:record?.q==null?'room':record.q?'yes':'no',det:record?.det||'',nt:record?.nt||''};}
    setEditor({type:entity,id,draft,revision:S.revision});
@@ -231,9 +233,9 @@ export function createAdminWorkspace(m,components){
   const shownPeople=people.filter(p=>!p.gone&&(type==='all'||p.acct===type)&&(p.name+' '+p.email+' '+p.role).toLowerCase().includes(query.toLowerCase()));
   const remove=(entity,id,label,warning)=>setEditor({type:entity,id,label,warning,remove:true,revision:S.revision});
   const planning=[['schedule','calendar','Schedule'],['coverage','coverage','Coverage'],['people','people','People'],...(m.breaksOn(S)?[['breaks','clock','Breaks']]:[]),...(me!=null?[['mine','user','My schedule']]:[])];
-  const nav=[...planning,['setup','settings','Event setup'],...(Array.isArray(S.expenses)?[['expenses','receipt','Expenses']]:[]),['log','activity','Activity log'],...(m.floorSupport.on?[['plans','map','Floorplans']]:[]),...(Array.isArray(S.documents)?[['documents','file','Documents']]:[]),...(m.brandSupport.on?[['appsettings','sliders','App settings']]:[]),...(!m.connected?[['incoming','package','Incoming goods']]:[])];
+  const nav=[...planning,['setup','settings','Event setup'],...(Array.isArray(S.expenses)?[['expenses','receipt','Expenses']]:[]),['log','activity','Activity log'],...(m.floorSupport.on?[['plans','map','Floorplans']]:[]),...(Array.isArray(S.documents)?[['documents','file','Documents']]:[]),...(m.itinSupport.on?[['itineraries','plane','Itineraries']]:[]),...(m.brandSupport.on?[['appsettings','sliders','App settings']]:[]),...(!m.connected?[['incoming','package','Incoming goods']]:[])];
   const navButton=([id,icon,label])=>html`<button key=${id} type="button" className="nav-item" aria-current=${view===id?'page':undefined} onClick=${()=>navigate(id)}><${Icon} name=${icon}/><span>${label}</span></button>`;
-  const title={expenses:'Expenses',breaks:'Breaks',mine:'My schedule',schedule:'Schedule',coverage:'Coverage',people:'People',setup:'Event setup',log:'Activity log',plans:'Floorplans',documents:'Documents',appsettings:'App settings',incoming:'Incoming goods'}[view];
+  const title={expenses:'Expenses',breaks:'Breaks',mine:'My schedule',schedule:'Schedule',coverage:'Coverage',people:'People',setup:'Event setup',log:'Activity log',plans:'Floorplans',documents:'Documents',itineraries:'Itineraries',appsettings:'App settings',incoming:'Incoming goods'}[view];
   const sub=['schedule','coverage','breaks'].includes(view)?dateLabel(dayIndex):view==='appsettings'?'For the whole app, every event':event.name;
   const actions=(editLabel,onEdit,deleteLabel,onDelete,disabled=false)=>html`<div className="row-actions"><${IconButton} name="edit" label=${editLabel} onClick=${onEdit}/><${IconButton} name="delete" label=${deleteLabel} onClick=${onDelete} disabled=${disabled}/></div>`;
   const table=(headers,body)=>html`<div className="data-surface"><table className="data-table"><thead><tr>${headers.map((h,i)=>html`<th key=${i} scope="col" className=${h.className||''}>${h.text}</th>`)}</tr></thead><tbody>${body.length?body:html`<tr><td colSpan=${headers.length} className="empty-table">No records found.</td></tr>`}</tbody></table></div>`;
@@ -278,7 +280,7 @@ export function createAdminWorkspace(m,components){
    const description=details&&!Array.isArray(details)?details.name||'':Array.isArray(details)?typeof details[0]==='string'?details[0]:details[0]?.n||'':'';
    return html`<tr key=${i}><td>${Number.isNaN(date.valueOf())?entry.t:date.toLocaleString()}</td><td>${names[entry.x]||entry.x}</td><td>${description}</td></tr>`;
   }))}
-  ${view==='breaks'&&exportMsg&&html`<p className="mute export-msg" role="status">${exportMsg}</p>`}${view==='breaks'&&m.breaksOn(S)&&html`<${BreaksPage} S=${S} table=${table} actions=${actions} dayIndex=${dayIndex} setDay=${setDay} onAdd=${()=>setBreakEd({})} onEdit=${b=>setBreakEd(b)} onRemove=${b=>remove('break',b.id,(people[b.e]?.name||'')+' '+m.BREAK[b.k][0].toLowerCase(),'They will be notified that this '+m.BREAK[b.k][0].toLowerCase()+' was cancelled.')}/>`}${view==='mine'&&me!=null&&html`<${Staff} S=${S} A=${A} me=${me} embedded=${true} push=${push}/>`}${view==='expenses'&&Array.isArray(S.expenses)&&html`<${ExpensesAdmin} S=${S} A=${A} table=${table} actions=${actions} onReport=${m.hrPdf}/>`}${view==='appsettings'&&m.brandSupport.on&&html`<${AppSettings} A=${A}/>`}${view==='documents'&&Array.isArray(S.documents)&&html`<${DocumentsAdmin} S=${S} A=${A} adding=${addingDoc} onAdded=${()=>setAddingDoc(false)}/>`}${view==='plans'&&html`<${Floorplans} A=${A}/>`}${view==='incoming'&&html`<${Incoming} A=${A}/>`}
+  ${view==='breaks'&&exportMsg&&html`<p className="mute export-msg" role="status">${exportMsg}</p>`}${view==='breaks'&&m.breaksOn(S)&&html`<${BreaksPage} S=${S} table=${table} actions=${actions} dayIndex=${dayIndex} setDay=${setDay} onAdd=${()=>setBreakEd({})} onEdit=${b=>setBreakEd(b)} onRemove=${b=>remove('break',b.id,(people[b.e]?.name||'')+' '+m.BREAK[b.k][0].toLowerCase(),'They will be notified that this '+m.BREAK[b.k][0].toLowerCase()+' was cancelled.')}/>`}${view==='mine'&&me!=null&&html`<${Staff} S=${S} A=${A} me=${me} embedded=${true} push=${push}/>`}${view==='expenses'&&Array.isArray(S.expenses)&&html`<${ExpensesAdmin} S=${S} A=${A} table=${table} actions=${actions} onReport=${m.hrPdf}/>`}${view==='appsettings'&&m.brandSupport.on&&html`<${AppSettings} A=${A}/>`}${view==='itineraries'&&m.itinSupport.on&&html`<${ItinerariesAdmin} S=${S} A=${A} me=${me}/>`}${view==='documents'&&Array.isArray(S.documents)&&html`<${DocumentsAdmin} S=${S} A=${A} adding=${addingDoc} onAdded=${()=>setAddingDoc(false)}/>`}${view==='plans'&&html`<${Floorplans} A=${A}/>`}${view==='incoming'&&html`<${Incoming} A=${A}/>`}
   </main>${breakEd&&html`<${BreakEditor} key=${breakEd.id??'new'} editor=${breakEd} A=${A} S=${S} dayIndex=${dayIndex} onClose=${()=>setBreakEd(null)}/>`}${staffPdf&&html`<${StaffExport} S=${S} shown=${shownPeople} filtered=${type!=='all'||!!query.trim()} onClose=${()=>setStaffPdf(false)}/>`}${importing&&html`<${ImportPeople} A=${A} error=${error} onClose=${()=>setImporting(false)}/>`}${limits&&html`<${DeliveryLimits} onClose=${()=>setLimits(false)}/>`}${editor&&html`<${Editor} key=${editor.type+'-'+editor.id} editor=${editor} A=${A} error=${error} testLogins=${testLogins} onClose=${()=>setEditor(null)}/>`}</div>`;
  };
 }

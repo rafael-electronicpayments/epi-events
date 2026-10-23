@@ -275,3 +275,12 @@ body:has(dialog[open]) .app-error{display:none}
 .icon-tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.color-field{display:flex;align-items:center;gap:8px;font-size:13px}.color-field input{width:44px;height:40px;padding:2px;border:1px solid var(--line);border-radius:6px;background:var(--card)}
 @media(max-width:640px){.app-tagline{max-width:60vw}}
 .splash{font-family:inherit}
+/* Itineraries (src/itineraries.js) */
+.travel-editor .travel-leg{border:1px solid var(--line);border-radius:6px;padding:12px;margin:12px 0 0;min-width:0}.travel-editor .travel-leg legend{font-size:12px;font-weight:700;padding:0 4px;text-transform:uppercase;letter-spacing:.04em;color:var(--mute)}
+.travel-total{display:flex;flex-direction:column;justify-content:flex-end;gap:2px;padding-bottom:10px}.travel-total b{font-size:18px}
+.travel-editor .dialog-actions .push-left{margin-right:auto}
+.travel-sum p{margin:0 0 6px}.travel-sum .cell-secondary{display:block}
+.travel-details{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:6px 14px;margin:8px 0 0;font-size:13px}.travel-details dt{color:var(--mute);font-size:11px;text-transform:uppercase;letter-spacing:.03em}.travel-details dd{margin:0}
+.travel-table td{vertical-align:top}.travel-table td p{margin:0 0 4px}.travel-table .acts{margin-top:6px}
+.travel-card .travel-sum{margin:8px 0}.travel-transfer{margin:8px 0;padding:8px 10px;border-left:3px solid var(--acc);background:color-mix(in srgb,var(--acc) 7%,transparent);border-radius:4px;font-size:13px}.travel-transfer p{margin:0 0 4px}.travel-card h4{margin:12px 0 0;font-size:13px}
+.editor-fields .choice-list{border:0;padding:0;margin:0;display:grid;gap:6px}.editor-fields .choice-list legend{font-weight:600;padding:0;margin-bottom:4px}
