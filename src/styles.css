@@ -263,3 +263,4 @@ body:has(dialog[open]) .app-error{display:none}
 .act-info{margin:6px 0 8px;display:grid;gap:4px;font-size:13px}.act-info p{margin:0}.act-details,.act-notes{white-space:pre-wrap;overflow-wrap:anywhere}.act-notes{background:color-mix(in srgb,var(--acc) 8%,transparent);border-left:3px solid var(--acc);padding:6px 8px;border-radius:4px}
 .editor-fields .wide-field{grid-column:1/-1}.editor-fields .wide-field textarea{width:100%}
 .editor-dialog textarea{font:inherit;line-height:1.4;padding:8px 10px}
+.event-addr{white-space:pre-line}
