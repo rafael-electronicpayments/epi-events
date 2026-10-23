@@ -36,6 +36,10 @@ export function createRepository(client, { testLoginsEnabled = false, testLoginE
     },
     signOut: () => result(client.auth.signOut()),
     load: () => result(client.rpc('ops_snapshot')),
+    // App settings branding (public: shown before sign-in). Older databases don't have it; callers fall back.
+    branding: () => result(client.rpc('app_branding')),
+    appIconUpload: (path, blob) => result(client.storage.from('app-icons').upload(path, blob, { contentType: 'image/png', upsert: false })),
+    appIconRemove: paths => result(client.storage.from('app-icons').remove(paths)),
     // Push notifications: each person registers or removes only their own devices.
     pushKey,
     pushRegister: (subscription, device) => result(client.rpc('push_register', { subscription, device })),

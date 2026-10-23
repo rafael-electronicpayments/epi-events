@@ -2,6 +2,7 @@
 // It stays about 3 seconds once the image is on screen, and closes at once on a tap, click, or key press.
 import React from 'react';
 import htm from 'htm';
+import { useBrand } from './branding.js';
 
 const html = htm.bind(React.createElement);
 export const SPLASH_MS = 3000;
@@ -9,6 +10,7 @@ const LOAD_LIMIT_MS = 6000; // give up quietly if the image can't be fetched in 
 
 // url(): resolves to an image URL (or null when there's nothing to show).
 export function Splash({ url, label = 'Welcome', onClose }) {
+  const b = useBrand(React);
   const [src, setSrc] = React.useState(null), [leaving, setLeaving] = React.useState(false);
   const done = React.useRef(false), timer = React.useRef(null);
   const close = React.useCallback(() => {
@@ -26,6 +28,6 @@ export function Splash({ url, label = 'Welcome', onClose }) {
   }, []);
   const shown = () => { clearTimeout(timer.current); timer.current = setTimeout(close, SPLASH_MS); };
   return html`<button type="button" className=${'splash' + (leaving ? ' leaving' : '')} aria-label=${label + '. Tap to continue.'} onClick=${close}>
-    ${src && html`<img src=${src} alt=${label} onLoad=${shown} onError=${close}/>`}
+    ${src && html`<span className="splash-body"><img src=${src} alt=${label} onLoad=${shown} onError=${close}/><span className="splash-name">${b.name}</span>${b.tagline && html`<span className="splash-tagline">${b.tagline}</span>`}</span>`}
   </button>`;
 }

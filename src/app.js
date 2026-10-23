@@ -7,6 +7,8 @@ import { PushCard, onOpenAssignment } from './push.js';
 import { createEventLogo, createImageUrls, prepLogo, prepSplash } from './event-logo.js';
 import { Splash } from './splash.js';
 import { createDocuments, docExt } from './documents.js';
+import { createAppSettings } from './app-settings.js';
+import { getBrand, setBrand, ICON_FILES } from './branding.js';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import htm from 'htm';
@@ -54,6 +56,8 @@ const PUSH_SUPPORT={on:false};
 const INFO_SUPPORT={on:!CONNECTED};
 // Event venue name, address, and notes (admins). Needs the 20261023140000 migration.
 const EVENT_INFO_SUPPORT={on:!CONNECTED};
+// App settings (name, tagline, icon). Needs the 20261023160000 migration (snapshot 'branding').
+const BRAND_SUPPORT={on:!CONNECTED};
 const isInfo=x=>!!x&&typeof x==='object'&&!Array.isArray(x)&&'det' in x;
 // Team lead names for an activity: from the server's list when connected (it covers people a contractor can't see), else from assignments.
 const leadsOf=(S,s)=>s.leads?s.leads.map(l=>({e:l.e,n:l.n})):S.asg.filter(a=>a.s===s.id&&a.lead&&EMPS[a.e]&&!EMPS[a.e].gone).map(a=>({e:a.e,n:EMPS[a.e].name}));
@@ -310,8 +314,9 @@ function Grid({S}){
  ${!rows.length&&html`<p className="mute">No activities yet for this event.</p>`}
  <h3 style=${{marginTop:16}}>Staff colors</h3><div className="legend">${used.map(e=>html`<span key=${e}><i className="sw" style=${{background:col(e,1)}}></i>${EMPS[e].name}</span>`)}</div></div>`}
 const EXP=createExpenses({React,html,Modal,Icon,IconButton,people:EMPS,events:EVS,current:CUR});
+const AppSettings=createAppSettings({React,html,Icon});
 const DOCS=createDocuments({React,html,Modal,Icon,people:EMPS,events:EVS,activities:SESS,current:CUR});
-const Admin=createAdminWorkspace({people:EMPS,events:EVS,rooms:ROOMS,activities:SESS,current:CUR,days:DAYS,daysShort:DAYS_SHORT,cover,clash,span,evEnd,evStatus,need,roomAck:ROOM_ACK,ackSupport:ACK_SUPPORT,BREAK,breaksOn,breaksDuring,openClock,lateBy,liveNow,clockTime,breakOf,todayIndex,breakExport,floorSupport:FLOOR_SUPPORT,closeSupport:CLOSE_SUPPORT,pushSupport:PUSH_SUPPORT,infoSupport:INFO_SUPPORT,eventInfoSupport:EVENT_INFO_SUPPORT,logoSupport:LOGO_SUPPORT,splashSupport:SPLASH_SUPPORT,prepLogo,prepSplash,imageUrl,hrPdf:(list,scope)=>{const url=URL.createObjectURL(new Blob([hrReport({list,people:EMPS,eventName:evOf(CUR.id).name,scope,autoPrint:true})],{type:'text/html'})),w=window.open(url,'_blank');setTimeout(()=>URL.revokeObjectURL(url),60000);return w?'':'Your browser blocked the report window. Allow pop-ups for this site and try again.'},connected:CONNECTED},{AdminSession,Grid,Floorplans,Incoming,Staff,ExpensesAdmin:EXP.ExpensesAdmin,EventLogo,Splash,DocumentsAdmin:DOCS.DocumentsAdmin});
+const Admin=createAdminWorkspace({people:EMPS,events:EVS,rooms:ROOMS,activities:SESS,current:CUR,days:DAYS,daysShort:DAYS_SHORT,cover,clash,span,evEnd,evStatus,need,roomAck:ROOM_ACK,ackSupport:ACK_SUPPORT,BREAK,breaksOn,breaksDuring,openClock,lateBy,liveNow,clockTime,breakOf,todayIndex,breakExport,floorSupport:FLOOR_SUPPORT,closeSupport:CLOSE_SUPPORT,pushSupport:PUSH_SUPPORT,infoSupport:INFO_SUPPORT,eventInfoSupport:EVENT_INFO_SUPPORT,brandSupport:BRAND_SUPPORT,logoSupport:LOGO_SUPPORT,splashSupport:SPLASH_SUPPORT,prepLogo,prepSplash,imageUrl,hrPdf:(list,scope)=>{const url=URL.createObjectURL(new Blob([hrReport({list,people:EMPS,eventName:evOf(CUR.id).name,scope,autoPrint:true})],{type:'text/html'})),w=window.open(url,'_blank');setTimeout(()=>URL.revokeObjectURL(url),60000);return w?'':'Your browser blocked the report window. Allow pop-ups for this site and try again.'},connected:CONNECTED},{AdminSession,Grid,Floorplans,Incoming,Staff,ExpensesAdmin:EXP.ExpensesAdmin,EventLogo,Splash,DocumentsAdmin:DOCS.DocumentsAdmin,AppSettings});
 function App({connected}){
  const [demoS,setS]=useState(()=>connected?connected.snapshot:seed()),[demoRole,setRole]=useState('admin'),[demoMe,setMe]=useState(0),[toast,setToast]=useState('');
  const S=connected?connected.snapshot:demoS,role=connected?connected.snapshot.role:demoRole,me=connected?connected.snapshot.me:demoMe;
@@ -348,6 +353,7 @@ function App({connected}){
   addEvent:o=>{if(!evv(o))return false;const id=Math.max(0,...EVS.map(e=>e.id))+1;EVS.push({id,name:o.n,start:o.b,days:Math.floor(o.d),...('venue' in o?{venue:o.venue,addr:o.addr,notes:o.notes}:{})});CUR.id=id;syncEv();setS(s=>L({...s},'Created event '+o.n));say(o.n+' created and opened');return true},
   editEvent:(id,o)=>{if(!evv(o))return false;const n=Math.floor(o.d),bad=SESS.find(s=>s.ev===id&&s.d>=n);if(bad){say('Move or delete activities on '+dayDate(evOf(id).start,bad.d)+' first');return false}Object.assign(evOf(id),{name:o.n,start:o.b,days:n},'venue' in o?{venue:o.venue,addr:o.addr,notes:o.notes}:{});if(id===CUR.id)syncEv();setS(s=>L({...s},'Updated event '+o.n));say('Saved');return true},
   delEvent:id=>{if(EVS.length<2){say('At least one event must remain');return false}const e=evOf(id),ids=SESS.filter(s=>s.ev===id).map(s=>s.id);setS(s=>{const g=s.asg.filter(a=>ids.includes(a.s));return L({...s,asg:s.asg.filter(a=>!ids.includes(a.s)),notes:[...s.notes.filter(n=>!g.some(a=>a.id===n.aid)),...[...new Set(g.map(a=>a.e))].map(x=>({id:++uid,e:x,aid:null,done:0,x:'Event removed: '+e.name}))]},'Deleted event '+e.name+' with '+ids.length+' activities')});for(let i=SESS.length-1;i>=0;i--)if(ids.includes(SESS[i].id)){delete SM[SESS[i].id];SESS.splice(i,1)}for(let i=FP.length-1;i>=0;i--)if(FP[i].ev===id)FP.splice(i,1);for(let i=INV.length-1;i>=0;i--)if(INV[i].ev===id)INV.splice(i,1);EVS.splice(EVS.indexOf(e),1);if(CUR.id===id){CUR.id=EVS[0].id;syncEv()}say(e.name+' deleted');return true},
+  setBranding:(o,icons,reset)=>{const b=getBrand(),iconData=icons?Object.fromEntries(Object.entries(icons).map(([k,v])=>[k,URL.createObjectURL(v)])):reset?null:b.iconData;setBrand({...o,short:o.short||o.name.slice(0,12),iconData,icon:iconData?'demo':null,v:Date.now()});setS(s=>L({...s},'Updated app settings'));say('App settings saved');return true},
   setEventLogo:(ev,logo)=>{const e=evOf(ev);if(!e)return false;if(logo){Object.assign(e,{logo:'demo/'+uuid()+'.png',logoType:logo.type,logoData:logo.data})}else{delete e.logo;delete e.logoType;delete e.logoData}setS(s=>L({...s},(logo?'Set logo for ':'Removed logo from ')+e.name));say(logo?'Logo saved':'Logo removed');return true},
   addDocument:(ev,f,all,who)=>{const path=ev+'/'+uuid()+'.'+docExt(f.type);DOC_DATA[path]=f.data;setS(s=>{const id=Math.max(0,...(s.documents||[]).map(d=>d.id))+1;return L({...s,documents:[...(s.documents||[]),{id,ev,name:f.name,path,size:f.size,type:f.type,all:!!all,who:all?[]:[...who].sort((a,b)=>a-b)}].sort((a,b)=>a.ev-b.ev||a.name.localeCompare(b.name))},'Added document '+f.name+' to '+evOf(ev).name)});say(f.name+' added');return true},
   editDocument:(id,name,all,who)=>{setS(s=>L({...s,documents:(s.documents||[]).map(d=>d.id===id?{...d,name,all:!!all,who:all?[]:[...who].sort((a,b)=>a-b)}:d)},'Updated document '+name));say('Saved');return true},
@@ -421,6 +427,11 @@ function App({connected}){
    if(!ok){delete DOC_CACHE[path];repo.documentRemove(path).catch(()=>{});return false}say(f.name+' added');return true};
   A.editDocument=async(id,name,all,who)=>{const ok=await cmd('editDocument',[id,name,!!all,all?[]:[...who]]);if(ok)say('Saved');return ok};
   A.delDocument=async id=>{const d=(S.documents||[]).find(x=>x.id===id),ok=await cmd('delDocument',[id]);if(ok&&d){delete DOC_CACHE[d.path];repo.documentRemove(d.path).catch(()=>{});say('Document deleted')}return ok};
+  A.setBranding=async(o,icons,reset)=>{const old=getBrand().icon;let id;
+   if(icons){id=uuid();try{for(const [k,f] of Object.entries(ICON_FILES))await repo.appIconUpload(id+'/'+f+'.png',icons[k])}catch(e){say('Icon upload failed: '+(e&&e.message||'try again'));repo.appIconRemove(Object.values(ICON_FILES).map(f=>id+'/'+f+'.png')).catch(()=>{});return false}}
+   const ok=await cmd('setBranding',[{...o,...(icons?{icon:id}:reset?{icon:null}:{})}]);
+   if(!ok){if(id)repo.appIconRemove(Object.values(ICON_FILES).map(f=>id+'/'+f+'.png')).catch(()=>{});return false}
+   if(old&&(icons||reset))repo.appIconRemove(Object.values(ICON_FILES).map(f=>old+'/'+f+'.png')).catch(()=>{});say('App settings saved');return true};
   A.setEventSplash=async(ev,img)=>{const old=evOf(ev)?.splash;let path=null;
    if(img){path=ev+'/splash-'+uuid()+({'image/webp':'.webp','image/jpeg':'.jpg'}[img.type]||'.png');try{await repo.logoUpload(path,img.data,img.type)}catch(e){say('Splash upload failed: '+(e&&e.message||'try again'));return false}LOGO_CACHE[path]=img.data}
    const ok=await cmd('setEventSplash',img?[ev,path,img.type]:[ev,null]);
@@ -449,7 +460,7 @@ function hydrate(data){
  data.activities.forEach(s=>{s.q=data.actAck&&Object.hasOwn(data.actAck,s.id)?data.actAck[s.id]:null});
  SESS.splice(0,SESS.length,...data.activities);Object.keys(SM).forEach(k=>delete SM[k]);SESS.forEach(s=>{SM[s.id]=s});
  FP.length=0;INV.length=0;H.length=0;
- PUSH_SUPPORT.on=!!data.push;INFO_SUPPORT.on=data.activityInfo===true;EVENT_INFO_SUPPORT.on=data.eventInfo===true;LOGO_SUPPORT.on=data.logos===true;SPLASH_SUPPORT.on=data.splashes===true;FLOOR_SUPPORT.on=Array.isArray(data.floorplans);if(FLOOR_SUPPORT.on)FP.push(...data.floorplans.map(f=>({id:f.id,ev:f.ev,name:f.name,size:f.size,path:f.path})));
+ PUSH_SUPPORT.on=!!data.push;INFO_SUPPORT.on=data.activityInfo===true;EVENT_INFO_SUPPORT.on=data.eventInfo===true;BRAND_SUPPORT.on=!!data.branding;LOGO_SUPPORT.on=data.logos===true;SPLASH_SUPPORT.on=data.splashes===true;FLOOR_SUPPORT.on=Array.isArray(data.floorplans);if(FLOOR_SUPPORT.on)FP.push(...data.floorplans.map(f=>({id:f.id,ev:f.ev,name:f.name,size:f.size,path:f.path})));
  if(EVS.length){if(!evOf(CUR.id))CUR.id=EVS[0].id;syncEv()}
 }
 const Root=CONNECTED?createConnection(React,html,window.eventOpsRepository,App,hydrate):App;

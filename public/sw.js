@@ -10,7 +10,7 @@ self.addEventListener('push', event => {
     body: data.body || '',
     tag: data.tag || undefined,
     renotify: !!data.tag,
-    icon: '/icons/icon-192.png',
+    icon: '/api/app-icon?size=192', // the App settings icon (falls back to the built-in one)
     badge: '/icons/badge-72.png',
     data: { url: data.url || '/' }
   }));
