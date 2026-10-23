@@ -1,5 +1,8 @@
-// Itineraries (part 1): each person's flight and hotel for an event, the airport transfer each way, and the
-// traveler's My travel card. Times are wall-clock times in the event's time zone. Server rules decide who may edit.
+// Itineraries: each person's flight and hotel for an event, the airport transfer each way, the traveler's My travel
+// card, "Add to expenses" (with a required receipt), and the report. Times are wall-clock times in the event's
+// time zone. Server rules decide who may edit and lock costs once a linked expense is approved.
+import { RECEIPT_MAX, receiptType, shrinkPhoto, sizeText } from './expenses.js';
+import { VIEWS, openReport, downloadReportXlsx } from './itinerary-report.js';
 
 export const CARRIERS = ['American Airlines', 'Delta Air Lines', 'United Airlines', 'Southwest Airlines', 'Alaska Airlines', 'JetBlue Airways',
   'Spirit Airlines', 'Frontier Airlines', 'Hawaiian Airlines', 'Allegiant Air', 'Sun Country Airlines', 'Breeze Airways', 'Avelo Airlines',
@@ -48,13 +51,42 @@ export function createItineraries({ React, html, Modal, Icon, people, events, ac
   const Footer = ({ busy, err, onClose, onDelete, saveText }) => html`${err && html`<p className="connection-error editor-error" role="alert">${err}</p>`}
     <div className="dialog-actions">${onDelete && html`<button type="button" className="btn danger push-left" disabled=${busy} onClick=${onDelete}>Delete booking</button>`}<button type="button" className="btn ghost" disabled=${busy} onClick=${onClose}>Cancel</button><button type="submit" className="btn" disabled=${busy}>${busy ? 'Saving…' : saveText}</button></div>`;
 
-  function FlightEditor({ ev, who, booking, me, admin, A, onClose }) {
+  // "Add to expenses" for a booking: eligibility, reimburse, required receipt, and the linked expenses' status.
+  const expenseOk = (kind, d) => kind === 'flight' ? (!['points', 'event'].includes(d.paid) && cents(d.cost) > 0) || cents(d.bags) > 0 : !['points', 'event'].includes(d.paid) && cents(d.total) > 0;
+  function ExpenseBox({ kind, d, set, linked, locked, file, setFile }) {
+    const ok = expenseOk(kind, d), has = linked.length > 0, [shrinking, setShrinking] = useState(false), [msg, setMsg] = useState('');
+    const pick = async e => { const f = e.target.files[0]; e.target.value = ''; if (!f) return; const t = receiptType(f); setMsg('');
+      if (!t) { setMsg('Receipts must be a photo (JPG, PNG, HEIC, WebP) or a PDF.'); return; }
+      let use = f, type = t;
+      if (f.size > RECEIPT_MAX) { if (t === 'application/pdf') { setMsg('This PDF is ' + sizeText(f.size) + '. Receipts must be 7 MB or smaller.'); return; }
+        setShrinking(true); use = await shrinkPhoto(f).catch(() => null); setShrinking(false); type = 'image/jpeg';
+        if (!use) { setMsg('This photo is ' + sizeText(f.size) + ' and could not be made smaller on this device. Receipts must be 7 MB or smaller.'); return; } }
+      setFile({ data: new Uint8Array(await use.arrayBuffer()), type, name: use.name || f.name, size: use.size }); };
+    const status = has ? linked.map(x => (x.cat === 'baggage' ? 'Bag fee ' : x.cat === 'hotel' ? 'Hotel ' : 'Airfare ') + money(x.amt) + (x.ok ? ' · approved' : ' · pending approval')).join('; ') : '';
+    if (!ok && !d.addExpense && !has) return html`<p className="mute travel-expense-note">${['points', 'event'].includes(d.paid) ? (kind === 'flight' ? 'Paid with ' + payText(d.paid).toLowerCase() + ': nothing to add to expenses unless there is a bag fee.' : 'Paid with ' + payText(d.paid).toLowerCase() + ': nothing to add to expenses.') : 'Enter the cost to add it to expenses.'}</p>`;
+    return html`<fieldset className="travel-leg travel-expense"><legend>Expenses</legend>
+      ${locked ? html`<p className="mute">${status}. The costs are locked because the expense was approved; ask an administrator to change them.</p>` : html`
+      <label className="chk"><input type="checkbox" checked=${d.addExpense} disabled=${!ok && !d.addExpense} onChange=${e => set({ addExpense: e.target.checked })}/>Add to expenses</label>
+      ${d.addExpense && html`<label className="chk"><input type="checkbox" checked=${d.reimb} onChange=${e => set({ reimb: e.target.checked, reimbTouched: true })}/>Reimburse me</label>
+        <div className="receipt-field"><b>Receipt <span className="required-tag">${has ? 'Attached' : 'Required'}</span></b>
+          ${shrinking ? html`<p className="mute" role="status">Making the photo smaller…</p>` : file ? html`<p>${file.name} <span className="mute">(${sizeText(file.size)}, ready to upload)</span> <button type="button" className="btn ghost" onClick=${() => setFile(null)}>Remove</button></p>` : has ? html`<p className="mute">The receipt already on file is kept unless you choose a new one.</p>` : html`<p className="receipt-missing">Attach a photo or PDF of the receipt to add this to expenses.</p>`}
+          <label className="btn ghost file-pick"><${Icon} name="upload"/>${file || has ? 'Replace receipt' : 'Attach photo or PDF'}<input type="file" accept="image/*,application/pdf,.heic,.heif" onChange=${pick}/></label>
+          ${msg && html`<p className="connection-error" role="alert">${msg}</p>`}</div>
+        <p className="mute field-hint">${kind === 'flight' ? 'Creates an Airfare expense for the flight' + (cents(d.bags) > 0 ? ' and a Baggage expense for the bag fee' : '') : 'Creates a Hotel expense for the folio total'}, in the traveler's expenses, with this receipt.</p>`}
+      ${status && html`<p className="mute">In expenses: ${status}</p>`}`}
+    </fieldset>`;
+  }
+  const linkedOf = (S, b, kind) => !b ? [] : (S.expenses || []).filter(x => kind === 'flight' ? x.id === b.exp || x.id === b.bagExp : x.id === b.exp);
+
+  function FlightEditor({ ev, who, booking, me, admin, A, S, onClose }) {
     const b = booking || {};
     const [d, setD] = useState({ inCarrier: b.inCarrier || '', inFlight: b.inFlight || '', inFrom: b.inFrom || '', inTo: b.inTo || '', inArrive: b.inArrive || '',
       outCarrier: b.outCarrier || '', outFlight: b.outFlight || '', outFrom: b.outFrom || '', outTo: b.outTo || '', outDepart: b.outDepart || '',
-      byEvent: !!b.byEvent, by: b.by ?? (me ?? who), paid: b.paid || 'personal_card', ref: b.ref || '', cost: b.cost != null ? Number(b.cost).toFixed(2) : '', bags: b.bags != null && Number(b.bags) ? Number(b.bags).toFixed(2) : '' });
+      byEvent: !!b.byEvent, by: b.by ?? (me ?? who), paid: b.paid || 'personal_card', ref: b.ref || '', cost: b.cost != null ? Number(b.cost).toFixed(2) : '', bags: b.bags != null && Number(b.bags) ? Number(b.bags).toFixed(2) : '',
+      addExpense: !!b.addExp, reimb: b.reimb ?? (b.paid || 'personal_card') === 'personal_card', reimbTouched: !!booking });
+    const [file, setFile] = useState(null), linked = linkedOf(S, booking, 'flight'), locked = !admin && linked.some(x => x.ok);
     const [outTouched, setOutTouched] = useState(!!booking), [busy, setBusy] = useState(false), [err, setErr] = useState(''), [confirm, setConfirm] = useState(false);
-    const set = patch => setD(v => ({ ...v, ...patch }));
+    const set = patch => setD(v => { const n = { ...v, ...patch }; if ('paid' in patch && !n.reimbTouched) n.reimb = n.paid === 'personal_card'; return n; });
     // The departing carrier follows the arriving one until it's changed; airports default to the reverse trip.
     const setIn = patch => setD(v => { const n = { ...v, ...patch }; if (!outTouched) { n.outCarrier = n.inCarrier; n.outFrom = n.inTo; n.outTo = n.inFrom; } return n; });
     const code = k => e => (k.startsWith('in') ? setIn : set)({ [k]: e.target.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3) });
@@ -63,7 +95,10 @@ export function createItineraries({ React, html, Modal, Icon, people, events, ac
       if (!d.inFlight.trim() && !d.outFlight.trim() && !d.inArrive && !d.outDepart) { setErr('Enter the arriving or departing flight.'); return; }
       if (d.inArrive && d.outDepart && d.outDepart <= d.inArrive) { setErr('The departing flight must be after the arrival.'); return; }
       for (const [k, t] of [['cost', 'Flight cost'], ['bags', 'Bag fee']]) if (d[k] && !/^\$?\d{1,6}(\.\d{1,2})?$/.test(d[k].trim().replace(/,/g, ''))) { setErr(t + ' must be an amount up to two decimals.'); return; }
-      setBusy(true); const r = await A.saveFlight(ev, who, { ...d, cost: d.cost.trim().replace(/[$,]/g, ''), bags: d.bags.trim().replace(/[$,]/g, '') }); setBusy(false);
+      const clean = { ...d, cost: d.cost.trim().replace(/[$,]/g, ''), bags: d.bags.trim().replace(/[$,]/g, '') }; delete clean.reimbTouched;
+      if (d.addExpense && !expenseOk('flight', d)) clean.addExpense = false;
+      if (clean.addExpense && !file && !linked.length) { setErr('Attach a photo or PDF of the receipt to add this to expenses.'); return; }
+      setBusy(true); const r = await A.saveFlight(ev, who, clean, file); setBusy(false);
       if (r !== false) onClose(); else setErr('Could not save. Check the values and try again.'); };
     const del = async () => { if (!confirm) { setConfirm(true); return; } setBusy(true); const r = await A.delFlight(b.id); setBusy(false); if (r !== false) onClose(); };
     return html`<${Modal} title=${(booking ? 'Edit flight' : 'Add flight') + (admin && who !== me ? ' for ' + nameOf(who) : '')} onClose=${busy ? () => {} : onClose}><form className="travel-editor" onSubmit=${submit}>
@@ -86,30 +121,35 @@ export function createItineraries({ React, html, Modal, Icon, people, events, ac
         <${BookedBy} d=${d} set=${set} allowEvent=${admin}/>
         <${Paid} d=${d} set=${set}/>
         ${field('Receipt #', html`<input maxLength="100" value=${d.ref} onChange=${e => set({ ref: e.target.value })}/>`)}
-        ${field('Flight cost (USD)', html`<input inputMode="decimal" value=${d.cost} placeholder="0.00" onChange=${e => set({ cost: e.target.value })}/>`)}
-        ${field('Bag fee (USD)', html`<input inputMode="decimal" value=${d.bags} placeholder="0.00" onChange=${e => set({ bags: e.target.value })}/>`)}
+        ${field('Flight cost (USD)', html`<input inputMode="decimal" value=${d.cost} placeholder="0.00" disabled=${locked} onChange=${e => set({ cost: e.target.value })}/>`)}
+        ${field('Bag fee (USD)', html`<input inputMode="decimal" value=${d.bags} placeholder="0.00" disabled=${locked} onChange=${e => set({ bags: e.target.value })}/>`)}
         <div className="travel-total"><span className="mute">Total cost</span><b>${money(total)}</b></div>
       </div></fieldset>
+      <${ExpenseBox} kind="flight" d=${d} set=${set} linked=${linked} locked=${locked} file=${file} setFile=${f => { setErr(''); setFile(f); }}/>
       <${Footer} busy=${busy} err=${err} onClose=${onClose} onDelete=${booking && del} saveText=${booking ? 'Save flight' : 'Add flight'}/>
       ${confirm && html`<p className="mute" role="status">Tap Delete booking again to remove this flight.</p>`}
     </form><//>`;
   }
 
-  function HotelEditor({ ev, who, booking, me, admin, A, onClose }) {
+  function HotelEditor({ ev, who, booking, me, admin, A, S, onClose }) {
     const b = booking || {}, e0 = evOf(ev);
     const [d, setD] = useState({ name: b.name || e0.venue || '', conf: b.conf || '', in: b.in || '', out: b.out || '', byEvent: booking ? !!b.byEvent : admin,
       by: b.by ?? (admin ? null : me), paid: b.paid || (admin ? 'event' : 'personal_card'), ref: b.ref || '',
       nightly: b.nightly != null && Number(b.nightly) ? Number(b.nightly).toFixed(2) : '', charges: b.charges != null && Number(b.charges) ? Number(b.charges).toFixed(2) : '',
-      total: b.total != null && Number(b.total) ? Number(b.total).toFixed(2) : '', tIn: b.tIn || 'own', tOut: b.tOut || 'own', tNotes: b.tNotes || '' });
+      total: b.total != null && Number(b.total) ? Number(b.total).toFixed(2) : '', tIn: b.tIn || 'own', tOut: b.tOut || 'own', tNotes: b.tNotes || '',
+      addExpense: !!b.addExp, reimb: b.reimb ?? (b.paid || (admin ? 'event' : 'personal_card')) === 'personal_card', reimbTouched: !!booking });
     const [busy, setBusy] = useState(false), [err, setErr] = useState(''), [confirm, setConfirm] = useState(false);
-    const set = patch => setD(v => ({ ...v, ...patch })), n = nights(d.in, d.out);
+    const [file, setFile] = useState(null), linked = linkedOf(S, booking, 'hotel'), locked = !admin && linked.some(x => x.ok);
+    const set = patch => setD(v => { const x = { ...v, ...patch }; if ('paid' in patch && !x.reimbTouched) x.reimb = x.paid === 'personal_card'; return x; }), n = nights(d.in, d.out);
     const estimate = (cents(d.nightly) * n + cents(d.charges)) / 100;
     const submit = async e => { e.preventDefault(); setErr('');
       if (!d.in || !d.out) { setErr('Enter the hotel arrival and departure dates.'); return; }
       if (d.out <= d.in) { setErr('The hotel departure date must be after the arrival date.'); return; }
       for (const [k, t] of [['nightly', 'Nightly cost'], ['charges', 'Room charges'], ['total', 'Total cost']]) if (d[k] && !/^\$?\d{1,7}(\.\d{1,2})?$/.test(d[k].trim().replace(/,/g, ''))) { setErr(t + ' must be an amount up to two decimals.'); return; }
-      setBusy(true); const clean = k => d[k].trim().replace(/[$,]/g, '');
-      const r = await A.saveHotel(ev, who, { ...d, nightly: clean('nightly'), charges: clean('charges'), total: clean('total') }); setBusy(false);
+      const clean = k => d[k].trim().replace(/[$,]/g, ''), o = { ...d, nightly: clean('nightly'), charges: clean('charges'), total: clean('total') }; delete o.reimbTouched;
+      if (d.addExpense && !expenseOk('hotel', d)) o.addExpense = false;
+      if (o.addExpense && !file && !linked.length) { setErr('Attach a photo or PDF of the receipt to add this to expenses.'); return; }
+      setBusy(true); const r = await A.saveHotel(ev, who, o, file); setBusy(false);
       if (r !== false) onClose(); else setErr('Could not save. Check the values and try again.'); };
     const del = async () => { if (!confirm) { setConfirm(true); return; } setBusy(true); const r = await A.delHotel(b.id); setBusy(false); if (r !== false) onClose(); };
     return html`<${Modal} title=${(booking ? 'Edit hotel' : 'Add hotel') + (admin && who !== me ? ' for ' + nameOf(who) : '')} onClose=${busy ? () => {} : onClose}><form className="travel-editor" onSubmit=${submit}>
@@ -127,8 +167,9 @@ export function createItineraries({ React, html, Modal, Icon, people, events, ac
         ${field('Receipt #', html`<input maxLength="100" value=${d.ref} onChange=${e => set({ ref: e.target.value })}/>`)}
         ${field('Nightly cost (USD)', html`<input inputMode="decimal" value=${d.nightly} placeholder="0.00" onChange=${e => set({ nightly: e.target.value })}/>`)}
         ${field('Room charges (USD)', html`<input inputMode="decimal" value=${d.charges} placeholder="0.00" onChange=${e => set({ charges: e.target.value })}/>`)}
-        ${field('Total cost (USD)', html`<input inputMode="decimal" value=${d.total} placeholder="0.00" onChange=${e => set({ total: e.target.value })}/>`, 'From the hotel folio: the whole stay, including taxes and fees.' + (estimate ? ' Nightly × nights + room charges = ' + money(estimate) + '.' : ''))}
+        ${field('Total cost (USD)', html`<input inputMode="decimal" value=${d.total} placeholder="0.00" disabled=${locked} onChange=${e => set({ total: e.target.value })}/>`, 'From the hotel folio: the whole stay, including taxes and fees.' + (estimate ? ' Nightly × nights + room charges = ' + money(estimate) + '.' : ''))}
       </div></fieldset>
+      <${ExpenseBox} kind="hotel" d=${d} set=${set} linked=${linked} locked=${locked} file=${file} setFile=${f => { setErr(''); setFile(f); }}/>
       ${admin ? html`<fieldset className="travel-leg"><legend>Airport transfer</legend><div className="editor-fields">
         ${field('Airport to hotel', html`<select value=${d.tIn} onChange=${e => set({ tIn: e.target.value })}>${TRANSFERS.map(([k, t]) => html`<option key=${k} value=${k}>${t}</option>`)}</select>`)}
         ${field('Hotel to airport', html`<select value=${d.tOut} onChange=${e => set({ tOut: e.target.value })}>${TRANSFERS.map(([k, t]) => html`<option key=${k} value=${k}>${t}</option>`)}</select>`)}
@@ -149,9 +190,40 @@ export function createItineraries({ React, html, Modal, Icon, people, events, ac
     ${kind === 'flight' ? html`<div><dt>Flight</dt><dd>${money(b.cost)}</dd></div><div><dt>Bag fee</dt><dd>${money(b.bags)}</dd></div><div><dt>Total</dt><dd><b>${money(Number(b.cost) + Number(b.bags))}</b></dd></div>`
       : html`<div><dt>Nightly</dt><dd>${money(b.nightly)}</dd></div><div><dt>Room charges</dt><dd>${money(b.charges)}</dd></div><div><dt>Total (folio)</dt><dd><b>${money(b.total)}</b></dd></div>`}</dl>`;
 
+  const slug = t => String(t || 'event').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'event';
+  // Admin report: one person, selected people, or everyone shown; any view; with or without costs; PDF or Excel.
+  function ReportDialog({ S, shown, onClose }) {
+    const ev = current.id, e0 = evOf(ev);
+    const [who, setWho] = useState('shown'), [one, setOne] = useState(shown[0]?.id ?? ''), [ids, setIds] = useState(new Set()), [q, setQ] = useState('');
+    const [view, setView] = useState('combined'), [costs, setCosts] = useState(false), [msg, setMsg] = useState('');
+    const pool = active();
+    const list = who === 'one' ? pool.filter(p => p.id === Number(one)) : who === 'selected' ? pool.filter(p => ids.has(p.id)) : shown;
+    const toggle = id => setIds(v => { const n = new Set(v); n.has(id) ? n.delete(id) : n.add(id); return n; });
+    const opts = { view, list, flights: (S.flights || []).filter(x => x.ev === ev), hotels: (S.hotels || []).filter(x => x.ev === ev), tz: e0.tz, costs, booker,
+      title: e0.name + ': ' + label(VIEWS, view).toLowerCase(), scope: who === 'one' ? 'One person' : who === 'selected' ? 'Selected people' : 'Everyone shown', sheet: label(VIEWS, view) };
+    return html`<${Modal} title="Itineraries report" onClose=${onClose}><div className="staff-export">
+      <fieldset className="choice-list"><legend>Who</legend>
+        <label className="chk"><input type="radio" name="itin-who" checked=${who === 'shown'} onChange=${() => setWho('shown')}/>Everyone shown on the page · ${shown.length}</label>
+        <label className="chk"><input type="radio" name="itin-who" checked=${who === 'one'} onChange=${() => setWho('one')}/>One person</label>
+        ${who === 'one' && html`<select aria-label="Person" value=${one} onChange=${e => setOne(e.target.value)}>${pool.map(p => html`<option key=${p.id} value=${p.id}>${p.name}</option>`)}</select>`}
+        <label className="chk"><input type="radio" name="itin-who" checked=${who === 'selected'} onChange=${() => setWho('selected')}/>Selected people · ${ids.size}</label>
+      </fieldset>
+      ${who === 'selected' && html`<fieldset className="break-people"><legend>People <span className="mute">${ids.size} selected</span></legend>
+        <div className="break-people-tools"><input type="search" aria-label="Filter people" placeholder="Filter people" value=${q} onChange=${e => setQ(e.target.value)}/>
+          <button type="button" className="btn ghost" onClick=${() => setIds(new Set(shown.map(p => p.id)))}>Select everyone shown</button>${ids.size > 0 && html`<button type="button" className="btn ghost" onClick=${() => setIds(new Set())}>Clear</button>`}</div>
+        <div className="break-people-list">${pool.filter(p => p.name.toLowerCase().includes(q.toLowerCase())).map(p => html`<label key=${p.id} className="chk"><input type="checkbox" checked=${ids.has(p.id)} onChange=${() => toggle(p.id)}/>${p.name}<span className="mute">${p.role || ''}</span></label>`)}</div></fieldset>`}
+      <div className="editor-fields">${field('View', html`<select value=${view} onChange=${e => setView(e.target.value)}>${VIEWS.map(([k, t]) => html`<option key=${k} value=${k}>${t}</option>`)}</select>`, view === 'arrivals' || view === 'departures' ? 'Grouped by day and time, with each person\'s airport transfer, for planning cars and shuttles.' : '')}
+        <label className="chk"><input type="checkbox" checked=${costs} disabled=${view === 'arrivals' || view === 'departures'} onChange=${e => setCosts(e.target.checked)}/>Include costs and receipts</label></div>
+      ${msg && html`<p className="connection-error" role="alert">${msg}</p>`}
+      <div className="dialog-actions"><button type="button" className="btn ghost" onClick=${onClose}>Close</button>
+        <button type="button" className="btn ghost" disabled=${!list.length} onClick=${() => setMsg(downloadReportXlsx(opts, slug(e0.name) + '-' + view + '.xlsx'))}><${Icon} name="download"/>Excel</button>
+        <button type="button" className="btn" disabled=${!list.length} onClick=${() => setMsg(openReport(opts))}><${Icon} name="print"/>PDF</button></div>
+    </div><//>`;
+  }
+
   // Admin page: everyone working the event (plus anyone with a booking); optional full roster.
   function ItinerariesAdmin({ S, A, me }) {
-    const [q, setQ] = useState(''), [show, setShow] = useState('event'), [ed, setEd] = useState(null), [open, setOpen] = useState(null);
+    const [q, setQ] = useState(''), [show, setShow] = useState('event'), [ed, setEd] = useState(null), [open, setOpen] = useState(null), [report, setReport] = useState(false);
     const ev = current.id, e0 = evOf(ev), acts = new Set(activities.filter(s => s.ev === ev).map(s => s.id));
     const working = new Set((S.asg || []).filter(a => acts.has(a.s)).map(a => a.e));
     const fl = (S.flights || []).filter(x => x.ev === ev), ho = (S.hotels || []).filter(x => x.ev === ev);
@@ -164,7 +236,7 @@ export function createItineraries({ React, html, Modal, Icon, people, events, ac
       <p className="mute">${counts.f} flight${counts.f === 1 ? '' : 's'} · ${counts.h} hotel booking${counts.h === 1 ? '' : 's'} · ${counts.car} with car service · ${counts.shuttle} on the group shuttle. People can enter their own flights: <b>${e0.staffFlights ? 'yes' : 'no'}</b>, hotels: <b>${e0.staffHotels ? 'yes' : 'no'}</b> (change in Event setup).</p>
       <div className="people-toolbar"><label className="search-field"><${Icon} name="search"/><input type="search" aria-label="Search people" placeholder="Search people" value=${q} onChange=${e => setQ(e.target.value)}/></label>
         <select aria-label="Show" value=${show} onChange=${e => setShow(e.target.value)}><option value="event">Working this event</option><option value="noflight">No flight yet</option><option value="nohotel">No hotel yet</option><option value="all">Everyone in People</option></select>
-        <span className="mute">${list.length} ${list.length === 1 ? 'person' : 'people'}</span></div>
+        <span className="mute">${list.length} ${list.length === 1 ? 'person' : 'people'}</span><div className="heading-actions"><button className="btn ghost" onClick=${() => setReport(true)}><${Icon} name="print"/>Report</button></div></div>
       <div className="data-surface"><table className="data-table travel-table"><thead><tr><th scope="col">Person</th><th scope="col">Flights</th><th scope="col">Hotel</th><th scope="col">Airport transfer</th></tr></thead><tbody>
       ${list.length ? list.map(p => { const f = fOf(p.id), h = hOf(p.id); return html`<tr key=${p.id}>
         <td><b>${p.name}</b><span className="cell-secondary">${p.role || ''}${!working.has(p.id) ? ' · not on this event' : ''}</span></td>
@@ -177,14 +249,15 @@ export function createItineraries({ React, html, Modal, Icon, people, events, ac
         <td>${h ? html`<p>To hotel: <b>${transferText(h.tIn)}</b></p><p>To airport: <b>${transferText(h.tOut)}</b></p>${h.tNotes && html`<span className="cell-secondary">${h.tNotes}</span>`}` : html`<span className="mute">Set with the hotel</span>`}</td></tr>`; })
         : html`<tr><td colSpan="4" className="empty-table">No people match.</td></tr>`}
       </tbody></table></div>
-      ${ed && ed.kind === 'flight' && html`<${FlightEditor} ev=${ev} who=${ed.who} booking=${ed.b} me=${me} admin=${true} A=${A} onClose=${() => setEd(null)}/>`}
-      ${ed && ed.kind === 'hotel' && html`<${HotelEditor} ev=${ev} who=${ed.who} booking=${ed.b} me=${me} admin=${true} A=${A} onClose=${() => setEd(null)}/>`}
+      ${report && html`<${ReportDialog} S=${S} shown=${list} onClose=${() => setReport(false)}/>`}
+      ${ed && ed.kind === 'flight' && html`<${FlightEditor} ev=${ev} who=${ed.who} booking=${ed.b} me=${me} admin=${true} A=${A} S=${S} onClose=${() => setEd(null)}/>`}
+      ${ed && ed.kind === 'hotel' && html`<${HotelEditor} ev=${ev} who=${ed.who} booking=${ed.b} me=${me} admin=${true} A=${A} S=${S} onClose=${() => setEd(null)}/>`}
     </div>`;
   }
 
   // Traveler's card (phone and web): summary, transfer instructions, own details, and add/edit when allowed.
   function MyTravel({ S, A, me }) {
-    const [ed, setEd] = useState(null), [open, setOpen] = useState(false);
+    const [ed, setEd] = useState(null), [open, setOpen] = useState(false), [msg, setMsg] = useState('');
     const ev = current.id, e0 = evOf(ev), f = (S.flights || []).find(x => x.ev === ev && x.e === me), h = (S.hotels || []).find(x => x.ev === ev && x.e === me);
     const canF = !!e0.staffFlights && (!f || f.mine), canH = !!e0.staffHotels && (!h || h.mine);
     if (!f && !h && !canF && !canH) return null;
@@ -194,10 +267,12 @@ export function createItineraries({ React, html, Modal, Icon, people, events, ac
         : canH && html`<p className="mute">No hotel entered yet.</p>`}
       ${!f && !canF && html`<p className="mute">Your flight hasn't been added yet.</p>`}${!h && !canH && html`<p className="mute">Your hotel hasn't been added yet.</p>`}
       <div className="acts">${canF && html`<button className="btn ghost" onClick=${() => setEd('flight')}>${f ? 'Edit my flight' : 'Add my flight'}</button>`}${canH && html`<button className="btn ghost" onClick=${() => setEd('hotel')}>${h ? 'Edit my hotel' : 'Add my hotel'}</button>`}
-        ${(f || h) && html`<button className="btn ghost" aria-expanded=${open} onClick=${() => setOpen(!open)}>${open ? 'Hide details' : 'Booking details'}</button>`}</div>
+        ${(f || h) && html`<button className="btn ghost" aria-expanded=${open} onClick=${() => setOpen(!open)}>${open ? 'Hide details' : 'Booking details'}</button>`}
+        ${(f || h) && html`<button className="btn ghost" onClick=${() => setMsg(openReport({ view: 'combined', list: [people[me]], flights: f ? [f] : [], hotels: h ? [h] : [], tz: e0.tz, costs: true, booker, title: e0.name + ': my itinerary', scope: nameOf(me) }))}><${Icon} name="print"/>Print my itinerary</button>`}</div>
+      ${msg && html`<p className="connection-error" role="alert">${msg}</p>`}
       ${open && f && html`<h4>Flight</h4><${Details} b=${f} kind="flight"/>`}${open && h && html`<h4>Hotel</h4><${Details} b=${h} kind="hotel"/>`}
-      ${ed === 'flight' && html`<${FlightEditor} ev=${ev} who=${me} booking=${f} me=${me} admin=${false} A=${A} onClose=${() => setEd(null)}/>`}
-      ${ed === 'hotel' && html`<${HotelEditor} ev=${ev} who=${me} booking=${h} me=${me} admin=${false} A=${A} onClose=${() => setEd(null)}/>`}
+      ${ed === 'flight' && html`<${FlightEditor} ev=${ev} who=${me} booking=${f} me=${me} admin=${false} A=${A} S=${S} onClose=${() => setEd(null)}/>`}
+      ${ed === 'hotel' && html`<${HotelEditor} ev=${ev} who=${me} booking=${h} me=${me} admin=${false} A=${A} S=${S} onClose=${() => setEd(null)}/>`}
     </div>`;
   }
 
