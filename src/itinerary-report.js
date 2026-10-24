@@ -16,9 +16,9 @@ const hm = local => { if (!local) return ''; const [h, m] = local.slice(11, 16).
 export function reportTable({ view, list, flights, hotels, tz, costs, booker }) {
   const fOf = e => flights.find(x => x.e === e), hOf = e => hotels.find(x => x.e === e);
   const flightCols = f => f ? [leg(f.inCarrier, f.inFlight, f.inFrom, f.inTo), whenText(f.inArrive, tz), leg(f.outCarrier, f.outFlight, f.outFrom, f.outTo), whenText(f.outDepart, tz)] : ['No flight', '', '', ''];
-  const hotelCols = h => h ? [h.name || 'Hotel', h.conf || '', dayText(h.in), dayText(h.out), String(nights(h.in, h.out)), transferText(h.tIn), outText(h)] : ['No hotel', '', '', '', '', '', ''];
+  const hotelCols = h => h ? [h.name || 'Hotel', h.conf || '', dayText(h.in), dayText(h.out), String(nights(h.in, h.out)), h.companion || '', transferText(h.tIn), outText(h)] : ['No hotel', '', '', '', '', '', '', ''];
   const fCost = f => f ? [booker(f), payText(f.paid), f.ref || '', money(f.cost), money(f.bags), money(Number(f.cost) + Number(f.bags))] : ['', '', '', '', '', ''];
-  const hCost = h => h ? [booker(h), payText(h.paid), h.ref || '', money(h.nightly), money(h.charges), money(h.total)] : ['', '', '', '', '', ''];
+  const hCost = h => !h ? ['', '', '', '', '', ''] : h.primary === false ? [booker(h), payText(h.paid), '', 'On ' + (h.companion || 'shared') + '\'s booking', '', ''] : [booker(h), payText(h.paid), h.ref || '', money(h.nightly), money(h.charges), money(h.total)];
   if (view === 'arrivals' || view === 'departures') {
     const out = view === 'departures', key = f => out ? f.outDepart : f.inArrive;
     // Departures are listed by hotel pickup time (people on the same car or shuttle together), then flight time.
@@ -35,11 +35,11 @@ export function reportTable({ view, list, flights, hotels, tz, costs, booker }) 
   }
   if (view === 'flights') return { head: ['Person', 'Arriving', 'Arrives', 'Departing', 'Departs', ...(costs ? ['Booked by', 'How paid', 'Receipt #', 'Flight', 'Bag fee', 'Total'] : [])],
     rows: list.map(p => ({ cells: [p.name, ...flightCols(fOf(p.id)), ...(costs ? fCost(fOf(p.id)) : [])] })) };
-  if (view === 'hotel') return { head: ['Person', 'Hotel', 'Confirmation #', 'Check-in', 'Check-out', 'Nights', 'Airport to hotel', 'Hotel to airport', ...(costs ? ['Booked by', 'How paid', 'Receipt #', 'Nightly', 'Room charges', 'Total (folio)'] : [])],
+  if (view === 'hotel') return { head: ['Person', 'Hotel', 'Confirmation #', 'Check-in', 'Check-out', 'Nights', 'Accompanying', 'Airport to hotel', 'Hotel to airport', ...(costs ? ['Booked by', 'How paid', 'Receipt #', 'Nightly', 'Room charges', 'Total (folio)'] : [])],
     rows: list.map(p => ({ cells: [p.name, ...hotelCols(hOf(p.id)), ...(costs ? hCost(hOf(p.id)) : [])] })) };
-  return { head: ['Person', 'Arriving', 'Arrives', 'Departing', 'Departs', 'Hotel', 'Confirmation #', 'Check-in', 'Check-out', 'Nights', 'Airport to hotel', 'Hotel to airport',
+  return { head: ['Person', 'Arriving', 'Arrives', 'Departing', 'Departs', 'Hotel', 'Confirmation #', 'Check-in', 'Check-out', 'Nights', 'Accompanying', 'Airport to hotel', 'Hotel to airport',
       ...(costs ? ['Flight total', 'Hotel total (folio)'] : [])],
-    rows: list.map(p => { const f = fOf(p.id), h = hOf(p.id); return { cells: [p.name, ...flightCols(f), ...hotelCols(h), ...(costs ? [f ? money(Number(f.cost) + Number(f.bags)) : '', h ? money(h.total) : ''] : [])] }; }) };
+    rows: list.map(p => { const f = fOf(p.id), h = hOf(p.id); return { cells: [p.name, ...flightCols(f), ...hotelCols(h), ...(costs ? [f ? money(Number(f.cost) + Number(f.bags)) : '', h ? (h.primary === false ? 'Shared' : money(h.total)) : ''] : [])] }; }) };
 }
 
 // Printable page. Combined view prints one card per person (easier to read than a 14-column table).
@@ -53,10 +53,10 @@ export function reportDoc({ title, scope, view, list, flights, hotels, tz, costs
           <tr><th>Departing</th><td>${esc(leg(f.outCarrier, f.outFlight, f.outFrom, f.outTo))}</td><td>${esc(whenText(f.outDepart, tz))}</td></tr>
           ${costs ? `<tr><th>Flight cost</th><td>${esc(money(f.cost))} + bags ${esc(money(f.bags))} = <b>${esc(money(Number(f.cost) + Number(f.bags)))}</b></td><td>${esc(payText(f.paid))}${f.ref ? ' · Receipt ' + esc(f.ref) : ''} · Booked by ${esc(booker(f))}</td></tr>` : ''}`
           : '<tr><th>Flight</th><td colspan="2" class="m">No flight entered</td></tr>'}
-        ${h ? `<tr><th>Hotel</th><td>${esc(h.name || 'Hotel')}${h.conf ? ' · Confirmation ' + esc(h.conf) : ''}</td><td>${esc(dayText(h.in))} – ${esc(dayText(h.out))} · ${nights(h.in, h.out)} nights</td></tr>
+        ${h ? `<tr><th>Hotel</th><td>${esc(h.name || 'Hotel')}${h.conf ? ' · Confirmation ' + esc(h.conf) : ''}</td><td>${esc(dayText(h.in))} – ${esc(dayText(h.out))} · ${nights(h.in, h.out)} nights</td></tr>${h.companion ? `<tr><th>Accompanying</th><td colspan="2">${esc(h.companion)}${h.primary === false ? ' (shared room; costs on their booking)' : ''}</td></tr>` : ''}
           <tr><th>Airport to hotel</th><td colspan="2">${esc(transferText(h.tIn))}. ${esc(transferHelp(h.tIn, 'in'))}</td></tr>
           <tr><th>Hotel to airport</th><td colspan="2">${esc(transferText(h.tOut))}. ${esc(transferHelp(h.tOut, 'out'))}${hasPickup(h.tOut) && h.pickup ? ' <b>Pickup ' + esc(whenText(h.pickup, tz)) + ' at the hotel.</b>' : ''}${h.tNotes ? '<br><span class="m">' + esc(h.tNotes) + '</span>' : ''}</td></tr>
-          ${costs ? `<tr><th>Hotel cost</th><td>Total (folio) <b>${esc(money(h.total))}</b>${Number(h.nightly) ? ' · Nightly ' + esc(money(h.nightly)) : ''}</td><td>${esc(payText(h.paid))}${h.ref ? ' · Receipt ' + esc(h.ref) : ''} · Booked by ${esc(booker(h))}</td></tr>` : ''}`
+          ${costs && h.primary === false ? `<tr><th>Hotel cost</th><td colspan="2">On ${esc(h.companion || 'the other guest')}'s booking</td></tr>` : costs ? `<tr><th>Hotel cost</th><td>Total (folio) <b>${esc(money(h.total))}</b>${Number(h.nightly) ? ' · Nightly ' + esc(money(h.nightly)) : ''}</td><td>${esc(payText(h.paid))}${h.ref ? ' · Receipt ' + esc(h.ref) : ''} · Booked by ${esc(booker(h))}</td></tr>` : ''}`
           : '<tr><th>Hotel</th><td colspan="2" class="m">No hotel entered</td></tr>'}
       </tbody></table></section>`; }).join('');
   } else {

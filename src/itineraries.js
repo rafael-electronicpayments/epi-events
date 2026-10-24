@@ -3,6 +3,7 @@
 // time zone. Server rules decide who may edit and lock costs once a linked expense is approved.
 import { RECEIPT_MAX, receiptType, shrinkPhoto, sizeText } from './expenses.js';
 import { VIEWS, openReport, downloadReportXlsx } from './itinerary-report.js';
+import { readSpreadsheet, planRooming, rowEffect, matchPerson } from './rooming-import.js';
 
 export const CARRIERS = ['American Airlines', 'Delta Air Lines', 'United Airlines', 'Southwest Airlines', 'Alaska Airlines', 'JetBlue Airways',
   'Spirit Airlines', 'Frontier Airlines', 'Hawaiian Airlines', 'Allegiant Air', 'Sun Country Airlines', 'Breeze Airways', 'Avelo Airlines',
@@ -64,6 +65,8 @@ export function createItineraries({ React, html, Modal, Icon, people, events, ac
   const active = () => people.filter(p => p && !p.gone).sort((a, b) => a.name.localeCompare(b.name));
   const nameOf = e => people[e]?.name || 'Unknown person';
   const pickOn = S => !!S.travelInfo || demo; // database with the pickup-time migration
+  const compOn = S => !!S.companions || demo; // database with the accompanying-person migration
+  const isCopy = h => !!h && h.primary === false; // the shared copy of someone else's reservation
   // "Thu, Nov 12, 1:00 PM AST", or why there's none yet.
   const pickupLine = (h, tz) => h.pickup ? whenText(h.pickup, tz) : 'set once the departing flight is entered';
   const booker = b => b.byEvent ? 'Event' : b.by != null ? nameOf(b.by) : '';
@@ -171,12 +174,16 @@ export function createItineraries({ React, html, Modal, Icon, people, events, ac
       nightly: b.nightly != null && Number(b.nightly) ? Number(b.nightly).toFixed(2) : '', charges: b.charges != null && Number(b.charges) ? Number(b.charges).toFixed(2) : '',
       total: b.total != null && Number(b.total) ? Number(b.total).toFixed(2) : '', tIn: b.tIn || 'own', tOut: b.tOut || 'own', tNotes: b.tNotes || '',
       addExpense: !!b.addExp, reimb: b.reimb ?? (b.paid || (admin ? 'event' : 'personal_card')) === 'personal_card', reimbTouched: !!booking,
-      pickupManual: !!b.pickupManual, pickup: b.pickupManual ? b.pickup || '' : '' });
+      pickupManual: !!b.pickupManual, pickup: b.pickupManual ? b.pickup || '' : '',
+      companion: b.companion || '', link: b.companionId != null });
     const [busy, setBusy] = useState(false), [err, setErr] = useState(''), [confirm, setConfirm] = useState(false);
     const fl = (S.flights || []).find(x => x.ev === ev && x.e === who), auto = pickupDefault(fl);
     const [file, setFile] = useState(null), linked = linkedOf(S, booking, 'hotel'), locked = !admin && linked.some(x => x.ok);
     const set = patch => setD(v => { const x = { ...v, ...patch }; if ('paid' in patch && !x.reimbTouched) x.reimb = x.paid === 'personal_card'; return x; }), n = nights(d.in, d.out);
     const estimate = (cents(d.nightly) * n + cents(d.charges)) / 100;
+    // Accompanying person: a People name (exact match) can be linked so they share this reservation.
+    const copy = isCopy(booking), cm = d.companion.trim() ? matchPerson(d.companion, people) : null;
+    const match = cm && cm.how === 'exact' && cm.person.id !== who ? cm.person : null;
     const submit = async e => { e.preventDefault(); setErr('');
       if (!d.in || !d.out) { setErr('Enter the hotel arrival and departure dates.'); return; }
       if (d.out <= d.in) { setErr('The hotel departure date must be after the arrival date.'); return; }
@@ -185,6 +192,8 @@ export function createItineraries({ React, html, Modal, Icon, people, events, ac
       if (admin && pickOn(S)) { o.pickupManual = hasPickup(d.tOut) && d.pickupManual; if (!o.pickupManual) o.pickup = '';
         else if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(d.pickup)) { setErr('Enter the pickup date and time.'); return; } }
       else { delete o.pickupManual; delete o.pickup; }
+      delete o.link;
+      if (compOn(S) && !copy) { o.companion = d.companion.trim(); if (admin) o.companionId = d.link && match ? match.id : null; } else delete o.companion;
       if (d.addExpense && !expenseOk('hotel', d)) o.addExpense = false;
       if (o.addExpense && !file && !linked.length) { setErr('Attach a photo or PDF of the receipt to add this to expenses.'); return; }
       setBusy(true); const r = await A.saveHotel(ev, who, o, file); setBusy(false);
@@ -198,16 +207,21 @@ export function createItineraries({ React, html, Modal, Icon, people, events, ac
         <div className="travel-total"><span className="mute">Total nights</span><b>${n || '–'}</b></div>
         ${field('Arrival date', html`<input type="date" required value=${d.in} onChange=${e => set({ in: e.target.value })}/>`)}
         ${field('Departure date', html`<input type="date" required value=${d.out} min=${d.in || undefined} onChange=${e => set({ out: e.target.value })}/>`)}
+        ${compOn(S) && (copy ? html`<p className="wide-field shared-note">Shared room with <b>${b.companion || nameOf(b.companionId)}</b>. Hotel, confirmation #, and dates change on both bookings. Costs and expenses are on ${b.companion || nameOf(b.companionId)}'s booking.</p>`
+          : html`<label className="wide-field">Accompanying person<input list="itin-people" maxLength="120" value=${d.companion} placeholder="Optional" onChange=${e => set({ companion: e.target.value, link: d.link || !b.companionId })}/>
+            ${admin && match ? html`<span className="chk companion-link"><input type="checkbox" checked=${d.link} onChange=${e => set({ link: e.target.checked })}/>Share this reservation with ${match.name} (they get the same booking)</span>`
+              : html`<span className="mute field-hint">${!d.companion.trim() ? 'A spouse or partner staying in the same room.' : admin ? 'Not in People: the name is kept on this booking only.' : 'If they\'re on the roster, an administrator can share the booking with them.'}</span>`}
+            <datalist id="itin-people">${active().filter(p => p.id !== who).map(p => html`<option key=${p.id} value=${p.name}/>`)}</datalist></label>`)}
       </div></fieldset>
       <fieldset className="travel-leg"><legend>Purchase</legend><div className="editor-fields">
         <${BookedBy} d=${d} set=${set} allowEvent=${admin}/>
         <${Paid} d=${d} set=${set}/>
         ${field('Receipt #', html`<input maxLength="100" value=${d.ref} onChange=${e => set({ ref: e.target.value })}/>`)}
-        ${field('Nightly cost (USD)', html`<input inputMode="decimal" value=${d.nightly} placeholder="0.00" onChange=${e => set({ nightly: e.target.value })}/>`)}
-        ${field('Room charges (USD)', html`<input inputMode="decimal" value=${d.charges} placeholder="0.00" onChange=${e => set({ charges: e.target.value })}/>`)}
-        ${field('Total cost (USD)', html`<input inputMode="decimal" value=${d.total} placeholder="0.00" disabled=${locked} onChange=${e => set({ total: e.target.value })}/>`, 'From the hotel folio: the whole stay, including taxes and fees.' + (estimate ? ' Nightly × nights + room charges = ' + money(estimate) + '.' : ''))}
+        ${!copy && field('Nightly cost (USD)', html`<input inputMode="decimal" value=${d.nightly} placeholder="0.00" onChange=${e => set({ nightly: e.target.value })}/>`)}
+        ${!copy && field('Room charges (USD)', html`<input inputMode="decimal" value=${d.charges} placeholder="0.00" onChange=${e => set({ charges: e.target.value })}/>`)}
+        ${!copy && field('Total cost (USD)', html`<input inputMode="decimal" value=${d.total} placeholder="0.00" disabled=${locked} onChange=${e => set({ total: e.target.value })}/>`, 'From the hotel folio: the whole stay, including taxes and fees.' + (estimate ? ' Nightly × nights + room charges = ' + money(estimate) + '.' : ''))}
       </div></fieldset>
-      <${ExpenseBox} kind="hotel" d=${d} set=${set} linked=${linked} locked=${locked} file=${file} setFile=${f => { setErr(''); setFile(f); }} on=${!!S.travelExpenses || demo}/>
+      ${!copy && html`<${ExpenseBox} kind="hotel" d=${d} set=${set} linked=${linked} locked=${locked} file=${file} setFile=${f => { setErr(''); setFile(f); }} on=${!!S.travelExpenses || demo}/>`}
       ${admin ? html`<fieldset className="travel-leg"><legend>Airport transfer</legend><div className="editor-fields">
         ${field('Airport to hotel', html`<select value=${d.tIn} onChange=${e => set({ tIn: e.target.value })}>${TRANSFERS.map(([k, t]) => html`<option key=${k} value=${k}>${t}</option>`)}</select>`)}
         ${field('Hotel to airport', html`<select value=${d.tOut} onChange=${e => set({ tOut: e.target.value })}>${TRANSFERS.map(([k, t]) => html`<option key=${k} value=${k}>${t}</option>`)}</select>`)}
@@ -228,10 +242,11 @@ export function createItineraries({ React, html, Modal, Icon, people, events, ac
   const FlightSummary = ({ f, tz }) => html`<div className="travel-sum">
     ${(f.inFlight || f.inArrive) && html`<p><b>Arrive</b> ${leg(f.inCarrier, f.inFlight, f.inFrom, f.inTo)}${f.inArrive && html`<span className="cell-secondary">${whenText(f.inArrive, tz)}</span>`}</p>`}
     ${(f.outFlight || f.outDepart) && html`<p><b>Depart</b> ${leg(f.outCarrier, f.outFlight, f.outFrom, f.outTo)}${f.outDepart && html`<span className="cell-secondary">${whenText(f.outDepart, tz)}</span>`}</p>`}</div>`;
-  const HotelSummary = ({ h }) => html`<div className="travel-sum"><p><b>${h.name || 'Hotel'}</b>${h.conf && html` · Confirmation ${h.conf}`}<span className="cell-secondary">${dayText(h.in)} – ${dayText(h.out)} · ${nights(h.in, h.out)} night${nights(h.in, h.out) === 1 ? '' : 's'}</span></p></div>`;
+  const HotelSummary = ({ h }) => html`<div className="travel-sum"><p><b>${h.name || 'Hotel'}</b>${h.conf && html` · Confirmation ${h.conf}`}<span className="cell-secondary">${dayText(h.in)} – ${dayText(h.out)} · ${nights(h.in, h.out)} night${nights(h.in, h.out) === 1 ? '' : 's'}</span>${h.companion && html`<span className="cell-secondary">${isCopy(h) ? 'Shared room with ' : 'Accompanying: '}${h.companion}${!isCopy(h) && h.companionId != null ? ' (shared room)' : ''}</span>`}</p></div>`;
   const Details = ({ b, kind }) => html`<dl className="travel-details">
     <div><dt>Booked by</dt><dd>${booker(b) || '–'}</dd></div><div><dt>How paid</dt><dd>${payText(b.paid)}</dd></div>${b.ref && html`<div><dt>Receipt #</dt><dd>${b.ref}</dd></div>`}
     ${kind === 'flight' ? html`<div><dt>Flight</dt><dd>${money(b.cost)}</dd></div><div><dt>Bag fee</dt><dd>${money(b.bags)}</dd></div><div><dt>Total</dt><dd><b>${money(Number(b.cost) + Number(b.bags))}</b></dd></div>`
+      : isCopy(b) ? html`<div><dt>Costs</dt><dd>On ${b.companion || 'the other guest'}'s booking</dd></div>`
       : html`<div><dt>Nightly</dt><dd>${money(b.nightly)}</dd></div><div><dt>Room charges</dt><dd>${money(b.charges)}</dd></div><div><dt>Total (folio)</dt><dd><b>${money(b.total)}</b></dd></div>`}</dl>`;
 
   const slug = t => String(t || 'event').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'event';
@@ -265,9 +280,60 @@ export function createItineraries({ React, html, Modal, Icon, people, events, ac
     </div><//>`;
   }
 
+  // Venue hotel rooming list: choose the file, review each row's match, then save in one step.
+  function RoomingImport({ S, A, onClose }) {
+    const ev = current.id, e0 = evOf(ev), hotels = (S.hotels || []).filter(h => h.ev === ev);
+    const [plan, setPlan] = useState(null), [err, setErr] = useState(''), [busy, setBusy] = useState(false), [removes, setRemoves] = useState(new Set()), [done, setDone] = useState('');
+    const pool = active();
+    const pick = async e => { const f = e.target.files[0]; e.target.value = ''; if (!f) return; setErr(''); setDone('');
+      try { const { rows } = await readSpreadsheet(f); const p = planRooming(rows, people, hotels);
+        setPlan({ ...p, file: f.name }); setRemoves(new Set(p.items.filter(x => !x.reserved && x.e != null && hotels.some(h => h.e === x.e)).map(x => x.e))); }
+      catch (ex) { setPlan(null); setErr(ex.message || 'Could not read the file.'); } };
+    const setItem = (i, patch) => setPlan(p => ({ ...p, items: p.items.map((x, j) => j === i ? { ...x, ...patch } : x) }));
+    const items = plan ? plan.items : [], ok = items.filter(x => x.reserved && x.e != null);
+    const count = {}; ok.forEach(x => { count[x.e] = (count[x.e] || 0) + 1; });
+    const own = new Set(ok.map(x => x.e));
+    // A companion who has their own row on the list has their own reservation: keep the name only.
+    const ceOf = x => x.ce != null && !own.has(x.ce) && x.ce !== x.e ? x.ce : null;
+    const dup = Object.keys(count).filter(k => count[k] > 1).map(Number);
+    const effect = x => dup.includes(x.e) && x.reserved ? { kind: 'error', text: 'Same person on two rows' } : rowEffect({ ...x, ce: ceOf(x) }, hotels, people);
+    const fx = items.map(effect), sendable = items.filter((x, i) => ['new', 'update', 'same'].includes(fx[i].kind));
+    const tally = k => fx.filter(f => f.kind === k).length, bad = fx.some(f => f.kind === 'error');
+    const save = async () => { setBusy(true); setErr('');
+      const rows = sendable.map(x => ({ e: x.e, conf: x.conf, in: x.in, out: x.out, companion: x.companion ? x.companion.display : '', companionId: ceOf(x) }));
+      const r = await A.importHotels(ev, rows, [...removes].filter(e => items.some(x => !x.reserved && x.e === e)));
+      setBusy(false);
+      if (r !== false) setDone(tally('new') + ' added, ' + tally('update') + ' updated, ' + [...removes].length + ' removed. Travelers were notified of their bookings.'); else setErr('Could not import. Check the rows and try again.'); };
+    const sel = (x, i) => html`<select aria-label=${'Person for ' + x.name.display} value=${x.e ?? ''} onChange=${e => setItem(i, { e: e.target.value === '' ? null : Number(e.target.value), how: 'chosen' })}>
+      <option value="">Skip this row</option>${x.others.length > 0 && html`<optgroup label="Same last name">${x.others.map(p => html`<option key=${'o' + p.id} value=${p.id}>${p.name}</option>`)}</optgroup>`}
+      <optgroup label="Everyone">${pool.map(p => html`<option key=${p.id} value=${p.id}>${p.name}</option>`)}</optgroup></select>`;
+    const compCell = (x, i) => { if (!x.companion) return html`<span className="mute">–</span>`;
+      const sug = x.ceSuggest != null ? people[x.ceSuggest] : null, linked = ceOf(x);
+      if (x.ce != null && own.has(x.ce)) return html`${x.companion.display}<span className="cell-secondary">Has their own reservation on this list; name only</span>`;
+      if (sug && sug.id !== x.e) return html`<label className="chk"><input type="checkbox" checked=${linked != null} onChange=${e => setItem(i, { ce: e.target.checked ? sug.id : null })}/>${x.companion.display}</label><span className="cell-secondary">${linked != null ? 'Shares this reservation with ' + sug.name + ' in People' : (x.ceHow === 'close' ? 'Possible match: ' + sug.name + '. Tick to share the reservation' : 'Tick to share with ' + sug.name)}</span>`;
+      return html`${x.companion.display}<span className="cell-secondary">Not in People: name kept on the booking</span>`; };
+    return html`<${Modal} title="Import rooming list" onClose=${busy ? () => {} : onClose}><div className="rooming-import">
+      <p className="mute">For ${e0.name}. Choose the venue hotel's rooming list (Excel or CSV). It's read on this device; nothing is saved until you review the rows and choose Import. New bookings use ${e0.venue || 'the event venue'}, booked by Event, paid by Event / master bill; existing bookings get the confirmation #, dates, and accompanying person, and keep their costs, transfers, and pickup times.</p>
+      <label className="btn ghost file-pick"><${Icon} name="upload"/>${plan ? 'Choose a different file' : 'Choose file'}<input type="file" accept=".xlsx,.csv" onChange=${pick}/></label>
+      ${err && html`<p className="connection-error" role="alert">${err}</p>`}
+      ${plan && !done && html`<p className="import-summary"><b>${plan.file}</b>: ${items.length} rows · ${tally('new')} new · ${tally('update')} updates · ${tally('same')} no change · ${tally('skip')} need a person · ${tally('cancelled') + tally('cancelled-has')} not reserved${bad ? ' · ' + tally('error') + ' to fix' : ''}</p>
+        <div className="data-surface rooming-table"><table className="data-table"><thead><tr><th scope="col">On the list</th><th scope="col">Person in People</th><th scope="col">Accompanying</th><th scope="col">Result</th></tr></thead><tbody>
+        ${items.map((x, i) => html`<tr key=${x.line} className=${'imp-' + fx[i].kind}>
+          <td><b>${x.name.display}</b><span className="cell-secondary">${x.conf ? '#' + x.conf + ' · ' : ''}${dayText(x.in)} – ${dayText(x.out)}${x.status ? ' · ' + x.status : ''}</span></td>
+          <td>${x.reserved ? html`${sel(x, i)}${x.e != null && x.how === 'close' && html`<span className="cell-secondary warn-text">Close match: check it's the right person</span>`}${x.e == null && html`<span className="cell-secondary warn-text">${x.others.length ? 'Not sure: same last name as ' + x.others.map(p => p.name).join(', ') : 'No match found'}</span>`}` : html`<span className="mute">${x.e != null ? people[x.e]?.name : 'Not matched'}</span>`}</td>
+          <td>${x.reserved ? compCell(x, i) : x.companion ? x.companion.display : html`<span className="mute">–</span>`}</td>
+          <td>${fx[i].text}${fx[i].kind === 'cancelled-has' && html`<label className="chk"><input type="checkbox" checked=${removes.has(x.e)} onChange=${e => setRemoves(v => { const n = new Set(v); e.target.checked ? n.add(x.e) : n.delete(x.e); return n; })}/>Remove their booking</label>`}</td></tr>`)}
+        </tbody></table></div>`}
+      ${done && html`<p className="mute" role="status">${done}</p>`}
+      <div className="dialog-actions"><button type="button" className="btn ghost" disabled=${busy} onClick=${onClose}>${done ? 'Close' : 'Cancel'}</button>
+        ${plan && !done && html`<button type="button" className="btn" disabled=${busy || bad || !(sendable.length || removes.size)} onClick=${save}>${busy ? 'Importing…' : 'Import ' + sendable.length + ' booking' + (sendable.length === 1 ? '' : 's')}</button>`}</div>
+      ${bad && html`<p className="connection-error" role="alert">Fix the rows marked in red (or skip them) before importing.</p>`}
+    </div><//>`;
+  }
+
   // Admin page: everyone working the event (plus anyone with a booking); optional full roster.
   function ItinerariesAdmin({ S, A, me }) {
-    const [q, setQ] = useState(''), [show, setShow] = useState('event'), [ed, setEd] = useState(null), [open, setOpen] = useState(null), [report, setReport] = useState(false);
+    const [q, setQ] = useState(''), [show, setShow] = useState('event'), [ed, setEd] = useState(null), [open, setOpen] = useState(null), [report, setReport] = useState(false), [importing, setImporting] = useState(false);
     const ev = current.id, e0 = evOf(ev), acts = new Set(activities.filter(s => s.ev === ev).map(s => s.id));
     const working = new Set((S.asg || []).filter(a => acts.has(a.s)).map(a => a.e));
     const fl = (S.flights || []).filter(x => x.ev === ev), ho = (S.hotels || []).filter(x => x.ev === ev);
@@ -280,7 +346,7 @@ export function createItineraries({ React, html, Modal, Icon, people, events, ac
       <p className="mute">${counts.f} flight${counts.f === 1 ? '' : 's'} · ${counts.h} hotel booking${counts.h === 1 ? '' : 's'} · ${counts.car} with car service · ${counts.shuttle} on the group shuttle. People can enter their own flights: <b>${e0.staffFlights ? 'yes' : 'no'}</b>, hotels: <b>${e0.staffHotels ? 'yes' : 'no'}</b> (change in Event setup).</p>
       <div className="people-toolbar"><label className="search-field"><${Icon} name="search"/><input type="search" aria-label="Search people" placeholder="Search people" value=${q} onChange=${e => setQ(e.target.value)}/></label>
         <select aria-label="Show" value=${show} onChange=${e => setShow(e.target.value)}><option value="event">Working this event</option><option value="noflight">No flight yet</option><option value="nohotel">No hotel yet</option><option value="all">Everyone in People</option></select>
-        <span className="mute">${list.length} ${list.length === 1 ? 'person' : 'people'}</span><div className="heading-actions"><button className="btn ghost" onClick=${() => setReport(true)}><${Icon} name="print"/>Report</button></div></div>
+        <span className="mute">${list.length} ${list.length === 1 ? 'person' : 'people'}</span><div className="heading-actions">${compOn(S) && html`<button className="btn ghost" onClick=${() => setImporting(true)}><${Icon} name="upload"/>Import rooming list</button>`}<button className="btn ghost" onClick=${() => setReport(true)}><${Icon} name="print"/>Report</button></div></div>
       <div className="data-surface"><table className="data-table travel-table"><thead><tr><th scope="col">Person</th><th scope="col">Flights</th><th scope="col">Hotel</th><th scope="col">Airport transfer</th></tr></thead><tbody>
       ${list.length ? list.map(p => { const f = fOf(p.id), h = hOf(p.id); return html`<tr key=${p.id}>
         <td><b>${p.name}</b><span className="cell-secondary">${p.role || ''}${!working.has(p.id) ? ' · not on this event' : ''}</span></td>
@@ -294,6 +360,7 @@ export function createItineraries({ React, html, Modal, Icon, people, events, ac
         : html`<tr><td colSpan="4" className="empty-table">No people match.</td></tr>`}
       </tbody></table></div>
       ${report && html`<${ReportDialog} S=${S} shown=${list} onClose=${() => setReport(false)}/>`}
+      ${importing && html`<${RoomingImport} S=${S} A=${A} onClose=${() => setImporting(false)}/>`}
       ${ed && ed.kind === 'flight' && html`<${FlightEditor} ev=${ev} who=${ed.who} booking=${ed.b} me=${me} admin=${true} A=${A} S=${S} onClose=${() => setEd(null)}/>`}
       ${ed && ed.kind === 'hotel' && html`<${HotelEditor} ev=${ev} who=${ed.who} booking=${ed.b} me=${me} admin=${true} A=${A} S=${S} onClose=${() => setEd(null)}/>`}
     </div>`;
