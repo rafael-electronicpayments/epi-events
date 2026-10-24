@@ -10,6 +10,7 @@ import { createDocuments, docExt } from './documents.js';
 import { createAppSettings } from './app-settings.js';
 import { createItineraries, pickupDefault, hasPickup } from './itineraries.js';
 import { createTravelInfo } from './travel-info.js';
+import { createReminders } from './reminders.js';
 import { getBrand, setBrand, ICON_FILES } from './branding.js';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
@@ -64,6 +65,8 @@ const BRAND_SUPPORT={on:!CONNECTED};
 const ITIN_SUPPORT={on:!CONNECTED};
 // Departure pickup times and Arrival/Departure instructions. Needs the 20261023220000 migration (snapshot 'travelInfo').
 const TRAVEL_INFO_SUPPORT={on:!CONNECTED};
+// Quick reminders from admins (Manage › Messages). Needs the 20261024120000 migration (snapshot 'reminders').
+const REMINDER_SUPPORT={on:!CONNECTED};
 // Demo only: keep each hotel's pickup in step with the flight (the server does this for real).
 const demoPickups=(hotels,flights)=>(hotels||[]).map(h=>{if(!hasPickup(h.tOut))return{...h,pickup:null,pickupManual:false};if(h.pickupManual&&h.pickup)return h;return{...h,pickupManual:false,pickup:pickupDefault((flights||[]).find(x=>x.ev===h.ev&&x.e===h.e))||null}});
 const isInfo=x=>!!x&&typeof x==='object'&&!Array.isArray(x)&&'det' in x;
@@ -278,8 +281,8 @@ function Staff({S,A,me,canFull=false,embedded=false,push=null}){
   <button className="btn ghost" disabled=${!a.ack||!!a.in||!!a.conf} onClick=${()=>A.checkIn(a.id)}>Check in</button>`}${(!need(s)||!!a.ack)&&a.cal!==(a.seq||0)&&html`<button className="btn ghost" onClick=${()=>{A.calAdd(a.id);setShown(a.id)}}>${a.cal==null?'Add to calendar':'Update calendar'}</button>`}</div></div>`};
  return html`<div className=${embedded?'my-schedule':'wrap m'}>${!embedded&&html`<h2>Hi, ${EMPS[me].name.split(' ')[0]}</h2><p className="mute">${EMPS[me].role} · ${evOf(CUR.id).name}</p>`}
  ${push&&html`<${PushCard} push=${push}/>`}
- ${notes.map(n=>html`<div className="card note" key=${n.id} role="status"><b>${n.x}</b>${n.from&&html`<p className="mute">${n.from}</p>`}
-  ${(()=>{const na=n.aid&&S.asg.find(a=>a.id===n.aid),ask=!!na&&need(SM[na.s]);return html`<button className="btn" onClick=${()=>ask?A.ack(n.aid):A.dismiss(n.id)}>${ask?'Acknowledge':'Got it'}</button>`})()}</div>`)}
+ ${notes.map(n=>html`<div className=${'card note'+(n.rid?' reminder-note':'')} key=${n.id} role="status">${n.rid&&html`<p className="note-kicker"><${Icon} name="bell"/> Message${n.from?' from '+n.from:''}</p>`}<b>${n.x}</b>${n.from&&!n.rid&&html`<p className="mute">${n.from}</p>`}
+  ${n.rid?html`<button className="btn" onClick=${()=>A.ackReminder(n.rid)}>Acknowledge</button>`:(()=>{const na=n.aid&&S.asg.find(a=>a.id===n.aid),ask=!!na&&need(SM[na.s]);return html`<button className="btn" onClick=${()=>ask?A.ack(n.aid):A.dismiss(n.id)}>${ask?'Acknowledge':'Got it'}</button>`})()}</div>`)}
  ${mine.filter(a=>a.pc).map(a=>html`<div className="card note" key=${'c'+a.id} role="status"><b>${a.cal==null?'Add to your calendar?':'Update your calendar?'}</b><p className="mute">${SM[a.s].t}, ${SM[a.s].r}, ${span(SM[a.s])} (${DAYS[SM[a.s].d]}). Reminder 30 minutes before.</p><div className="acts"><button className="btn" onClick=${()=>{A.calAdd(a.id);setShown(a.id)}}>${a.cal==null?'Add to calendar':'Update calendar'}</button><button className="btn ghost" onClick=${()=>A.calSkip(a.id)}>Not now</button></div></div>`)}
  ${breaksOn(S)&&html`<div className=${'card clock-card'+(oc?' out':'')+(late?' late':'')}>${oc?html`<b>${BREAK[oc.k][1]} since ${clockTime(oc.out)}</b><p className="mute">${obr?'Scheduled until '+fmt(obr.b):'Unscheduled '+BREAK[oc.k][0].toLowerCase()}</p>${late>0&&html`<p><${Pill} k="bad">Late return · ${late} min past scheduled end<//></p>`}<div className="acts"><button className="btn" onClick=${()=>A.clockIn()}>Clock back in</button></div>`
   :html`<b>Lunch and breaks</b><p className="mute">${nextBreak?'Next: '+BREAK[nextBreak.k][0]+', '+span(nextBreak)+' today.':'Clock out whenever you step away, then clock back in when you return.'}</p><div className="acts">${['lunch','break'].map(k=>html`<button key=${k} className="btn ghost" onClick=${()=>A.clockOut(k,pick(k))}>${BREAK[k][2]}</button>`)}</div>`}</div>`}
@@ -299,7 +302,7 @@ function Staff({S,A,me,canFull=false,embedded=false,push=null}){
    :html`${dayItems(i).map(x=>x.br?html`<${BreakCard} key=${'b'+x.br.id} b=${x.br}/>`:html`<${Card} key=${x.a.id} a=${x.a}/>`)}${!dayItems(i).length&&html`<p className="mute">No assignments on ${DAYS[i]}.</p>`}`}</div>`)}
  ${Array.isArray(S.expenses)&&html`<h2>Expenses</h2><${EXP.ExpenseSection} S=${S} A=${A} me=${me}/>`}</div>`}
 function AdminSession({s,S,A,coordinator=false}){
- const [pick,setPick]=useState('');
+ const [pick,setPick]=useState(''),[remind,setRemind]=useState(false);
  const as=S.asg.filter(x=>x.s===s.id), free=EMPS.filter(e=>!e.gone&&!as.some(x=>x.e===e.id)), same=SESS.filter(o=>o.ev===s.ev&&o.d===s.d&&o.id!==s.id);
  return html`<div className="session-panel"><${Head} s=${s} asg=${S.asg}/><${ActInfo} s=${s} S=${S} admin=${true}/>
  <ul className="rows">${as.map(a=>{const c=clash(S.asg,a),[k,l]=st(a);return html`<li key=${a.id} className="lead-actions"><${IconButton} name="delete" label=${'Remove '+EMPS[a.e].name} onClick=${()=>A.remove(a.id)}/><div>
@@ -310,7 +313,10 @@ function AdminSession({s,S,A,coordinator=false}){
  ${!as.length&&html`<p className="mute">No one assigned yet.</p>`}
  <div className="acts"><select aria-label=${'Employee to assign to '+s.t} value=${pick} onChange=${e=>setPick(e.target.value)}><option value="">Choose employee…</option>
   ${free.map(e=>html`<option key=${e.id} value=${e.id}>${nm(e.id)}</option>`)}</select>
-  <button className="btn" disabled=${pick===''} onClick=${async()=>{const ok=await A.assign(+pick,s.id);if(ok!==false)setPick('')}}>Assign</button></div></div>`}
+  <button className="btn" disabled=${pick===''} onClick=${async()=>{const ok=await A.assign(+pick,s.id);if(ok!==false)setPick('')}}>Assign</button>
+  ${REMINDER_SUPPORT.on&&as.length>0&&(()=>{const late=as.filter(a=>EMPS[a.e]&&!EMPS[a.e].gone&&need(s)&&(!a.ack||(!a.in&&!a.conf))),noAck=late.some(a=>!a.ack);
+   return html`<button className="btn ghost" onClick=${()=>setRemind(true)}><${Icon} name="bell"/>${late.length?'Remind '+late.length+(noAck?' not acknowledged':' not checked in'):'Message team'}</button>
+   ${remind&&html`<${REM.SendReminder} S=${S} A=${A} preselect=${(late.length?late:as).map(a=>a.e)} title=${'Remind: '+s.t} text=${late.length?(noAck?'Please acknowledge your assignment: '+s.t+' ('+s.r+', '+span(s)+').':'You\'re due at '+s.t+' ('+s.r+', '+span(s)+'): please check in.'):''} onClose=${()=>setRemind(false)}/>`}`})()}</div></div>`}
 const desc=s=>'Was '+s.t+', '+s.r+', '+span(s)+' ('+dayDate(evOf(s.ev).start,s.d)+')';
 const bump=(s,sid,from)=>{const ids=s.asg.filter(a=>a.s===sid).map(a=>a.id);
  return {...s,asg:s.asg.map(a=>ids.includes(a.id)?{...a,ack:0,in:0,conf:0,tag:'changed',seq:(a.seq||0)+1,pc:0}:a),
@@ -343,8 +349,9 @@ const EXP=createExpenses({React,html,Modal,Icon,IconButton,people:EMPS,events:EV
 const AppSettings=createAppSettings({React,html,Icon});
 const ITIN=createItineraries({React,html,Modal,Icon,people:EMPS,events:EVS,activities:SESS,current:CUR,demo:!CONNECTED});
 const TINFO=createTravelInfo({React,html,Icon,events:EVS,current:CUR,demo:!CONNECTED});
+const REM=createReminders({React,html,Modal,Icon,people:EMPS,events:EVS,activities:SESS,current:CUR});
 const DOCS=createDocuments({React,html,Modal,Icon,people:EMPS,events:EVS,activities:SESS,current:CUR});
-const Admin=createAdminWorkspace({people:EMPS,events:EVS,rooms:ROOMS,activities:SESS,current:CUR,days:DAYS,daysShort:DAYS_SHORT,cover,clash,span,evEnd,evStatus,need,roomAck:ROOM_ACK,ackSupport:ACK_SUPPORT,BREAK,breaksOn,breaksDuring,openClock,lateBy,liveNow,clockTime,breakOf,todayIndex,breakExport,floorSupport:FLOOR_SUPPORT,closeSupport:CLOSE_SUPPORT,pushSupport:PUSH_SUPPORT,infoSupport:INFO_SUPPORT,eventInfoSupport:EVENT_INFO_SUPPORT,brandSupport:BRAND_SUPPORT,itinSupport:ITIN_SUPPORT,travelInfoSupport:TRAVEL_INFO_SUPPORT,logoSupport:LOGO_SUPPORT,splashSupport:SPLASH_SUPPORT,prepLogo,prepSplash,imageUrl,hrPdf:(list,scope)=>{const url=URL.createObjectURL(new Blob([hrReport({list,people:EMPS,eventName:evOf(CUR.id).name,scope,autoPrint:true})],{type:'text/html'})),w=window.open(url,'_blank');setTimeout(()=>URL.revokeObjectURL(url),60000);return w?'':'Your browser blocked the report window. Allow pop-ups for this site and try again.'},connected:CONNECTED},{AdminSession,Grid,Floorplans,Incoming,Staff,ExpensesAdmin:EXP.ExpensesAdmin,EventLogo,Splash,DocumentsAdmin:DOCS.DocumentsAdmin,AppSettings,ItinerariesAdmin:ITIN.ItinerariesAdmin,TravelInfoAdmin:TINFO.TravelInfoAdmin});
+const Admin=createAdminWorkspace({people:EMPS,events:EVS,rooms:ROOMS,activities:SESS,current:CUR,days:DAYS,daysShort:DAYS_SHORT,cover,clash,span,evEnd,evStatus,need,roomAck:ROOM_ACK,ackSupport:ACK_SUPPORT,BREAK,breaksOn,breaksDuring,openClock,lateBy,liveNow,clockTime,breakOf,todayIndex,breakExport,floorSupport:FLOOR_SUPPORT,closeSupport:CLOSE_SUPPORT,pushSupport:PUSH_SUPPORT,infoSupport:INFO_SUPPORT,eventInfoSupport:EVENT_INFO_SUPPORT,brandSupport:BRAND_SUPPORT,itinSupport:ITIN_SUPPORT,travelInfoSupport:TRAVEL_INFO_SUPPORT,remindersSupport:REMINDER_SUPPORT,logoSupport:LOGO_SUPPORT,splashSupport:SPLASH_SUPPORT,prepLogo,prepSplash,imageUrl,hrPdf:(list,scope)=>{const url=URL.createObjectURL(new Blob([hrReport({list,people:EMPS,eventName:evOf(CUR.id).name,scope,autoPrint:true})],{type:'text/html'})),w=window.open(url,'_blank');setTimeout(()=>URL.revokeObjectURL(url),60000);return w?'':'Your browser blocked the report window. Allow pop-ups for this site and try again.'},connected:CONNECTED},{AdminSession,Grid,Floorplans,Incoming,Staff,ExpensesAdmin:EXP.ExpensesAdmin,EventLogo,Splash,DocumentsAdmin:DOCS.DocumentsAdmin,AppSettings,ItinerariesAdmin:ITIN.ItinerariesAdmin,TravelInfoAdmin:TINFO.TravelInfoAdmin,MessagesAdmin:REM.MessagesAdmin});
 function App({connected}){
  const [demoS,setS]=useState(()=>connected?connected.snapshot:seed()),[demoRole,setRole]=useState('admin'),[demoMe,setMe]=useState(0),[toast,setToast]=useState('');
  const S=connected?connected.snapshot:demoS,role=connected?connected.snapshot.role:demoRole,me=connected?connected.snapshot.me:demoMe;
@@ -388,6 +395,9 @@ function App({connected}){
    rows.forEach(r=>{const h=hs.find(x=>x.ev===ev&&x.e===r.e);if(h)hs=hs.map(x=>x===h?{...x,conf:r.conf,in:r.in,out:r.out}:x);else hs=[...hs,{id:Math.max(0,...hs.map(x=>x.id))+1,ev,e:r.e,mine:false,name:evOf(ev).venue||'',conf:r.conf,in:r.in,out:r.out,byEvent:true,by:null,paid:'event',ref:'',nightly:0,charges:0,total:0,tIn:'own',tOut:'own',tNotes:'',companion:'',companionId:null,primary:true}];
     const cur=hs.find(x=>x.ev===ev&&x.e===r.e);if((cur.companionId??null)!==(r.companionId??null)||(r.companionId==null&&(cur.companion||'')!==r.companion))hs=demoCompanion(hs,ev,r.e,r.companion,r.companionId??null);hs=demoSync(hs,ev,r.e)});
    return L({...s,hotels:demoPickups(hs,s.flights)},'Imported the rooming list for '+evOf(ev).name+' ('+rows.length+' rows)')});say('Rooming list imported');return true},
+  sendReminder:(ev,ids,text)=>{const to=[...new Set(ids)].filter(e=>EMPS[e]&&!EMPS[e].gone);if(!to.length||!text.trim()){say('Choose who to send it to');return false}
+   setS(s=>{const id=Math.max(0,...(s.reminders||[]).map(r=>r.id))+1,from=EMPS[me]?.name||'An administrator';return L({...s,reminders:[{id,ev,x:text.trim(),from,at:new Date().toISOString(),to:to.map(e=>({e,ack:null}))},...(s.reminders||[])],notes:[...s.notes,...to.map(e=>({id:++uid,e,aid:null,done:0,x:text.trim(),rid:id,from}))]},'Sent a reminder to '+to.length+(to.length===1?' person':' people'))});say('Reminder sent to '+to.length);return true},
+  ackReminder:rid=>{setS(s=>Lg({...s,reminders:(s.reminders||[]).map(r=>r.id===rid?{...r,to:r.to.map(t=>t.e===me&&!t.ack?{...t,ack:new Date().toISOString()}:t)}:r),notes:s.notes.map(n=>n.rid===rid&&n.e===me?{...n,done:1}:n)},EMPS[me].name+' acknowledged a reminder'));return true},
   setTravelInfo:(ev,o)=>{const e=evOf(ev);if(!e)return false;e.arrInfo=o.arr||'';e.depInfo=o.dep||'';setS(s=>L({...s},'Updated arrival and departure instructions for '+e.name));say('Instructions saved');return true},
   delHotel:id=>{setS(s=>{const h=(s.hotels||[]).find(x=>x.id===id);return L({...s,expenses:(s.expenses||[]).filter(x=>!h||x.id!==h.exp),hotels:h?demoRemoveHotel(s.hotels,h):s.hotels},'Removed a hotel')});say('Hotel removed');return true},
   setBranding:(o,icons,reset)=>{const b=getBrand(),iconData=icons?Object.fromEntries(Object.entries(icons).map(([k,v])=>[k,URL.createObjectURL(v)])):reset?null:b.iconData;setBrand({...o,short:o.short||o.name.slice(0,12),iconData,icon:iconData?'demo':null,v:Date.now()});setS(s=>L({...s},'Updated app settings'));say('App settings saved');return true},
@@ -423,7 +433,7 @@ function App({connected}){
   receiptFile:async x=>RECEIPTS[x.rp]||RECEIPT_CACHE[x.rp]||(RECEIPT_CACHE[x.rp]={data:await window.eventOpsRepository.receiptFile(x.rp),type:x.rt}),
   setStart:v=>{if(!v)return false;EVD.d=v;setS(s=>L({...s},'Set event start date to '+v));say('Start date saved');return true},
   setDays:n=>{n=Math.floor(+n);if(!(n>=1&&n<=14)){say('Enter 1 to 14 days');return false}if(n===DAYS.length){say('Already '+n+' days');return false}const bad=SESS.find(s=>s.d>=n);if(bad){say('Move or delete activities on '+DAYS[bad.d]+' first');return false}const was=DAYS.length;fillDays(EVD.d,n);setS(s=>L({...s},'Changed event length from '+was+' to '+n+' days'));say('Event is now '+n+' days');return true}};
- Object.keys(A).forEach(k=>{if(['dismiss','calAdd','calSkip','switchEv','clockOut','clockIn','receiptFile','documentFile'].includes(k))return;const f=A[k];A[k]=(...a)=>{snap();const r=f(...a);if(r===false)H.pop();return r}});
+ Object.keys(A).forEach(k=>{if(['dismiss','ackReminder','calAdd','calSkip','switchEv','clockOut','clockIn','receiptFile','documentFile'].includes(k))return;const f=A[k];A[k]=(...a)=>{snap();const r=f(...a);if(r===false)H.pop();return r}});
  A.undo=()=>{const h=H.pop();if(!h)return;EMPS.length=0;EMPS.push(...h.emps);ROOMS.length=0;ROOMS.push(...h.rooms);Object.keys(ROOM_ACK).forEach(k=>delete ROOM_ACK[k]);Object.assign(ROOM_ACK,h.roomAck);SESS.length=0;SESS.push(...h.sess);Object.keys(SM).forEach(k=>delete SM[k]);SESS.forEach(o=>{SM[o.id]=o});EVS.length=0;EVS.push(...h.evs);CUR.id=h.cur;FP.length=0;FP.push(...h.fp);INV.length=0;INV.push(...h.inv);syncEv();setS(Lg(h.s,'Undid: '+h.label));say('Undid: '+h.label)};
  if(connected)Object.keys(A).forEach(k=>{
   if(k==='switchEv'||k==='receiptFile'||k==='documentFile')return;
@@ -504,7 +514,7 @@ function hydrate(data){
  data.activities.forEach(s=>{s.q=data.actAck&&Object.hasOwn(data.actAck,s.id)?data.actAck[s.id]:null});
  SESS.splice(0,SESS.length,...data.activities);Object.keys(SM).forEach(k=>delete SM[k]);SESS.forEach(s=>{SM[s.id]=s});
  FP.length=0;INV.length=0;H.length=0;
- PUSH_SUPPORT.on=!!data.push;INFO_SUPPORT.on=data.activityInfo===true;EVENT_INFO_SUPPORT.on=data.eventInfo===true;BRAND_SUPPORT.on=!!data.branding;ITIN_SUPPORT.on=data.itineraries===true;TRAVEL_INFO_SUPPORT.on=data.travelInfo===true;LOGO_SUPPORT.on=data.logos===true;SPLASH_SUPPORT.on=data.splashes===true;FLOOR_SUPPORT.on=Array.isArray(data.floorplans);if(FLOOR_SUPPORT.on)FP.push(...data.floorplans.map(f=>({id:f.id,ev:f.ev,name:f.name,size:f.size,path:f.path})));
+ PUSH_SUPPORT.on=!!data.push;INFO_SUPPORT.on=data.activityInfo===true;EVENT_INFO_SUPPORT.on=data.eventInfo===true;BRAND_SUPPORT.on=!!data.branding;ITIN_SUPPORT.on=data.itineraries===true;TRAVEL_INFO_SUPPORT.on=data.travelInfo===true;REMINDER_SUPPORT.on=Array.isArray(data.reminders);LOGO_SUPPORT.on=data.logos===true;SPLASH_SUPPORT.on=data.splashes===true;FLOOR_SUPPORT.on=Array.isArray(data.floorplans);if(FLOOR_SUPPORT.on)FP.push(...data.floorplans.map(f=>({id:f.id,ev:f.ev,name:f.name,size:f.size,path:f.path})));
  if(EVS.length){if(!evOf(CUR.id))CUR.id=EVS[0].id;syncEv()}
 }
 const Root=CONNECTED?createConnection(React,html,window.eventOpsRepository,App,hydrate):App;
