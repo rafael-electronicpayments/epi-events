@@ -1,6 +1,7 @@
 import { AppHeader } from './ui.js';
 import { setBrand, getBrand } from './branding.js';
 import { AuthScreen } from './auth.js';
+import { SetOwnPassword } from './logins.js';
 
 export function createConnection(React, html, repository, App, hydrate) {
   const { useState, useEffect, useRef } = React;
@@ -81,6 +82,8 @@ export function createConnection(React, html, repository, App, hydrate) {
     };
     if (session === undefined) return html`<main className="wrap m"><h1>${getBrand().name}</h1><p role="status">Connecting...</p></main>`;
     if (!session || recovery) return html`<${AuthScreen} repository=${repository} recovery=${!!session && recovery} onRecovered=${() => setRecovery(false)} onSignedIn=${() => setSplash(true)} connectionError=${error}/>`;
+    // A login made with an admin's temporary password: choose their own before anything else.
+    if (session.user.user_metadata?.must_change_password) return html`<${SetOwnPassword} email=${session.user.email} onSave=${repository.setOwnPassword} onSignOut=${signOut}/>`;
     const banner = html`<${AppHeader} email=${session.user.email} role=${snapshot?.role||'admin'} busy=${busy} onRefresh=${refresh} onSignOut=${signOut} onChangePassword=${repository.changePassword}/>${error&&html`<p className="app-error connection-error" role="alert">${error}</p>`}`;
     if (!snapshot) return html`<main>${banner}${!error && html`<p className="wrap" role="status">Loading...</p>`}</main>`;
     if (!snapshot.events.length) return html`<main>${banner}
@@ -92,8 +95,9 @@ export function createConnection(React, html, repository, App, hydrate) {
       <button className="btn" disabled=${busy}>Create event</button></form>` : html`<h2>No assignments yet</h2>
       ${snapshot.notes.filter(n=>!n.done).map(n=>html`<div className="card note" key=${n.id}><p>${n.x}</p><button className="btn" disabled=${busy} onClick=${()=>command('dismiss',[n.id])}>Got it</button></div>`)}`}</div></main>`;
     const testLogins = repository.testLoginsEnabled ? { call: repository.testLogins, refresh } : null;
+    const logins = repository.loginsEnabled ? { call: repository.logins, refresh } : null;
     // After a sign-in, the app shows the current event's welcome splash once (welcome() ends it).
     const welcome = splash ? () => setSplash(false) : null;
-    return html`<${App} connected=${{snapshot,command,email:session.user.email,busy,refresh,signOut,error,testLogins,welcome,changePassword:repository.changePassword}}/>`;
+    return html`<${App} connected=${{snapshot,command,email:session.user.email,busy,refresh,signOut,error,testLogins,logins,welcome,changePassword:repository.changePassword}}/>`;
   };
 }

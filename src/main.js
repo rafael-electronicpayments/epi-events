@@ -14,6 +14,8 @@ if (Boolean(url) !== Boolean(key)) {
     passwordRecovery,
     testLoginsEnabled: new URL(url).hostname === 'bqdpskxaongqrqmgnzir.supabase.co',
     testLoginEndpoint: local ? 'https://staging-epi-events.vercel.app/api/test-logins' : '/api/test-logins',
+    // Production (any database but staging): admins create real logins with a one-time temporary password.
+    loginsEnabled: new URL(url).hostname !== 'bqdpskxaongqrqmgnzir.supabase.co' && !local,
     // Public half of the push key pair; the private half stays in the server's environment.
     pushKey: import.meta.env.VITE_VAPID_PUBLIC_KEY || ''
   }) : null;

@@ -1,4 +1,4 @@
-export function createRepository(client, { testLoginsEnabled = false, testLoginEndpoint = '/api/test-logins', passwordRecovery = false, pushKey = '' } = {}) {
+export function createRepository(client, { testLoginsEnabled = false, testLoginEndpoint = '/api/test-logins', loginsEnabled = false, passwordRecovery = false, pushKey = '' } = {}) {
   const result = async request => {
     const { data, error } = await request;
     if (error) throw error;
@@ -6,6 +6,7 @@ export function createRepository(client, { testLoginsEnabled = false, testLoginE
   };
   return {
     testLoginsEnabled,
+    loginsEnabled,
     passwordRecovery,
     session: async () => (await result(client.auth.getSession())).session,
     subscribe: callback => {
@@ -33,6 +34,23 @@ export function createRepository(client, { testLoginsEnabled = false, testLoginE
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || 'Test login request failed.');
       return data;
+    },
+    // Production sign-in logins created by admins (People › Login); see server/logins.js.
+    logins: async (action, body = {}) => {
+      if (!loginsEnabled) throw new Error('Logins are created this way in production only.');
+      const session = (await result(client.auth.getSession())).session;
+      if (!session) throw new Error('Sign in required.');
+      const response = await fetch('/api/logins', { method: 'POST', cache: 'no-store',
+        headers: { Authorization: 'Bearer ' + session.access_token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, ...body }) });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'The login request failed.');
+      return data;
+    },
+    // First sign-in with an admin's temporary password: set their own and clear the flag.
+    setOwnPassword: async password => {
+      await result(client.auth.updateUser({ password, data: { must_change_password: false } }));
+      await result(client.auth.refreshSession());
     },
     signOut: () => result(client.auth.signOut()),
     load: () => result(client.rpc('ops_snapshot')),
