@@ -1,7 +1,7 @@
 // Expense entry (staff, contractors, roster admins) and admin review/approval with an HR report.
 // Fields follow EPI's expense template: Expense, Location, Receipt ID, Date, Amount, Payment method, Reimburse, Notes.
 
-export const CATS = [['breakfast', 'Meal: Breakfast'], ['lunch', 'Meal: Lunch'], ['dinner', 'Meal: Dinner'], ['baggage', 'Baggage'], ['transportation', 'Transportation'], ['parking', 'Parking'], ['other', 'Other']];
+export const CATS = [['breakfast', 'Meal: Breakfast'], ['lunch', 'Meal: Lunch'], ['dinner', 'Meal: Dinner'], ['baggage', 'Baggage'], ['transportation', 'Transportation'], ['parking', 'Parking'], ['airfare', 'Airfare'], ['hotel', 'Hotel'], ['other', 'Other']];
 export const PAYS = [['cash', 'Cash'], ['corporate_amex', 'Corporate AMEX'], ['personal_card', 'Personal credit card'], ['guest_room', 'Billed to guest room']];
 export const RECEIPT_TYPES = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/heic': 'heic', 'image/heif': 'heif', 'application/pdf': 'pdf' };
 export const RECEIPT_MAX = 7340032; // 7 MB; the receipts bucket enforces the same limit.

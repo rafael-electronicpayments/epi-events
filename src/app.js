@@ -7,6 +7,11 @@ import { PushCard, onOpenAssignment } from './push.js';
 import { createEventLogo, createImageUrls, prepLogo, prepSplash } from './event-logo.js';
 import { Splash } from './splash.js';
 import { createDocuments, docExt } from './documents.js';
+import { createAppSettings } from './app-settings.js';
+import { createItineraries, pickupDefault, hasPickup } from './itineraries.js';
+import { createTravelInfo } from './travel-info.js';
+import { createReminders } from './reminders.js';
+import { getBrand, setBrand, ICON_FILES } from './branding.js';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import htm from 'htm';
@@ -50,6 +55,39 @@ const ROOM_ACK={};
 const ACK_SUPPORT={on:!CONNECTED};
 // Push notifications: shown only on databases with the push migration (the snapshot then includes 'push').
 const PUSH_SUPPORT={on:false};
+// Activity details (everyone), notes (admins), and team leads (assignments marked lead). Needs the 20261023120000 migration.
+const INFO_SUPPORT={on:!CONNECTED};
+// Event venue name, address, and notes (admins). Needs the 20261023140000 migration.
+const EVENT_INFO_SUPPORT={on:!CONNECTED};
+// App settings (name, tagline, icon). Needs the 20261023160000 migration (snapshot 'branding').
+const BRAND_SUPPORT={on:!CONNECTED};
+// Itineraries (flights, hotels, airport transfers). Needs the 20261023180000 migration (snapshot 'itineraries').
+const ITIN_SUPPORT={on:!CONNECTED};
+// Departure pickup times and Arrival/Departure instructions. Needs the 20261023220000 migration (snapshot 'travelInfo').
+const TRAVEL_INFO_SUPPORT={on:!CONNECTED};
+// Quick reminders from admins (Manage › Messages). Needs the 20261024120000 migration (snapshot 'reminders').
+const REMINDER_SUPPORT={on:!CONNECTED};
+// Demo only: keep each hotel's pickup in step with the flight (the server does this for real).
+const demoPickups=(hotels,flights)=>(hotels||[]).map(h=>{if(!hasPickup(h.tOut))return{...h,pickup:null,pickupManual:false};if(h.pickupManual&&h.pickup)return h;return{...h,pickupManual:false,pickup:pickupDefault((flights||[]).find(x=>x.ev===h.ev&&x.e===h.e))||null}});
+const isInfo=x=>!!x&&typeof x==='object'&&!Array.isArray(x)&&'det' in x;
+// Team lead names for an activity: from the server's list when connected (it covers people a contractor can't see), else from assignments.
+// Demo only: the expenses an itinerary booking adds (the server does this for real, with its own checks).
+const demoTravelExpenses=(s,b,kind,o)=>{let expenses=[...(s.expenses||[])];const ids={};const today=new Date().toISOString().slice(0,10),nextId=()=>Math.max(0,...expenses.map(x=>x.id))+1;
+ const pay=['corporate_amex','personal_card'].includes(b.paid)?b.paid:'personal_card',want=!!o.addExpense;
+ const put=(key,cat,amt,loc,notes)=>{const cur=expenses.find(x=>x.id===b[key]);if(!want||!(amt>0)){if(cur)expenses=expenses.filter(x=>x!==cur);ids[key]=null;return}
+  const row={...(cur||{id:nextId(),e:b.e,ev:b.ev,date:today,ok:false}),cat,amt,pay,reimb:!!o.reimb,loc,ref:b.ref||'',notes,rp:o.rp||cur?.rp||'',rt:o.rt||cur?.rt||''};expenses=cur?expenses.map(x=>x===cur?row:x):[...expenses,row];ids[key]=row.id};
+ if(kind==='flight'){put('exp','airfare',['points','event'].includes(b.paid)?0:b.cost,b.inCarrier||'Airline','Flight '+[b.inFlight,b.outFlight].filter(Boolean).join(' / '));put('bagExp','baggage',b.bags,b.inCarrier||'Airline','Bag fee')}
+ else put('exp','hotel',['points','event'].includes(b.paid)?0:b.total,b.name||'Hotel','Hotel stay');
+ return {expenses,ids}};
+// Demo only: accompanying person links (the server does this for real): the partner gets a shared copy without costs.
+const demoCompanion=(list,ev,who,text,cid)=>{let hs=[...list];const h=hs.find(x=>x.ev===ev&&x.e===who);if(!h)return hs;const old=h.companionId??null,name=cid!=null?EMPS[cid].name:(text||'').trim();
+ if(old!=null&&old!==cid){const p=hs.find(x=>x.ev===ev&&x.e===old&&x.companionId===who);if(p)hs=h.primary!==false&&p.primary===false?hs.filter(x=>x!==p):hs.map(x=>x===p?{...x,companion:'',companionId:null,primary:true}:x)}
+ hs=hs.map(x=>x.ev===ev&&x.e===who?{...x,companion:name,companionId:cid,primary:cid==null||cid!==old?true:x.primary!==false}:x);
+ if(cid!=null&&cid!==old){const hh=hs.find(x=>x.ev===ev&&x.e===who),p=hs.find(x=>x.ev===ev&&x.e===cid);const copy={...(p||{id:Math.max(0,...hs.map(x=>x.id))+1,ev,e:cid,mine:false,tIn:'own',tOut:'own',tNotes:''}),name:hh.name,conf:hh.conf,in:hh.in,out:hh.out,by:hh.by,byEvent:hh.byEvent,paid:hh.paid,companion:EMPS[who].name,companionId:who,primary:false,nightly:0,charges:0,total:0,addExp:false,ref:''};hs=p?hs.map(x=>x===p?copy:x):[...hs,copy]}
+ return hs};
+const demoSync=(hs,ev,who)=>{const h=hs.find(x=>x.ev===ev&&x.e===who);if(!h||h.companionId==null)return hs;return hs.map(x=>x.ev===ev&&x.e===h.companionId&&x.companionId===who?{...x,name:h.name,conf:h.conf,in:h.in,out:h.out,by:h.by,byEvent:h.byEvent,paid:h.paid}:x)};
+const demoRemoveHotel=(hs,h)=>{hs=hs.filter(x=>x!==h);if(h.companionId==null)return hs;const p=hs.find(x=>x.ev===h.ev&&x.e===h.companionId&&x.companionId===h.e);if(!p)return hs;return h.primary!==false&&p.primary===false?hs.filter(x=>x!==p):hs.map(x=>x===p?{...x,companion:'',companionId:null,primary:true}:x)};
+const leadsOf=(S,s)=>s.leads?s.leads.map(l=>({e:l.e,n:l.n})):S.asg.filter(a=>a.s===s.id&&a.lead&&EMPS[a.e]&&!EMPS[a.e].gone).map(a=>({e:a.e,n:EMPS[a.e].name}));
 // Event images: the logo (next to module headings) and the welcome splash (after signing in).
 // Demo keeps bytes on the event; connected databases need the matching migrations (snapshot 'logos' / 'splashes').
 const LOGO_SUPPORT={on:!CONNECTED},SPLASH_SUPPORT={on:!CONNECTED},LOGO_CACHE={};
@@ -79,12 +117,15 @@ const ntext=(a,p)=>p+': '+SM[a.s].t+', '+SM[a.s].r+', '+span(SM[a.s])+' ('+dayDa
 let uid=100;
 const H=[];
 const seed=()=>{const asg=SEED.map((r,i)=>({id:i+1,e:r[0],s:r[1],ack:r[2],in:r[3],conf:0,tag:r[4]}));
- return {asg,log:[],breaks:[],clocks:[],expenses:[],documents:[],notes:asg.filter(a=>!a.ack).map(a=>({id:++uid,e:a.e,aid:a.id,done:0,x:ntext(a,a.tag==='new'?'New assignment':'Changed assignment')}))}};
+ return {asg,log:[],breaks:[],clocks:[],expenses:[],documents:[],flights:[],hotels:[],notes:asg.filter(a=>!a.ack).map(a=>({id:++uid,e:a.e,aid:a.id,done:0,x:ntext(a,a.tag==='new'?'New assignment':'Changed assignment')}))}};
 const clash=(asg,a)=>asg.filter(x=>x.id!==a.id&&x.e===a.e&&SM[x.s].ev===SM[a.s].ev&&SM[x.s].d===SM[a.s].d&&SM[x.s].a<SM[a.s].b&&SM[a.s].a<SM[x.s].b).map(x=>SM[x.s]);
 const st=a=>!need(SM[a.s])?['ok','No check-in needed']:a.in||a.conf?['ok',a.conf&&!a.in?'Confirmed by coordinator':'Checked in']:a.ack?['','Acknowledged']:['warn',(a.tag==='changed'?'Changed':'New')+', needs acknowledgment'];
 const cover=(s,asg)=>{const as=asg.filter(x=>x.s===s.id),p=need(s)?as.filter(x=>x.in||x.conf).length:as.length;
  return {as,p,k:p>=s.n?'ok':p>0?'warn':'bad',l:p>=s.n?'Covered':p>0?'Partly covered':'Not covered'}};
 const Pill=({k,children})=>html`<span className=${'pill '+(k||'')}>${children}</span>`;
+// Details and team leads, shown to everyone on the activity; notes only when admin is true.
+function ActInfo({s,S,me=null,admin=false}){const l=leadsOf(S,s);if(!s.det&&!l.length&&!(admin&&s.nt))return null;
+ return html`<div className="act-info">${l.length>0&&html`<p><b>Team lead${l.length>1?'s':''}:</b> ${l.map((x,j)=>html`<span key=${x.e}>${j?', ':''}${x.e===me?html`<b>You</b>`:x.n}</span>`)}</p>`}${s.det&&html`<p className="act-details">${s.det}</p>`}${admin&&s.nt&&html`<p className="act-notes"><b>Admin notes:</b> ${s.nt}</p>`}</div>`}
 function Head({s,asg}){const c=cover(s,asg);
  return html`<div><h3>${s.t}</h3><p className="mute">${s.r} · ${span(s)} · ${DAYS[s.d]}</p>
  <p className="mute"><${Pill} k=${c.k}>${c.l}<//> ${c.as.length<s.n&&html`<${Pill} k="warn">${s.n-c.as.length} short<//>`} Assigned ${c.as.length} of ${s.n} · Present ${c.p}</p></div>`}
@@ -221,7 +262,7 @@ function Staff({S,A,me,canFull=false,embedded=false,push=null}){
  useEffect(()=>{if(focus==null)return;const t=setTimeout(()=>{const el=[...document.querySelectorAll('[data-asg="'+focus+'"]')].pop();if(el)el.scrollIntoView({block:'center',behavior:'smooth'})},60);return()=>clearTimeout(t)},[focus]);
  const dayActs=i=>SESS.filter(s=>s.ev===CUR.id&&s.d===i).sort((x,y)=>x.a-y.a||x.b-y.b);
  const FullCard=({s})=>{const who=S.asg.filter(a=>a.s===s.id&&EMPS[a.e]);return html`<div className=${'card'+(who.some(a=>a.e===me)?' mine':'')}>
-  <h3>${s.t}</h3><p className="mute">${s.r} · ${span(s)}</p>
+  <h3>${s.t}</h3><p className="mute">${s.r} · ${span(s)}</p><${ActInfo} s=${s} S=${S} me=${me}/>
   <p>${who.length?who.map((a,j)=>html`<span key=${a.id}>${j?', ':''}${a.e===me?html`<b>You</b>`:EMPS[a.e].name}</span>`):html`<span className="mute">No one assigned yet</span>`}</p></div>`};
  const mine=S.asg.filter(a=>a.e===me&&SM[a.s].ev===CUR.id).sort((x,y)=>SM[x.s].d-SM[y.s].d||SM[x.s].a-SM[y.s].a);
  const ended=s=>{const t=new Date(evOf(s.ev).start+'T00:00:00');t.setDate(t.getDate()+s.d);t.setMinutes(s.b);return t<new Date()};
@@ -235,19 +276,21 @@ function Staff({S,A,me,canFull=false,embedded=false,push=null}){
  const BreakCard=({b})=>html`<div className="card break-card"><h3>${BREAK[b.k][1]}</h3><p className="mute">${span(b)} · ${DAYS[b.d]}</p></div>`;
  const late=oc?lateBy(S,oc,now):0,obr=oc&&oc.bid!=null&&breakOf(S,oc.bid);
  const Card=({a,cls})=>{const s=SM[a.s],[k,l]=st(a);return html`<div data-asg=${a.id} className=${'card '+(cls||'')+(focus===a.id?' focus':'')}>
-  <h3>${s.t}</h3><p className="mute">${s.r} · ${span(s)} · ${DAYS[s.d]}</p><p><${Pill} k=${k}>${l}<//> ${a.cal!=null&&html`<${Pill} k=${a.cal===(a.seq||0)?'ok':'warn'}>${a.cal===(a.seq||0)?'On your calendar':'Calendar out of date'}<//>`}</p>
+  <h3>${s.t}</h3><p className="mute">${s.r} · ${span(s)} · ${DAYS[s.d]}</p><${ActInfo} s=${s} S=${S} me=${me}/><p><${Pill} k=${k}>${l}<//> ${a.cal!=null&&html`<${Pill} k=${a.cal===(a.seq||0)?'ok':'warn'}>${a.cal===(a.seq||0)?'On your calendar':'Calendar out of date'}<//>`}</p>
   <div className="acts">${need(s)&&html`<button className="btn" disabled=${!!a.ack} onClick=${()=>A.ack(a.id)}>Acknowledge</button>
   <button className="btn ghost" disabled=${!a.ack||!!a.in||!!a.conf} onClick=${()=>A.checkIn(a.id)}>Check in</button>`}${(!need(s)||!!a.ack)&&a.cal!==(a.seq||0)&&html`<button className="btn ghost" onClick=${()=>{A.calAdd(a.id);setShown(a.id)}}>${a.cal==null?'Add to calendar':'Update calendar'}</button>`}</div></div>`};
  return html`<div className=${embedded?'my-schedule':'wrap m'}>${!embedded&&html`<h2>Hi, ${EMPS[me].name.split(' ')[0]}</h2><p className="mute">${EMPS[me].role} · ${evOf(CUR.id).name}</p>`}
  ${push&&html`<${PushCard} push=${push}/>`}
- ${notes.map(n=>html`<div className="card note" key=${n.id} role="status"><b>${n.x}</b>${n.from&&html`<p className="mute">${n.from}</p>`}
-  ${(()=>{const na=n.aid&&S.asg.find(a=>a.id===n.aid),ask=!!na&&need(SM[na.s]);return html`<button className="btn" onClick=${()=>ask?A.ack(n.aid):A.dismiss(n.id)}>${ask?'Acknowledge':'Got it'}</button>`})()}</div>`)}
+ ${notes.map(n=>html`<div className=${'card note'+(n.rid?' reminder-note':'')} key=${n.id} role="status">${n.rid&&html`<p className="note-kicker"><${Icon} name="bell"/> Message${n.from?' from '+n.from:''}</p>`}<b>${n.x}</b>${n.from&&!n.rid&&html`<p className="mute">${n.from}</p>`}
+  ${n.rid?html`<button className="btn" onClick=${()=>A.ackReminder(n.rid)}>Acknowledge</button>`:(()=>{const na=n.aid&&S.asg.find(a=>a.id===n.aid),ask=!!na&&need(SM[na.s]);return html`<button className="btn" onClick=${()=>ask?A.ack(n.aid):A.dismiss(n.id)}>${ask?'Acknowledge':'Got it'}</button>`})()}</div>`)}
  ${mine.filter(a=>a.pc).map(a=>html`<div className="card note" key=${'c'+a.id} role="status"><b>${a.cal==null?'Add to your calendar?':'Update your calendar?'}</b><p className="mute">${SM[a.s].t}, ${SM[a.s].r}, ${span(SM[a.s])} (${DAYS[SM[a.s].d]}). Reminder 30 minutes before.</p><div className="acts"><button className="btn" onClick=${()=>{A.calAdd(a.id);setShown(a.id)}}>${a.cal==null?'Add to calendar':'Update calendar'}</button><button className="btn ghost" onClick=${()=>A.calSkip(a.id)}>Not now</button></div></div>`)}
  ${breaksOn(S)&&html`<div className=${'card clock-card'+(oc?' out':'')+(late?' late':'')}>${oc?html`<b>${BREAK[oc.k][1]} since ${clockTime(oc.out)}</b><p className="mute">${obr?'Scheduled until '+fmt(obr.b):'Unscheduled '+BREAK[oc.k][0].toLowerCase()}</p>${late>0&&html`<p><${Pill} k="bad">Late return · ${late} min past scheduled end<//></p>`}<div className="acts"><button className="btn" onClick=${()=>A.clockIn()}>Clock back in</button></div>`
   :html`<b>Lunch and breaks</b><p className="mute">${nextBreak?'Next: '+BREAK[nextBreak.k][0]+', '+span(nextBreak)+' today.':'Clock out whenever you step away, then clock back in when you return.'}</p><div className="acts">${['lunch','break'].map(k=>html`<button key=${k} className="btn ghost" onClick=${()=>A.clockOut(k,pick(k))}>${BREAK[k][2]}</button>`)}</div>`}</div>`}
  ${sa&&html`<div className="card"><b>Calendar event ready</b><p className="mute">${SM[sa.s].t}, ${SM[sa.s].r}, ${span(SM[sa.s])}. Reminder 30 minutes before.</p><p className="mute">In the real app this opens your phone's calendar (Apple, Google, or Outlook). This preview can't open a phone calendar, so the file it would send is shown below.</p><details><summary>Calendar file (for developers)</summary><pre style=${{whiteSpace:'pre-wrap',fontSize:'.8rem'}}>${ics(sa)}</pre></details><button className="btn ghost" onClick=${()=>setShown(null)}>Close</button></div>`}
  ${!embedded&&html`<div className="card"><b>Venue floorplan</b>${EMPS[me].map?(FP.some(f=>f.ev===CUR.id)?html`<div className="acts">${FP.filter(f=>f.ev===CUR.id).map(f=>html`<button key=${f.id} className="btn ghost" onClick=${()=>setFv(f.id)}>${f.name}</button>`)}</div>`:html`<p className="mute">No floorplan has been added for this event yet.</p>`):html`<p className="mute">Your administrator has not turned on access for you.</p>`}</div>`}
  ${!embedded&&!!EMPS[me].map&&FP.find(f=>f.id===fv&&f.ev===CUR.id)&&html`<${PdfView} f=${FP.find(f=>f.id===fv)} onClose=${()=>setFv(null)}/>`}
+ ${ITIN_SUPPORT.on&&Array.isArray(S.flights)&&html`<${ITIN.MyTravel} S=${S} A=${A} me=${me}/>`}
+ ${TRAVEL_INFO_SUPPORT.on&&ITIN_SUPPORT.on&&html`<${TINFO.TravelInfoCards} S=${S} me=${me}/>`}
  ${!embedded&&Array.isArray(S.documents)&&html`<${DOCS.DocumentList} S=${S} A=${A} me=${me}/>`}
  <h2>Next assignment</h2>${next?html`<${Card} a=${next} cls="next"/>`:html`<p className="mute">Nothing coming up. Your admin will notify you of new assignments.</p>`}
  <h2>${full?'Full schedule':'My schedule'}</h2>
@@ -259,18 +302,21 @@ function Staff({S,A,me,canFull=false,embedded=false,push=null}){
    :html`${dayItems(i).map(x=>x.br?html`<${BreakCard} key=${'b'+x.br.id} b=${x.br}/>`:html`<${Card} key=${x.a.id} a=${x.a}/>`)}${!dayItems(i).length&&html`<p className="mute">No assignments on ${DAYS[i]}.</p>`}`}</div>`)}
  ${Array.isArray(S.expenses)&&html`<h2>Expenses</h2><${EXP.ExpenseSection} S=${S} A=${A} me=${me}/>`}</div>`}
 function AdminSession({s,S,A,coordinator=false}){
- const [pick,setPick]=useState('');
+ const [pick,setPick]=useState(''),[remind,setRemind]=useState(false);
  const as=S.asg.filter(x=>x.s===s.id), free=EMPS.filter(e=>!e.gone&&!as.some(x=>x.e===e.id)), same=SESS.filter(o=>o.ev===s.ev&&o.d===s.d&&o.id!==s.id);
- return html`<div className="session-panel"><${Head} s=${s} asg=${S.asg}/>
+ return html`<div className="session-panel"><${Head} s=${s} asg=${S.asg}/><${ActInfo} s=${s} S=${S} admin=${true}/>
  <ul className="rows">${as.map(a=>{const c=clash(S.asg,a),[k,l]=st(a);return html`<li key=${a.id} className="lead-actions"><${IconButton} name="delete" label=${'Remove '+EMPS[a.e].name} onClick=${()=>A.remove(a.id)}/><div>
-  <div><b>${nm(a.e)}</b> <${Pill} k=${k}>${l}<//>${pushOff(S,a.e)&&html` <${Pill} k="warn">Notifications off<//>`} ${c.length>0&&html`<${Pill} k="bad">Overlaps ${c.map(o=>o.t).join(', ')}<//>`}${breaksDuring(S,a.e,s).map(b=>html` <${Pill} key=${'b'+b.id}>${BREAK[b.k][0]} ${span(b)}<//>`)}${(()=>{const o=openClock(S,a.e),lt=o&&lateBy(S,o);return o&&html` <${Pill} k=${lt?'bad':'warn'}>${BREAK[o.k][1]} now${lt?' · '+lt+' min late':''}<//>`})()}</div>
+  <div><b>${nm(a.e)}</b>${a.lead&&html` <${Pill} k="ok">Team lead<//>`} <${Pill} k=${k}>${l}<//>${pushOff(S,a.e)&&html` <${Pill} k="warn">Notifications off<//>`} ${c.length>0&&html`<${Pill} k="bad">Overlaps ${c.map(o=>o.t).join(', ')}<//>`}${breaksDuring(S,a.e,s).map(b=>html` <${Pill} key=${'b'+b.id}>${BREAK[b.k][0]} ${span(b)}<//>`)}${(()=>{const o=openClock(S,a.e),lt=o&&lateBy(S,o);return o&&html` <${Pill} k=${lt?'bad':'warn'}>${BREAK[o.k][1]} now${lt?' · '+lt+' min late':''}<//>`})()}</div>
   <div className="acts"><select aria-label=${'Move '+EMPS[a.e].name} value="" onChange=${ev=>ev.target.value&&A.move(a.id,+ev.target.value)}>
    <option value="">Move to…</option>${same.map(o=>html`<option key=${o.id} value=${o.id}>${o.r}, ${span(o)}, ${o.t}</option>`)}</select>
-  ${coordinator&&need(s)&&html`<button className="btn ghost" disabled=${!!a.in||!!a.conf} onClick=${()=>A.confirm(a.id)}>Confirm present</button>`}</div></div></li>`})}</ul>
+  ${coordinator&&need(s)&&html`<button className="btn ghost" disabled=${!!a.in||!!a.conf} onClick=${()=>A.confirm(a.id)}>Confirm present</button>`}${INFO_SUPPORT.on&&['staff','admin'].includes(EMPS[a.e].acct)&&html`<button className="btn ghost" aria-pressed=${!!a.lead} onClick=${()=>A.setLead(a.id,!a.lead)}>${a.lead?'Remove as lead':'Make team lead'}</button>`}</div></div></li>`})}</ul>
  ${!as.length&&html`<p className="mute">No one assigned yet.</p>`}
  <div className="acts"><select aria-label=${'Employee to assign to '+s.t} value=${pick} onChange=${e=>setPick(e.target.value)}><option value="">Choose employee…</option>
   ${free.map(e=>html`<option key=${e.id} value=${e.id}>${nm(e.id)}</option>`)}</select>
-  <button className="btn" disabled=${pick===''} onClick=${async()=>{const ok=await A.assign(+pick,s.id);if(ok!==false)setPick('')}}>Assign</button></div></div>`}
+  <button className="btn" disabled=${pick===''} onClick=${async()=>{const ok=await A.assign(+pick,s.id);if(ok!==false)setPick('')}}>Assign</button>
+  ${REMINDER_SUPPORT.on&&as.length>0&&(()=>{const late=as.filter(a=>EMPS[a.e]&&!EMPS[a.e].gone&&need(s)&&(!a.ack||(!a.in&&!a.conf))),noAck=late.some(a=>!a.ack);
+   return html`<button className="btn ghost" onClick=${()=>setRemind(true)}><${Icon} name="bell"/>${late.length?'Remind '+late.length+(noAck?' not acknowledged':' not checked in'):'Message team'}</button>
+   ${remind&&html`<${REM.SendReminder} S=${S} A=${A} preselect=${(late.length?late:as).map(a=>a.e)} title=${'Remind: '+s.t} text=${late.length?(noAck?'Please acknowledge your assignment: '+s.t+' ('+s.r+', '+span(s)+').':'You\'re due at '+s.t+' ('+s.r+', '+span(s)+'): please check in.'):''} onClose=${()=>setRemind(false)}/>`}`})()}</div></div>`}
 const desc=s=>'Was '+s.t+', '+s.r+', '+span(s)+' ('+dayDate(evOf(s.ev).start,s.d)+')';
 const bump=(s,sid,from)=>{const ids=s.asg.filter(a=>a.s===sid).map(a=>a.id);
  return {...s,asg:s.asg.map(a=>ids.includes(a.id)?{...a,ack:0,in:0,conf:0,tag:'changed',seq:(a.seq||0)+1,pc:0}:a),
@@ -300,8 +346,12 @@ function Grid({S}){
  ${!rows.length&&html`<p className="mute">No activities yet for this event.</p>`}
  <h3 style=${{marginTop:16}}>Staff colors</h3><div className="legend">${used.map(e=>html`<span key=${e}><i className="sw" style=${{background:col(e,1)}}></i>${EMPS[e].name}</span>`)}</div></div>`}
 const EXP=createExpenses({React,html,Modal,Icon,IconButton,people:EMPS,events:EVS,current:CUR});
+const AppSettings=createAppSettings({React,html,Icon});
+const ITIN=createItineraries({React,html,Modal,Icon,people:EMPS,events:EVS,activities:SESS,current:CUR,demo:!CONNECTED});
+const TINFO=createTravelInfo({React,html,Icon,events:EVS,current:CUR,demo:!CONNECTED});
+const REM=createReminders({React,html,Modal,Icon,people:EMPS,events:EVS,activities:SESS,current:CUR});
 const DOCS=createDocuments({React,html,Modal,Icon,people:EMPS,events:EVS,activities:SESS,current:CUR});
-const Admin=createAdminWorkspace({people:EMPS,events:EVS,rooms:ROOMS,activities:SESS,current:CUR,days:DAYS,daysShort:DAYS_SHORT,cover,clash,span,evEnd,evStatus,need,roomAck:ROOM_ACK,ackSupport:ACK_SUPPORT,BREAK,breaksOn,breaksDuring,openClock,lateBy,liveNow,clockTime,breakOf,todayIndex,breakExport,floorSupport:FLOOR_SUPPORT,closeSupport:CLOSE_SUPPORT,pushSupport:PUSH_SUPPORT,logoSupport:LOGO_SUPPORT,splashSupport:SPLASH_SUPPORT,prepLogo,prepSplash,imageUrl,hrPdf:(list,scope)=>{const url=URL.createObjectURL(new Blob([hrReport({list,people:EMPS,eventName:evOf(CUR.id).name,scope,autoPrint:true})],{type:'text/html'})),w=window.open(url,'_blank');setTimeout(()=>URL.revokeObjectURL(url),60000);return w?'':'Your browser blocked the report window. Allow pop-ups for this site and try again.'},connected:CONNECTED},{AdminSession,Grid,Floorplans,Incoming,Staff,ExpensesAdmin:EXP.ExpensesAdmin,EventLogo,Splash,DocumentsAdmin:DOCS.DocumentsAdmin});
+const Admin=createAdminWorkspace({people:EMPS,events:EVS,rooms:ROOMS,activities:SESS,current:CUR,days:DAYS,daysShort:DAYS_SHORT,cover,clash,span,evEnd,evStatus,need,roomAck:ROOM_ACK,ackSupport:ACK_SUPPORT,BREAK,breaksOn,breaksDuring,openClock,lateBy,liveNow,clockTime,breakOf,todayIndex,breakExport,floorSupport:FLOOR_SUPPORT,closeSupport:CLOSE_SUPPORT,pushSupport:PUSH_SUPPORT,infoSupport:INFO_SUPPORT,eventInfoSupport:EVENT_INFO_SUPPORT,brandSupport:BRAND_SUPPORT,itinSupport:ITIN_SUPPORT,travelInfoSupport:TRAVEL_INFO_SUPPORT,remindersSupport:REMINDER_SUPPORT,logoSupport:LOGO_SUPPORT,splashSupport:SPLASH_SUPPORT,prepLogo,prepSplash,imageUrl,hrPdf:(list,scope)=>{const url=URL.createObjectURL(new Blob([hrReport({list,people:EMPS,eventName:evOf(CUR.id).name,scope,autoPrint:true})],{type:'text/html'})),w=window.open(url,'_blank');setTimeout(()=>URL.revokeObjectURL(url),60000);return w?'':'Your browser blocked the report window. Allow pop-ups for this site and try again.'},connected:CONNECTED},{AdminSession,Grid,Floorplans,Incoming,Staff,ExpensesAdmin:EXP.ExpensesAdmin,EventLogo,Splash,DocumentsAdmin:DOCS.DocumentsAdmin,AppSettings,ItinerariesAdmin:ITIN.ItinerariesAdmin,TravelInfoAdmin:TINFO.TravelInfoAdmin,MessagesAdmin:REM.MessagesAdmin});
 function App({connected}){
  const [demoS,setS]=useState(()=>connected?connected.snapshot:seed()),[demoRole,setRole]=useState('admin'),[demoMe,setMe]=useState(0),[toast,setToast]=useState('');
  const S=connected?connected.snapshot:demoS,role=connected?connected.snapshot.role:demoRole,me=connected?connected.snapshot.me:demoMe;
@@ -320,6 +370,7 @@ function App({connected}){
    setS(s=>{const a={id:++uid,e,s:sid,ack:0,in:0,conf:0,tag:'new'};return L({...s,asg:[...s.asg,a],notes:[...s.notes,{id:++uid,e,aid:a.id,done:0,x:ntext(a,'New assignment')}]},'Assigned '+EMPS[e].name+' to '+SM[sid].r+' ('+SM[sid].t+', '+span(SM[sid])+')')})},
   move:(id,sid)=>{say('Change published. Employee notified.');setS(s=>{const o=s.asg.find(a=>a.id===id),old=SM[o.s],n={...o,s:sid,ack:0,in:0,conf:0,tag:'changed',seq:(o.seq||0)+1,pc:0};
    return L({...s,asg:s.asg.map(a=>a.id===id?n:a),notes:[...s.notes.filter(x=>x.aid!==id),{id:++uid,e:o.e,aid:id,done:0,x:ntext(n,'Changed assignment'),from:'Was '+old.t+', '+old.r+', '+span(old)}]},'Moved '+EMPS[o.e].name+' from '+old.r+' to '+SM[sid].r+' ('+SM[sid].t+')')})},
+  setLead:(id,on)=>{const a=S.asg.find(x=>x.id===id);if(!a)return false;if(on&&!['staff','admin'].includes(EMPS[a.e].acct)){say('Team leads must be Staff or Admin people');return false}setS(s=>L({...s,asg:s.asg.map(x=>x.id===id?{...x,lead:!!on}:x)},(on?'Made ':'Removed ')+EMPS[a.e].name+(on?' team lead for ':' as team lead for ')+SM[a.s].t));say(on?EMPS[a.e].name.split(' ')[0]+' is now a team lead':'Team lead removed');return true},
   remove:id=>{setS(s=>{const o=s.asg.find(a=>a.id===id);return L({...s,asg:s.asg.filter(a=>a.id!==id),notes:[...s.notes.filter(x=>x.aid!==id),{id:++uid,e:o.e,aid:null,done:0,x:'Removed from '+SM[o.s].t+', '+SM[o.s].r+' ('+DAYS[SM[o.s].d]+')'+(o.cal!=null?'. Delete it from your calendar.':'')}]},'Removed '+EMPS[o.e].name+' from '+SM[o.s].r+' ('+SM[o.s].t+')')});say('Assignment removed. Employee notified.')},
   ack:id=>setS(s=>{const o=s.asg.find(a=>a.id===id);return L({...s,asg:s.asg.map(a=>a.id===id?{...a,ack:1,pc:1}:a),notes:s.notes.map(n=>n.aid===id?{...n,done:1}:n)},EMPS[o.e].name+' acknowledged '+SM[o.s].t+' in '+SM[o.s].r)}),
   dismiss:id=>setS(s=>({...s,notes:s.notes.map(n=>n.id===id?{...n,done:1}:n)})),
@@ -327,16 +378,29 @@ function App({connected}){
   confirm:id=>{setS(s=>{const o=s.asg.find(a=>a.id===id);return L({...s,asg:s.asg.map(a=>a.id===id?{...a,conf:1}:a)},'Coordinator confirmed '+EMPS[o.e].name+' present in '+SM[o.s].r)});say('Attendance confirmed')},
   addStaff:o=>{if(!o.n){say('Enter a name');return false}EMPS.push({id:EMPS.length,name:o.n,email:o.email,role:o.r,acct:o.acct,phone:o.phone,map:o.map?1:0});setS(s=>L({...s},'Added '+o.acct+' '+o.n+' ('+o.r+')'));say(o.n+' added');return true},
   addRoom:(n,req=true)=>{if(!n||ROOMS.includes(n)){say(n?'That room already exists':'Enter a room name');return false}ROOMS.push(n);ROOM_ACK[n]=req!==false;setS(s=>L({...s},'Added room '+n+(req===false?' (no acknowledgment or check-in)':'')));say(n+' added');return true},
-  addSession:(t,r,d,a,b,n,q=null)=>{if(!t){say('Enter an activity name');return false}if(!(b>a)){say('End time must be after start time');return false}if(!(n>=1)){say('Staff needed must be at least 1');return false}const o={id:Math.max(0,...SESS.map(x=>x.id))+1,ev:CUR.id,d:+d,t,r,a,b,n,q};SESS.push(o);SM[o.id]=o;setS(s=>L({...s},'Created activity '+t+' in '+r+', '+DAYS[o.d]+', '+span(o)));say(t+' created');return true},
+  addSession:(t,r,d,a,b,n,q=null,info)=>{if(!t){say('Enter an activity name');return false}if(!(b>a)){say('End time must be after start time');return false}if(!(n>=1)){say('Staff needed must be at least 1');return false}const o={id:Math.max(0,...SESS.map(x=>x.id))+1,ev:CUR.id,d:+d,t,r,a,b,n,q,...(isInfo(info)?{det:info.det,nt:info.nt}:{})};SESS.push(o);SM[o.id]=o;setS(s=>L({...s},'Created activity '+t+' in '+r+', '+DAYS[o.d]+', '+span(o)));say(t+' created');return true},
   editStaff:(id,o)=>{if(!o.n){say('Enter a name');return false}Object.assign(EMPS[id],{name:o.n,email:o.email,role:o.r,acct:o.acct,phone:o.phone,map:o.map?1:0});setS(s=>L({...s},'Updated '+o.n+' ('+o.r+', '+o.acct+', map access '+(o.map?'on':'off')+')'));say('Saved');return true},
   delStaff:id=>{const n=EMPS[id].name;EMPS[id].gone=1;if(me===id)setMe(EMPS.find(e=>!e.gone).id);setS(s=>L({...s,asg:s.asg.filter(a=>a.e!==id),notes:s.notes.filter(x=>x.e!==id)},'Deleted staff member '+n+' and cancelled their assignments'));say(n+' deleted');return true},
   editRoom:(o,n,req)=>{if(!n||(n!==o&&ROOMS.includes(n))){say(n?'That room already exists':'Enter a room name');return false}const flag=req===undefined?ROOM_ACK[o]!==false:req!==false,ss=n!==o?SESS.filter(s=>s.r===o).map(s=>[s.id,desc(s)]):[];ROOMS[ROOMS.indexOf(o)]=n;delete ROOM_ACK[o];ROOM_ACK[n]=flag;ss.forEach(([id])=>{SM[id].r=n});setS(s=>L(ss.reduce((x,[id,f])=>bump(x,id,f),s),n!==o?'Renamed room '+o+' to '+n:'Updated room '+n+(flag?' (acknowledgment and check-in required)':' (no acknowledgment or check-in)')));say('Saved');return true},
   delRoom:r=>{if(SESS.some(s=>s.r===r)){say('Move or delete its activities first');return false}ROOMS.splice(ROOMS.indexOf(r),1);setS(s=>L({...s},'Deleted room '+r));say(r+' deleted');return true},
-  editSession:(id,t,r,d,a,b,n,q)=>{if(!t){say('Enter an activity name');return false}if(!(b>a)){say('End time must be after start time');return false}if(!(n>=1)){say('Staff needed must be at least 1');return false}const o=SM[id],f=desc(o),ch=o.t!==t||o.r!==r||o.d!==+d||o.a!==a||o.b!==b;Object.assign(o,{t,r,d:+d,a,b,n},q===undefined?{}:{q});setS(s=>L(ch?bump(s,id,f):s,'Updated activity '+t+' in '+r+', '+DAYS[o.d]+', '+span(o)));say(ch?'Saved. Assigned staff notified.':'Saved');return true},
+  editSession:(id,t,r,d,a,b,n,q,info)=>{if(isInfo(q)){info=q;q=undefined}if(!t){say('Enter an activity name');return false}if(!(b>a)){say('End time must be after start time');return false}if(!(n>=1)){say('Staff needed must be at least 1');return false}const o=SM[id],f=desc(o),ch=o.t!==t||o.r!==r||o.d!==+d||o.a!==a||o.b!==b;Object.assign(o,{t,r,d:+d,a,b,n},q===undefined?{}:{q},isInfo(info)?{det:info.det,nt:info.nt}:{});setS(s=>L(ch?bump(s,id,f):s,'Updated activity '+t+' in '+r+', '+DAYS[o.d]+', '+span(o)));say(ch?'Saved. Assigned staff notified.':'Saved');return true},
   delSession:id=>{const o=SM[id],txt=ntext({s:id},'Cancelled');setS(s=>{const g=s.asg.filter(a=>a.s===id);return L({...s,asg:s.asg.filter(a=>a.s!==id),notes:[...s.notes.filter(n=>!g.some(a=>a.id===n.aid)),...g.map(a=>({id:++uid,e:a.e,aid:null,done:0,x:txt+(a.cal!=null?'. Delete it from your calendar.':'')}))]},'Deleted activity '+o.t+' ('+g.length+' staff notified)')});SESS.splice(SESS.indexOf(o),1);delete SM[id];say(o.t+' deleted');return true},
-  addEvent:o=>{if(!evv(o))return false;const id=Math.max(0,...EVS.map(e=>e.id))+1;EVS.push({id,name:o.n,start:o.b,days:Math.floor(o.d)});CUR.id=id;syncEv();setS(s=>L({...s},'Created event '+o.n));say(o.n+' created and opened');return true},
-  editEvent:(id,o)=>{if(!evv(o))return false;const n=Math.floor(o.d),bad=SESS.find(s=>s.ev===id&&s.d>=n);if(bad){say('Move or delete activities on '+dayDate(evOf(id).start,bad.d)+' first');return false}Object.assign(evOf(id),{name:o.n,start:o.b,days:n});if(id===CUR.id)syncEv();setS(s=>L({...s},'Updated event '+o.n));say('Saved');return true},
+  addEvent:o=>{if(!evv(o))return false;const id=Math.max(0,...EVS.map(e=>e.id))+1;EVS.push({id,name:o.n,start:o.b,days:Math.floor(o.d),...('venue' in o?{venue:o.venue,addr:o.addr,notes:o.notes}:{}),...('staffFlights' in o?{staffFlights:!!o.staffFlights,staffHotels:!!o.staffHotels}:{})});CUR.id=id;syncEv();setS(s=>L({...s},'Created event '+o.n));say(o.n+' created and opened');return true},
+  editEvent:(id,o)=>{if(!evv(o))return false;const n=Math.floor(o.d),bad=SESS.find(s=>s.ev===id&&s.d>=n);if(bad){say('Move or delete activities on '+dayDate(evOf(id).start,bad.d)+' first');return false}Object.assign(evOf(id),{name:o.n,start:o.b,days:n},'venue' in o?{venue:o.venue,addr:o.addr,notes:o.notes}:{},'staffFlights' in o?{staffFlights:!!o.staffFlights,staffHotels:!!o.staffHotels}:{});if(id===CUR.id)syncEv();setS(s=>L({...s},'Updated event '+o.n));say('Saved');return true},
   delEvent:id=>{if(EVS.length<2){say('At least one event must remain');return false}const e=evOf(id),ids=SESS.filter(s=>s.ev===id).map(s=>s.id);setS(s=>{const g=s.asg.filter(a=>ids.includes(a.s));return L({...s,asg:s.asg.filter(a=>!ids.includes(a.s)),notes:[...s.notes.filter(n=>!g.some(a=>a.id===n.aid)),...[...new Set(g.map(a=>a.e))].map(x=>({id:++uid,e:x,aid:null,done:0,x:'Event removed: '+e.name}))]},'Deleted event '+e.name+' with '+ids.length+' activities')});for(let i=SESS.length-1;i>=0;i--)if(ids.includes(SESS[i].id)){delete SM[SESS[i].id];SESS.splice(i,1)}for(let i=FP.length-1;i>=0;i--)if(FP[i].ev===id)FP.splice(i,1);for(let i=INV.length-1;i>=0;i--)if(INV[i].ev===id)INV.splice(i,1);EVS.splice(EVS.indexOf(e),1);if(CUR.id===id){CUR.id=EVS[0].id;syncEv()}say(e.name+' deleted');return true},
+  saveFlight:(ev,who,o,file)=>{const t=who;if(file){const p=t+'/'+uuid()+'.'+RECEIPT_TYPES[file.type];RECEIPTS[p]={data:file.data,type:file.type};o={...o,rp:p,rt:file.type}}setS(s=>{const list=s.flights||[],old=list.find(x=>x.ev===ev&&x.e===t),row={...(old||{id:Math.max(0,...list.map(x=>x.id))+1,ev,e:t,mine:true}),...o,inFlight:(o.inFlight||'').toUpperCase(),outFlight:(o.outFlight||'').toUpperCase(),cost:Number(o.cost||0),bags:Number(o.bags||0),addExp:!!o.addExpense};const ex=demoTravelExpenses(s,row,'flight',o);const flights=old?list.map(x=>x===old?{...row,...ex.ids}:x):[...list,{...row,...ex.ids}];return L({...s,expenses:ex.expenses,flights,hotels:demoPickups(s.hotels,flights)},(old?'Updated ':'Added ')+'flight for '+EMPS[t].name)});say('Flight saved');return true},
+  delFlight:id=>{setS(s=>{const f=(s.flights||[]).find(x=>x.id===id);const flights=(s.flights||[]).filter(x=>x.id!==id);return L({...s,expenses:(s.expenses||[]).filter(x=>!f||(x.id!==f.exp&&x.id!==f.bagExp)),flights,hotels:demoPickups(s.hotels,flights)},'Removed a flight')});say('Flight removed');return true},
+  saveHotel:(ev,who,o,file)=>{const t=who;if(file){const p=t+'/'+uuid()+'.'+RECEIPT_TYPES[file.type];RECEIPTS[p]={data:file.data,type:file.type};o={...o,rp:p,rt:file.type}}setS(s=>{const list=s.hotels||[],old=list.find(x=>x.ev===ev&&x.e===t),row={...(old||{id:Math.max(0,...list.map(x=>x.id))+1,ev,e:t,mine:true}),...o,companion:old?.companion||'',companionId:old?.companionId??null,primary:old?old.primary!==false:true,name:o.name||evOf(ev).venue||'',nightly:Number(o.nightly||0),charges:Number(o.charges||0),total:Number(o.total||0),addExp:!!o.addExpense};const ex=demoTravelExpenses(s,row,'hotel',o);let hs=old?list.map(x=>x===old?{...row,...ex.ids}:x):[...list,{...row,...ex.ids}];if(old&&old.primary===false)hs=hs.map(x=>x.ev===ev&&x.e===t?{...x,nightly:0,charges:0,total:0,addExp:false,companion:old.companion,companionId:old.companionId,primary:false}:x);else if('companion' in o)hs=demoCompanion(hs,ev,t,o.companion,'companionId' in o?o.companionId:(old?.companionId??null));hs=demoSync(hs,ev,t);return L({...s,expenses:ex.expenses,hotels:demoPickups(hs,s.flights)},(old?'Updated ':'Added ')+'hotel for '+EMPS[t].name)});say('Hotel saved');return true},
+  importHotels:(ev,rows,rm)=>{setS(s=>{let hs=[...(s.hotels||[])];(rm||[]).forEach(e=>{const h=hs.find(x=>x.ev===ev&&x.e===e);if(h)hs=demoRemoveHotel(hs,h)});
+   rows.forEach(r=>{const h=hs.find(x=>x.ev===ev&&x.e===r.e);if(h)hs=hs.map(x=>x===h?{...x,conf:r.conf,in:r.in,out:r.out}:x);else hs=[...hs,{id:Math.max(0,...hs.map(x=>x.id))+1,ev,e:r.e,mine:false,name:evOf(ev).venue||'',conf:r.conf,in:r.in,out:r.out,byEvent:true,by:null,paid:'event',ref:'',nightly:0,charges:0,total:0,tIn:'own',tOut:'own',tNotes:'',companion:'',companionId:null,primary:true}];
+    const cur=hs.find(x=>x.ev===ev&&x.e===r.e);if((cur.companionId??null)!==(r.companionId??null)||(r.companionId==null&&(cur.companion||'')!==r.companion))hs=demoCompanion(hs,ev,r.e,r.companion,r.companionId??null);hs=demoSync(hs,ev,r.e)});
+   return L({...s,hotels:demoPickups(hs,s.flights)},'Imported the rooming list for '+evOf(ev).name+' ('+rows.length+' rows)')});say('Rooming list imported');return true},
+  sendReminder:(ev,ids,text)=>{const to=[...new Set(ids)].filter(e=>EMPS[e]&&!EMPS[e].gone);if(!to.length||!text.trim()){say('Choose who to send it to');return false}
+   setS(s=>{const id=Math.max(0,...(s.reminders||[]).map(r=>r.id))+1,from=EMPS[me]?.name||'An administrator';return L({...s,reminders:[{id,ev,x:text.trim(),from,at:new Date().toISOString(),to:to.map(e=>({e,ack:null}))},...(s.reminders||[])],notes:[...s.notes,...to.map(e=>({id:++uid,e,aid:null,done:0,x:text.trim(),rid:id,from}))]},'Sent a reminder to '+to.length+(to.length===1?' person':' people'))});say('Reminder sent to '+to.length);return true},
+  ackReminder:rid=>{setS(s=>Lg({...s,reminders:(s.reminders||[]).map(r=>r.id===rid?{...r,to:r.to.map(t=>t.e===me&&!t.ack?{...t,ack:new Date().toISOString()}:t)}:r),notes:s.notes.map(n=>n.rid===rid&&n.e===me?{...n,done:1}:n)},EMPS[me].name+' acknowledged a reminder'));return true},
+  setTravelInfo:(ev,o)=>{const e=evOf(ev);if(!e)return false;e.arrInfo=o.arr||'';e.depInfo=o.dep||'';setS(s=>L({...s},'Updated arrival and departure instructions for '+e.name));say('Instructions saved');return true},
+  delHotel:id=>{setS(s=>{const h=(s.hotels||[]).find(x=>x.id===id);return L({...s,expenses:(s.expenses||[]).filter(x=>!h||x.id!==h.exp),hotels:h?demoRemoveHotel(s.hotels,h):s.hotels},'Removed a hotel')});say('Hotel removed');return true},
+  setBranding:(o,icons,reset)=>{const b=getBrand(),iconData=icons?Object.fromEntries(Object.entries(icons).map(([k,v])=>[k,URL.createObjectURL(v)])):reset?null:b.iconData;setBrand({...o,short:o.short||o.name.slice(0,12),iconData,icon:iconData?'demo':null,v:Date.now()});setS(s=>L({...s},'Updated app settings'));say('App settings saved');return true},
   setEventLogo:(ev,logo)=>{const e=evOf(ev);if(!e)return false;if(logo){Object.assign(e,{logo:'demo/'+uuid()+'.png',logoType:logo.type,logoData:logo.data})}else{delete e.logo;delete e.logoType;delete e.logoData}setS(s=>L({...s},(logo?'Set logo for ':'Removed logo from ')+e.name));say(logo?'Logo saved':'Logo removed');return true},
   addDocument:(ev,f,all,who)=>{const path=ev+'/'+uuid()+'.'+docExt(f.type);DOC_DATA[path]=f.data;setS(s=>{const id=Math.max(0,...(s.documents||[]).map(d=>d.id))+1;return L({...s,documents:[...(s.documents||[]),{id,ev,name:f.name,path,size:f.size,type:f.type,all:!!all,who:all?[]:[...who].sort((a,b)=>a-b)}].sort((a,b)=>a.ev-b.ev||a.name.localeCompare(b.name))},'Added document '+f.name+' to '+evOf(ev).name)});say(f.name+' added');return true},
   editDocument:(id,name,all,who)=>{setS(s=>L({...s,documents:(s.documents||[]).map(d=>d.id===id?{...d,name,all:!!all,who:all?[]:[...who].sort((a,b)=>a-b)}:d)},'Updated document '+name));say('Saved');return true},
@@ -369,16 +433,18 @@ function App({connected}){
   receiptFile:async x=>RECEIPTS[x.rp]||RECEIPT_CACHE[x.rp]||(RECEIPT_CACHE[x.rp]={data:await window.eventOpsRepository.receiptFile(x.rp),type:x.rt}),
   setStart:v=>{if(!v)return false;EVD.d=v;setS(s=>L({...s},'Set event start date to '+v));say('Start date saved');return true},
   setDays:n=>{n=Math.floor(+n);if(!(n>=1&&n<=14)){say('Enter 1 to 14 days');return false}if(n===DAYS.length){say('Already '+n+' days');return false}const bad=SESS.find(s=>s.d>=n);if(bad){say('Move or delete activities on '+DAYS[bad.d]+' first');return false}const was=DAYS.length;fillDays(EVD.d,n);setS(s=>L({...s},'Changed event length from '+was+' to '+n+' days'));say('Event is now '+n+' days');return true}};
- Object.keys(A).forEach(k=>{if(['dismiss','calAdd','calSkip','switchEv','clockOut','clockIn','receiptFile','documentFile'].includes(k))return;const f=A[k];A[k]=(...a)=>{snap();const r=f(...a);if(r===false)H.pop();return r}});
+ Object.keys(A).forEach(k=>{if(['dismiss','ackReminder','calAdd','calSkip','switchEv','clockOut','clockIn','receiptFile','documentFile'].includes(k))return;const f=A[k];A[k]=(...a)=>{snap();const r=f(...a);if(r===false)H.pop();return r}});
  A.undo=()=>{const h=H.pop();if(!h)return;EMPS.length=0;EMPS.push(...h.emps);ROOMS.length=0;ROOMS.push(...h.rooms);Object.keys(ROOM_ACK).forEach(k=>delete ROOM_ACK[k]);Object.assign(ROOM_ACK,h.roomAck);SESS.length=0;SESS.push(...h.sess);Object.keys(SM).forEach(k=>delete SM[k]);SESS.forEach(o=>{SM[o.id]=o});EVS.length=0;EVS.push(...h.evs);CUR.id=h.cur;FP.length=0;FP.push(...h.fp);INV.length=0;INV.push(...h.inv);syncEv();setS(Lg(h.s,'Undid: '+h.label));say('Undid: '+h.label)};
  if(connected)Object.keys(A).forEach(k=>{
   if(k==='switchEv'||k==='receiptFile'||k==='documentFile')return;
   A[k]=async(...args)=>{
    const options=args.at(-1);
    const expectedRevision=k.startsWith('edit')&&options&&typeof options==='object'&&Object.hasOwn(options,'expectedRevision')?args.pop().expectedRevision:undefined;
+   const info=(k==='addSession'||k==='editSession')&&isInfo(args.at(-1))?args.pop():null;
    // Older databases take the original argument lists, without the acknowledgment setting.
    if(!ACK_SUPPORT.on&&({addRoom:2,editRoom:3,addSession:7,editSession:8})[k]===args.length)args.pop();
    if(k==='addSession'||k==='addBreak')args.push(CUR.id);
+   if(info&&INFO_SUPPORT.on)args.push(info);
    return connected.command(k,args,expectedRevision);
   };
  });
@@ -408,6 +474,18 @@ function App({connected}){
    if(!ok){delete DOC_CACHE[path];repo.documentRemove(path).catch(()=>{});return false}say(f.name+' added');return true};
   A.editDocument=async(id,name,all,who)=>{const ok=await cmd('editDocument',[id,name,!!all,all?[]:[...who]]);if(ok)say('Saved');return ok};
   A.delDocument=async id=>{const d=(S.documents||[]).find(x=>x.id===id),ok=await cmd('delDocument',[id]);if(ok&&d){delete DOC_CACHE[d.path];repo.documentRemove(d.path).catch(()=>{});say('Document deleted')}return ok};
+  // Itinerary bookings: upload the receipt (two copies when a flight makes both Airfare and Baggage expenses), then save.
+  const travelSave=k=>async(ev,who,o,file)=>{const paths=[];
+   if(file){const two=k==='saveFlight'&&o.addExpense&&!['points','event'].includes(o.paid)&&Number(o.cost)>0&&Number(o.bags)>0,n=two?2:1;
+    try{for(let i=0;i<n;i++){const p=who+'/'+uuid()+'.'+RECEIPT_TYPES[file.type];await repo.receiptUpload(p,file.data,file.type);paths.push(p)}}catch(e){say('Receipt upload failed: '+(e&&e.message||'try again'));paths.forEach(p=>repo.receiptRemove(p).catch(()=>{}));return false}
+    paths.forEach(p=>{RECEIPT_CACHE[p]={data:file.data,type:file.type}});o={...o,rp:paths[0],rt:file.type,...(paths[1]?{rp2:paths[1]}:{})}}
+   const ok=await cmd(k,[ev,who,o]);if(!ok)paths.forEach(p=>{delete RECEIPT_CACHE[p];repo.receiptRemove(p).catch(()=>{})});else say(k==='saveFlight'?'Flight saved':'Hotel saved');return ok};
+  A.saveFlight=travelSave('saveFlight');A.saveHotel=travelSave('saveHotel');
+  A.setBranding=async(o,icons,reset)=>{const old=getBrand().icon;let id;
+   if(icons){id=uuid();try{for(const [k,f] of Object.entries(ICON_FILES))await repo.appIconUpload(id+'/'+f+'.png',icons[k])}catch(e){say('Icon upload failed: '+(e&&e.message||'try again'));repo.appIconRemove(Object.values(ICON_FILES).map(f=>id+'/'+f+'.png')).catch(()=>{});return false}}
+   const ok=await cmd('setBranding',[{...o,...(icons?{icon:id}:reset?{icon:null}:{})}]);
+   if(!ok){if(id)repo.appIconRemove(Object.values(ICON_FILES).map(f=>id+'/'+f+'.png')).catch(()=>{});return false}
+   if(old&&(icons||reset))repo.appIconRemove(Object.values(ICON_FILES).map(f=>old+'/'+f+'.png')).catch(()=>{});say('App settings saved');return true};
   A.setEventSplash=async(ev,img)=>{const old=evOf(ev)?.splash;let path=null;
    if(img){path=ev+'/splash-'+uuid()+({'image/webp':'.webp','image/jpeg':'.jpg'}[img.type]||'.png');try{await repo.logoUpload(path,img.data,img.type)}catch(e){say('Splash upload failed: '+(e&&e.message||'try again'));return false}LOGO_CACHE[path]=img.data}
    const ok=await cmd('setEventSplash',img?[ev,path,img.type]:[ev,null]);
@@ -436,7 +514,7 @@ function hydrate(data){
  data.activities.forEach(s=>{s.q=data.actAck&&Object.hasOwn(data.actAck,s.id)?data.actAck[s.id]:null});
  SESS.splice(0,SESS.length,...data.activities);Object.keys(SM).forEach(k=>delete SM[k]);SESS.forEach(s=>{SM[s.id]=s});
  FP.length=0;INV.length=0;H.length=0;
- PUSH_SUPPORT.on=!!data.push;LOGO_SUPPORT.on=data.logos===true;SPLASH_SUPPORT.on=data.splashes===true;FLOOR_SUPPORT.on=Array.isArray(data.floorplans);if(FLOOR_SUPPORT.on)FP.push(...data.floorplans.map(f=>({id:f.id,ev:f.ev,name:f.name,size:f.size,path:f.path})));
+ PUSH_SUPPORT.on=!!data.push;INFO_SUPPORT.on=data.activityInfo===true;EVENT_INFO_SUPPORT.on=data.eventInfo===true;BRAND_SUPPORT.on=!!data.branding;ITIN_SUPPORT.on=data.itineraries===true;TRAVEL_INFO_SUPPORT.on=data.travelInfo===true;REMINDER_SUPPORT.on=Array.isArray(data.reminders);LOGO_SUPPORT.on=data.logos===true;SPLASH_SUPPORT.on=data.splashes===true;FLOOR_SUPPORT.on=Array.isArray(data.floorplans);if(FLOOR_SUPPORT.on)FP.push(...data.floorplans.map(f=>({id:f.id,ev:f.ev,name:f.name,size:f.size,path:f.path})));
  if(EVS.length){if(!evOf(CUR.id))CUR.id=EVS[0].id;syncEv()}
 }
 const Root=CONNECTED?createConnection(React,html,window.eventOpsRepository,App,hydrate):App;

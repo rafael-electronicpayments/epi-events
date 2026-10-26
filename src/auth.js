@@ -1,6 +1,6 @@
 import React from 'react';
 import htm from 'htm';
-import { Icon, IconButton } from './ui.js';
+import { Icon, IconButton, BrandTitle } from './ui.js';
 
 const html = htm.bind(React.createElement);
 export function AuthScreen({ repository, recovery = false, onRecovered, onSignedIn, connectionError = '' }) {
@@ -30,7 +30,7 @@ export function AuthScreen({ repository, recovery = false, onRecovered, onSigned
     } finally { setBusy(false); }
   };
   return html`<main className="auth-screen"><section className="auth-panel" aria-labelledby="auth-title">
-    <div className="auth-brand"><span className="brand-mark">I</span><h1>Impact Event Ops</h1>${repository.testLoginsEnabled && html`<span className="pill">Staging</span>`}</div>
+    <div className="auth-brand"><${BrandTitle}/>${repository.testLoginsEnabled && html`<span className="pill">Staging</span>`}</div>
     <h2 id="auth-title">${recovery ? 'Set new password' : forgot ? 'Reset password' : 'Sign in'}</h2>
     <form onSubmit=${submit}>
       ${!recovery && html`<label>Email address<input type="email" autoComplete="username" required value=${email} disabled=${busy} onChange=${e => setEmail(e.target.value)}/></label>`}

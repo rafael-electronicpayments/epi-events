@@ -1,4 +1,5 @@
 import { AppHeader } from './ui.js';
+import { setBrand, getBrand } from './branding.js';
 import { AuthScreen } from './auth.js';
 
 export function createConnection(React, html, repository, App, hydrate) {
@@ -20,6 +21,7 @@ export function createConnection(React, html, repository, App, hydrate) {
     const accept = data => {
       // A late polling response must never undo a newer committed write.
       if (current.current && data.revision < current.current.revision) return;
+      if (data.branding) setBrand(data.branding);
       hydrate(data);
       current.current = data;
       setSnapshot(data);
@@ -77,7 +79,7 @@ export function createConnection(React, html, repository, App, hydrate) {
     const signOut = async () => {
       try { await repository.signOut(); } catch (e) { setError(e.message); }
     };
-    if (session === undefined) return html`<main className="wrap m"><h1>Impact Event Ops</h1><p role="status">Connecting...</p></main>`;
+    if (session === undefined) return html`<main className="wrap m"><h1>${getBrand().name}</h1><p role="status">Connecting...</p></main>`;
     if (!session || recovery) return html`<${AuthScreen} repository=${repository} recovery=${!!session && recovery} onRecovered=${() => setRecovery(false)} onSignedIn=${() => setSplash(true)} connectionError=${error}/>`;
     const banner = html`<${AppHeader} email=${session.user.email} role=${snapshot?.role||'admin'} busy=${busy} onRefresh=${refresh} onSignOut=${signOut} onChangePassword=${repository.changePassword}/>${error&&html`<p className="app-error connection-error" role="alert">${error}</p>`}`;
     if (!snapshot) return html`<main>${banner}${!error && html`<p className="wrap" role="status">Loading...</p>`}</main>`;

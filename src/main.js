@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import './standalone-shim.js';
 import { createRepository } from './repository.js';
+import { setBrand, setBrandBase, useLiveManifest } from './branding.js';
 
 const url = import.meta.env.VITE_SUPABASE_URL;
 const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -18,5 +19,11 @@ if (Boolean(url) !== Boolean(key)) {
   }) : null;
   // The service worker shows push notifications; it does not cache the app.
   if (url && key && 'serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+  // App name, tagline, and icon from App settings, before sign-in too.
+  if (url && key) {
+    setBrandBase(url);
+    window.eventOpsRepository.branding().then(setBrand).catch(() => {});
+    if (!local) useLiveManifest();
+  }
   await import('./app.js');
 }
