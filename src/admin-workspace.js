@@ -2,6 +2,7 @@ import React from 'react';
 import htm from 'htm';
 import { Icon, IconButton, Modal } from './ui.js';
 import { BulkTestLogins, TestLoginPanel } from './test-logins.js';
+import { BulkLogins, LoginPanel } from './logins.js';
 import { readSpreadsheet, planImport } from './people-import.js';
 import { DeliveryLimits } from './push.js';
 import { openStaffList } from './staff-list.js';
@@ -133,7 +134,7 @@ export function createAdminWorkspace(m,components){
     ${list.length?table([{text:'',className:'setup-actions'},{text:'Person'},{text:'Type'},{text:'Time'},{text:'Status'}],list.map(b=>html`<tr key=${b.id}><td className="setup-actions">${actions('Edit '+who(b.e)+' '+m.BREAK[b.k][0].toLowerCase(),()=>onEdit(b),'Delete '+who(b.e)+' '+m.BREAK[b.k][0].toLowerCase(),()=>onRemove(b))}</td><td><b>${who(b.e)}</b><span className="cell-secondary">${people[b.e].role||''}</span></td><td>${m.BREAK[b.k][0]}</td><td>${span(b)}</td><td>${statusOf(b)}</td></tr>`)):html`<div className="empty-state"><${Icon} name="clock" size=${28}/><h3>No lunches or breaks scheduled</h3><button className="btn" onClick=${onAdd}><${Icon} name="plus"/>Add lunch or break</button></div>`}
    </section></div>`;
  }
- function Editor({editor,A,error,onClose,testLogins}){
+ function Editor({editor,A,error,onClose,testLogins,logins}){
   const [draft,setDraft]=useState(editor.draft),[failed,setFailed]=useState(false);
   const editing=editor.id!=null,version={expectedRevision:editor.revision};
   const set=key=>e=>setDraft(d=>({...d,[key]:e.target.type==='checkbox'?e.target.checked:e.target.value}));
@@ -190,13 +191,14 @@ export function createAdminWorkspace(m,components){
      <label className="chk"><input type="checkbox" checked=${draft.req} onChange=${set('req')}/>Requires acknowledgment and check-in</label>
      <p className="mute ack-hint">Default for this room's activities. Each activity can override it.</p>`}
    </div>`}
+   ${!editor.remove&&editing&&editor.type==='person'&&logins&&html`<${LoginPanel} personId=${editor.id} name=${editor.draft.name} api=${logins} dirty=${draft.email.trim().toLowerCase()!==editor.draft.email||draft.type!==editor.draft.type}/>`}
    ${!editor.remove&&editing&&editor.type==='person'&&testLogins&&!!editor.draft.email&&html`<${TestLoginPanel} personId=${editor.id} api=${testLogins} dirty=${draft.email.trim().toLowerCase()!==editor.draft.email||draft.type!==editor.draft.type}/>`}
    ${(failed||error)&&html`<p className="connection-error editor-error" role="alert">${error||'Could not save. Check the values and try again.'}</p>`}
    <div className="dialog-actions"><button type="button" className="btn ghost" onClick=${onClose}>Cancel</button><button type="submit" className=${'btn '+(editor.remove?'danger':'')}>${editor.remove?'Confirm delete':editing?'Save changes':editor.type==='person'?'Add person':editor.type==='event'?'Create event':editor.type==='room'?'Add room':'Create activity'}</button></div>
   </form><//>`;
  }
 
- return function AdminWorkspace({S,A,me=null,error='',testLogins,push=null}){
+ return function AdminWorkspace({S,A,me=null,error='',testLogins,logins,push=null}){
   const [view,setView]=useState('schedule'),[day,setDay]=useState(0),[mode,setMode]=useState('list'),[filter,setFilter]=useState('all');
   const [logoBusy,setLogoBusy]=useState(null),[logoMsg,setLogoMsg]=useState('');
   const logoOn=!!(m.logoSupport&&m.logoSupport.on),splashOn=!!(m.splashSupport&&m.splashSupport.on),[preview,setPreview]=useState(null);
@@ -247,7 +249,7 @@ export function createAdminWorkspace(m,components){
    ${view==='people'&&html`<div className="heading-actions">${pushOn&&html`<button className="btn ghost" onClick=${()=>setLimits(true)}><${Icon} name="bell"/>Delivery limits</button>`}<button className="btn ghost" onClick=${()=>setStaffPdf(true)}><${Icon} name="print"/>Export PDF</button><button className="btn ghost" onClick=${()=>setImporting(true)}><${Icon} name="upload"/>Import from Excel</button><button className="btn" onClick=${()=>open('person')}><${Icon} name="plus"/>Add person</button></div>`}
    ${view==='setup'&&html`<button className="btn" onClick=${()=>open(tab==='events'?'event':tab==='rooms'?'room':'activity')} disabled=${tab==='activities'&&!rooms.length}><${Icon} name="plus"/>${tab==='events'?'Add event':tab==='rooms'?'Add room':'New activity'}</button>`}
   </div>
-  ${view==='people'&&testLogins&&html`<${BulkTestLogins} api=${testLogins}/>`}
+  ${view==='people'&&testLogins&&html`<${BulkTestLogins} api=${testLogins}/>`}${view==='people'&&logins&&html`<${BulkLogins} api=${logins} people=${people.filter(p=>p&&!p.gone)}/>`}
   ${['schedule','coverage'].includes(view)&&html`
    <div className="summary-strip" aria-label="Daily schedule status">
     <button aria-pressed=${filter==='all'} onClick=${()=>setFilter('all')}><b>${today.length}</b>activities today</button>
@@ -281,6 +283,6 @@ export function createAdminWorkspace(m,components){
    return html`<tr key=${i}><td>${Number.isNaN(date.valueOf())?entry.t:date.toLocaleString()}</td><td>${names[entry.x]||entry.x}</td><td>${description}</td></tr>`;
   }))}
   ${view==='breaks'&&exportMsg&&html`<p className="mute export-msg" role="status">${exportMsg}</p>`}${view==='breaks'&&m.breaksOn(S)&&html`<${BreaksPage} S=${S} table=${table} actions=${actions} dayIndex=${dayIndex} setDay=${setDay} onAdd=${()=>setBreakEd({})} onEdit=${b=>setBreakEd(b)} onRemove=${b=>remove('break',b.id,(people[b.e]?.name||'')+' '+m.BREAK[b.k][0].toLowerCase(),'They will be notified that this '+m.BREAK[b.k][0].toLowerCase()+' was cancelled.')}/>`}${view==='mine'&&me!=null&&html`<${Staff} S=${S} A=${A} me=${me} embedded=${true} push=${push}/>`}${view==='expenses'&&Array.isArray(S.expenses)&&html`<${ExpensesAdmin} S=${S} A=${A} table=${table} actions=${actions} onReport=${m.hrPdf}/>`}${view==='appsettings'&&m.brandSupport.on&&html`<${AppSettings} A=${A}/>`}${view==='itineraries'&&m.itinSupport.on&&html`<${ItinerariesAdmin} S=${S} A=${A} me=${me}/>`}${view==='messages'&&m.remindersSupport.on&&html`<${MessagesAdmin} S=${S} A=${A}/>`}${view==='travelinfo'&&m.travelInfoSupport.on&&html`<${TravelInfoAdmin} key=${'ti'+current.id} S=${S} A=${A}/>`}${view==='documents'&&Array.isArray(S.documents)&&html`<${DocumentsAdmin} S=${S} A=${A} adding=${addingDoc} onAdded=${()=>setAddingDoc(false)}/>`}${view==='plans'&&html`<${Floorplans} A=${A}/>`}${view==='incoming'&&html`<${Incoming} A=${A}/>`}
-  </main>${breakEd&&html`<${BreakEditor} key=${breakEd.id??'new'} editor=${breakEd} A=${A} S=${S} dayIndex=${dayIndex} onClose=${()=>setBreakEd(null)}/>`}${staffPdf&&html`<${StaffExport} S=${S} shown=${shownPeople} filtered=${type!=='all'||!!query.trim()} onClose=${()=>setStaffPdf(false)}/>`}${importing&&html`<${ImportPeople} A=${A} error=${error} onClose=${()=>setImporting(false)}/>`}${limits&&html`<${DeliveryLimits} onClose=${()=>setLimits(false)}/>`}${editor&&html`<${Editor} key=${editor.type+'-'+editor.id} editor=${editor} A=${A} error=${error} testLogins=${testLogins} onClose=${()=>setEditor(null)}/>`}</div>`;
+  </main>${breakEd&&html`<${BreakEditor} key=${breakEd.id??'new'} editor=${breakEd} A=${A} S=${S} dayIndex=${dayIndex} onClose=${()=>setBreakEd(null)}/>`}${staffPdf&&html`<${StaffExport} S=${S} shown=${shownPeople} filtered=${type!=='all'||!!query.trim()} onClose=${()=>setStaffPdf(false)}/>`}${importing&&html`<${ImportPeople} A=${A} error=${error} onClose=${()=>setImporting(false)}/>`}${limits&&html`<${DeliveryLimits} onClose=${()=>setLimits(false)}/>`}${editor&&html`<${Editor} key=${editor.type+'-'+editor.id} editor=${editor} A=${A} error=${error} testLogins=${testLogins} logins=${logins} onClose=${()=>setEditor(null)}/>`}</div>`;
  };
 }
