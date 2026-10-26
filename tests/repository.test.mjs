@@ -27,3 +27,23 @@ test('signed-in password change confirms the current password before setting the
   assert.deepEqual(calls.at(-2), ['check', { email: 'person@example.test', password: 'right-current-pass' }]);
   assert.deepEqual(calls.at(-1), ['update', { password: 'a-brand-new-password' }]);
 });
+
+test('a request refused for an expired sign-in token renews the session and is sent once more', async () => {
+  let rpcCalls = 0, refreshes = 0, fail = 1;
+  const client = {
+    auth: { refreshSession: async () => { refreshes++; return { data: { session: { access_token: 'new' } }, error: null }; } },
+    rpc: async name => { rpcCalls++; return fail-- > 0 ? { data: null, error: { code: 'PGRST301', message: 'JWT expired' } } : { data: { revision: 7, name }, error: null }; }
+  };
+  const repository = createRepository(client);
+  assert.deepEqual(await repository.load(), { revision: 7, name: 'ops_snapshot' });
+  assert.deepEqual([rpcCalls, refreshes], [2, 1]);
+  // Other errors are not retried.
+  client.rpc = async () => { rpcCalls++; return { data: null, error: { code: '42501', message: 'Access denied.' } }; };
+  await assert.rejects(repository.command('ack', [1], 3), e => e.code === '42501');
+  assert.deepEqual([rpcCalls, refreshes], [3, 1]);
+  // If renewing fails, the original error stands (no second send).
+  client.rpc = async () => { rpcCalls++; return { data: null, error: { code: 'PGRST301', message: 'JWT expired' } }; };
+  client.auth.refreshSession = async () => { refreshes++; return { data: { session: null }, error: new Error('offline') }; };
+  await assert.rejects(repository.load(), e => e.code === 'PGRST301');
+  assert.deepEqual([rpcCalls, refreshes], [4, 2]);
+});

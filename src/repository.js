@@ -4,6 +4,19 @@ export function createRepository(client, { testLoginsEnabled = false, testLoginE
     if (error) throw error;
     return data;
   };
+  // A request refused because the sign-in token expired (a device waking from sleep or coming back online after
+  // more than an hour): renew the session and send it once more. Refused requests never ran, so this is safe for writes.
+  const expired = e => !!e && (e.code === 'PGRST301' || e.code === 'PGRST303' || e.status === 401 || String(e.statusCode) === '401'
+    || /jwt expired|token is expired|invalid jwt/i.test(e.message || ''));
+  const call = async make => {
+    let { data, error } = await make();
+    if (expired(error)) {
+      const renewed = await client.auth.refreshSession().catch(() => ({ error: true }));
+      if (!renewed.error && renewed.data?.session) ({ data, error } = await make());
+    }
+    if (error) throw error;
+    return data;
+  };
   return {
     testLoginsEnabled,
     loginsEnabled,
@@ -60,37 +73,37 @@ export function createRepository(client, { testLoginsEnabled = false, testLoginE
       await result(client.auth.refreshSession());
     },
     signOut: () => result(client.auth.signOut()),
-    load: () => result(client.rpc('ops_snapshot')),
+    load: () => call(() => client.rpc('ops_snapshot')),
     // App settings branding (public: shown before sign-in). Older databases don't have it; callers fall back.
-    branding: () => result(client.rpc('app_branding')),
-    appIconUpload: (path, blob) => result(client.storage.from('app-icons').upload(path, blob, { contentType: 'image/png', upsert: false })),
-    appIconRemove: paths => result(client.storage.from('app-icons').remove(paths)),
+    branding: () => call(() => client.rpc('app_branding')),
+    appIconUpload: (path, blob) => call(() => client.storage.from('app-icons').upload(path, blob, { contentType: 'image/png', upsert: false })),
+    appIconRemove: paths => call(() => client.storage.from('app-icons').remove(paths)),
     // Push notifications: each person registers or removes only their own devices.
     pushKey,
-    pushRegister: (subscription, device) => result(client.rpc('push_register', { subscription, device })),
-    pushUnregister: endpoint => result(client.rpc('push_unregister', { endpoint })),
+    pushRegister: (subscription, device) => call(() => client.rpc('push_register', { subscription, device })),
+    pushUnregister: endpoint => call(() => client.rpc('push_unregister', { endpoint })),
     // Floorplan PDFs live in the private 'floorplans' Storage bucket; access is enforced by Storage policies.
-    floorplanUpload: (path, data) => result(client.storage.from('floorplans').upload(path, new Blob([data], { type: 'application/pdf' }), { contentType: 'application/pdf', upsert: false })),
-    floorplanFile: async path => new Uint8Array(await (await result(client.storage.from('floorplans').download(path))).arrayBuffer()),
-    floorplanRemove: path => result(client.storage.from('floorplans').remove([path])),
+    floorplanUpload: (path, data) => call(() => client.storage.from('floorplans').upload(path, new Blob([data], { type: 'application/pdf' }), { contentType: 'application/pdf', upsert: false })),
+    floorplanFile: async path => new Uint8Array(await (await call(() => client.storage.from('floorplans').download(path))).arrayBuffer()),
+    floorplanRemove: path => call(() => client.storage.from('floorplans').remove([path])),
     // Event logos live in the private 'event-logos' bucket under '<event id>/'.
-    logoUpload: (path, data, type) => result(client.storage.from('event-logos').upload(path, new Blob([data], { type }), { contentType: type, upsert: false })),
-    logoFile: async path => new Uint8Array(await (await result(client.storage.from('event-logos').download(path))).arrayBuffer()),
-    logoRemove: path => result(client.storage.from('event-logos').remove([path])),
+    logoUpload: (path, data, type) => call(() => client.storage.from('event-logos').upload(path, new Blob([data], { type }), { contentType: type, upsert: false })),
+    logoFile: async path => new Uint8Array(await (await call(() => client.storage.from('event-logos').download(path))).arrayBuffer()),
+    logoRemove: path => call(() => client.storage.from('event-logos').remove([path])),
     // Event documents live in the private 'documents' bucket under '<event id>/'; viewing is limited by Storage policies.
-    documentUpload: (path, data, type) => result(client.storage.from('documents').upload(path, new Blob([data], { type }), { contentType: type, upsert: false })),
-    documentFile: async path => new Uint8Array(await (await result(client.storage.from('documents').download(path))).arrayBuffer()),
-    documentRemove: path => result(client.storage.from('documents').remove([path])),
+    documentUpload: (path, data, type) => call(() => client.storage.from('documents').upload(path, new Blob([data], { type }), { contentType: type, upsert: false })),
+    documentFile: async path => new Uint8Array(await (await call(() => client.storage.from('documents').download(path))).arrayBuffer()),
+    documentRemove: path => call(() => client.storage.from('documents').remove([path])),
     // Expense receipts live in the private 'receipts' bucket under '<person id>/'.
-    receiptUpload: (path, data, type) => result(client.storage.from('receipts').upload(path, new Blob([data], { type }), { contentType: type, upsert: false })),
-    receiptFile: async path => new Uint8Array(await (await result(client.storage.from('receipts').download(path))).arrayBuffer()),
-    receiptRemove: path => result(client.storage.from('receipts').remove([path])),
+    receiptUpload: (path, data, type) => call(() => client.storage.from('receipts').upload(path, new Blob([data], { type }), { contentType: type, upsert: false })),
+    receiptFile: async path => new Uint8Array(await (await call(() => client.storage.from('receipts').download(path))).arrayBuffer()),
+    receiptRemove: path => call(() => client.storage.from('receipts').remove([path])),
     command: (action, args, revision) => action === 'addStaff' || action === 'editStaff'
-      ? result(client.rpc('ops_save_person', {
+      ? call(() => client.rpc('ops_save_person', {
         target_person_id: action === 'editStaff' ? args[0] : null,
         person: action === 'editStaff' ? args[1] : args[0],
         expected_revision: revision
       }))
-      : result(client.rpc('ops_command', { action, args, expected_revision: revision }))
+      : call(() => client.rpc('ops_command', { action, args, expected_revision: revision }))
   };
 }
