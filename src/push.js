@@ -123,7 +123,7 @@ export function PushCard({ push }) {
   let body;
   if (env.ios && !env.standalone) body = html`<b>Get notifications on this ${/iPhone|iPod/.test(navigator.userAgent) ? 'iPhone' : 'iPad'}</b>
     <p className="mute">Add Event Ops to your Home Screen first. Notifications only work from there.</p>
-    <ol className="push-steps"><li>Tap <b>Share</b> <span className="mute">(the square with an arrow)</span> in Safari.</li><li>Choose <b>Add to Home Screen</b>, then <b>Add</b>.</li>
+    <ol className="push-steps"><li>In Safari, tap the <b>•••</b> button next to the address bar, then <b>Share</b>. <span className="mute">(If you see the square-with-an-arrow Share button, tap that instead.)</span></li><li>Scroll down and choose <b>Add to Home Screen</b>. Leave <b>Open as Web App</b> on, then tap <b>Add</b>.</li>
     <li>Open <b>Event Ops</b> from your Home Screen and sign in again.</li><li>Tap <b>Turn on notifications</b> there.</li></ol>`;
   else if (state === 'unsupported') body = html`<b>Notifications aren't available in this browser</b>
     <p className="mute">Use Chrome, Edge, Firefox, or Safari. If you opened this from an email or social app, open it in your regular browser instead.</p>`;
