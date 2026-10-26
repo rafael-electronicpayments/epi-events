@@ -4,10 +4,11 @@
 import { RECEIPT_MAX, receiptType, shrinkPhoto, sizeText } from './expenses.js';
 import { VIEWS, openReport, downloadReportXlsx } from './itinerary-report.js';
 import { readSpreadsheet, planRooming, rowEffect, matchPerson } from './rooming-import.js';
+import { planFlights, flightEffect } from './flight-import.js';
 
 export const CARRIERS = ['American Airlines', 'Delta Air Lines', 'United Airlines', 'Southwest Airlines', 'Alaska Airlines', 'JetBlue Airways',
   'Spirit Airlines', 'Frontier Airlines', 'Hawaiian Airlines', 'Allegiant Air', 'Sun Country Airlines', 'Breeze Airways', 'Avelo Airlines',
-  'Air Canada', 'WestJet', 'Porter Airlines', 'Copa Airlines', 'Aeromexico', 'British Airways', 'Lufthansa'];
+  'Air Canada', 'WestJet', 'Porter Airlines', 'Copa Airlines', 'Aeromexico', 'British Airways', 'Lufthansa', 'Iberia', 'Air France', 'KLM', 'Virgin Atlantic', 'TAP Air Portugal'];
 export const TRAVEL_PAYS = [['personal_card', 'Personal card'], ['corporate_amex', 'Company Amex'], ['points', 'Points'], ['event', 'Event / master bill']];
 export const TRANSFERS = [['car', 'Car service'], ['shuttle', 'Group shuttle'], ['own', 'Own arrangement']];
 const label = (list, k) => (list.find(([v]) => v === k) || [k, k])[1];
@@ -66,6 +67,7 @@ export function createItineraries({ React, html, Modal, Icon, people, events, ac
   const nameOf = e => people[e]?.name || 'Unknown person';
   const pickOn = S => !!S.travelInfo || demo; // database with the pickup-time migration
   const compOn = S => !!S.companions || demo; // database with the accompanying-person migration
+  const flightImportOn = S => !!S.flightImport || demo; // database with the flight import migration
   const isCopy = h => !!h && h.primary === false; // the shared copy of someone else's reservation
   // "Thu, Nov 12, 1:00 PM AST", or why there's none yet.
   const pickupLine = (h, tz) => h.pickup ? whenText(h.pickup, tz) : 'set once the departing flight is entered';
@@ -140,14 +142,14 @@ export function createItineraries({ React, html, Modal, Icon, people, events, ac
       <p className="mute">${e0.name}. Times are local to the event (${e0.tz || 'America/New_York'}).</p>
       <fieldset className="travel-leg"><legend>Arriving</legend><div className="editor-fields">
         <${CarrierField} text="Carrier" value=${d.inCarrier} onChange=${v => setIn({ inCarrier: v })}/>
-        ${field('Flight #', html`<input maxLength="12" value=${d.inFlight} placeholder="B6 1234" onChange=${e => set({ inFlight: e.target.value })}/>`)}
+        ${field('Flight #', html`<input maxLength="60" value=${d.inFlight} placeholder="B6 1234" onChange=${e => set({ inFlight: e.target.value })}/>`)}
         ${field('From (airport)', html`<input maxLength="3" value=${d.inFrom} placeholder="BOS" onChange=${code('inFrom')}/>`)}
         ${field('To (airport)', html`<input maxLength="3" value=${d.inTo} placeholder="SJU" onChange=${code('inTo')}/>`)}
         ${field('Arrival date and time', html`<input type="datetime-local" value=${d.inArrive} onChange=${e => set({ inArrive: e.target.value })}/>`)}
       </div></fieldset>
       <fieldset className="travel-leg"><legend>Departing</legend><div className="editor-fields">
         <${CarrierField} text="Carrier" value=${d.outCarrier} onChange=${v => { setOutTouched(true); set({ outCarrier: v }); }}/>
-        ${field('Flight #', html`<input maxLength="12" value=${d.outFlight} placeholder="B6 1235" onChange=${e => set({ outFlight: e.target.value })}/>`)}
+        ${field('Flight #', html`<input maxLength="60" value=${d.outFlight} placeholder="B6 1235" onChange=${e => set({ outFlight: e.target.value })}/>`)}
         ${field('From (airport)', html`<input maxLength="3" value=${d.outFrom} placeholder="SJU" onChange=${e => { setOutTouched(true); code('outFrom')(e); }}/>`)}
         ${field('To (airport)', html`<input maxLength="3" value=${d.outTo} placeholder="BOS" onChange=${e => { setOutTouched(true); code('outTo')(e); }}/>`)}
         ${field('Departure date and time', html`<input type="datetime-local" value=${d.outDepart} onChange=${e => set({ outDepart: e.target.value })}/>`)}
@@ -331,9 +333,47 @@ export function createItineraries({ React, html, Modal, Icon, people, events, ac
     </div><//>`;
   }
 
+  // Flights manifest: choose the file, review each row's match and flights, then save in one step.
+  function FlightImport({ S, A, onClose }) {
+    const ev = current.id, e0 = evOf(ev), flights = (S.flights || []).filter(f => f.ev === ev), hotels = (S.hotels || []).filter(h => h.ev === ev);
+    const [items, setItems] = useState(null), [file, setFile] = useState(''), [err, setErr] = useState(''), [busy, setBusy] = useState(false), [done, setDone] = useState('');
+    const pool = active(), year = Number((e0.start || String(new Date().getFullYear())).slice(0, 4));
+    const pick = async e => { const f = e.target.files[0]; e.target.value = ''; if (!f) return; setErr(''); setDone('');
+      try { const { rows } = await readSpreadsheet(f); setItems(planFlights(rows, people, year)); setFile(f.name); } catch (ex) { setItems(null); setErr(ex.message || 'Could not read the file.'); } };
+    const setItem = (i, patch) => setItems(v => v.map((x, j) => j === i ? { ...x, ...patch } : x));
+    const list = items || [], count = {}; list.forEach(x => { if (x.e != null) count[x.e] = (count[x.e] || 0) + 1; });
+    const fx = list.map(x => x.e != null && count[x.e] > 1 ? { kind: 'error', text: 'Same person on two rows' } : flightEffect(x, flights, hotels));
+    const sendable = list.filter((x, i) => ['new', 'update', 'same'].includes(fx[i].kind)), tally = k => fx.filter(f => f.kind === k).length, bad = fx.some(f => f.kind === 'error');
+    const save = async () => { setBusy(true); setErr('');
+      const rows = sendable.map(x => ({ e: x.e, inCarrier: x.inCarrier, inFlight: x.inFlight, inArrive: x.inArrive, outCarrier: x.outCarrier, outFlight: x.outFlight, outDepart: x.outDepart, intl: x.intl, vip: x.vip }));
+      const r = await A.importFlights(ev, rows); setBusy(false);
+      if (r !== false) setDone(tally('new') + ' added, ' + tally('update') + ' updated. Travelers were notified.'); else setErr('Could not import. Check the rows and try again.'); };
+    const leg = (f, t, tz) => f || t ? html`<span>${f || '–'}</span><span className="cell-secondary">${t ? whenText(t, tz) : 'No time'}</span>` : html`<span className="mute">–</span>`;
+    return html`<${Modal} title="Import flights" onClose=${busy ? () => {} : onClose}><div className="rooming-import">
+      <p className="mute">For ${e0.name}. Choose the flights manifest (Excel or CSV). It's read on this device; nothing is saved until you review the rows and choose Import. Rows match People by email, then by name. Dates without a year use ${year}; times are local to the event. New flights are booked by the traveler, paid by personal card; existing flights get the new flights and times and keep their costs and receipts. VIP / solo rider rows get car service both ways on their hotel booking.</p>
+      <label className="btn ghost file-pick"><${Icon} name="upload"/>${items ? 'Choose a different file' : 'Choose file'}<input type="file" accept=".xlsx,.csv" onChange=${pick}/></label>
+      ${err && html`<p className="connection-error" role="alert">${err}</p>`}
+      ${items && !done && html`<p className="import-summary"><b>${file}</b>: ${list.length} rows · ${tally('new')} new · ${tally('update')} updates · ${tally('same')} no change · ${tally('skip')} need a person${bad ? ' · ' + tally('error') + ' to fix' : ''} · ${list.filter(x => x.warns.length).length} to check</p>
+        <div className="data-surface rooming-table"><table className="data-table"><thead><tr><th scope="col">On the list</th><th scope="col">Person in People</th><th scope="col">Arriving</th><th scope="col">Departing</th><th scope="col">Result</th></tr></thead><tbody>
+        ${list.map((x, i) => html`<tr key=${x.line} className=${'imp-' + fx[i].kind}>
+          <td><b>${x.name}</b><span className="cell-secondary">${x.email || ''}${x.vip ? ' · VIP / solo rider' : ''}</span></td>
+          <td><select aria-label=${'Person for ' + x.name} value=${x.e ?? ''} onChange=${e => setItem(i, { e: e.target.value === '' ? null : Number(e.target.value), how: 'chosen' })}>
+            <option value="">Skip this row</option>${x.others.length > 0 && html`<optgroup label="Same last name">${x.others.map(p => html`<option key=${'o' + p.id} value=${p.id}>${p.name}</option>`)}</optgroup>`}
+            <optgroup label="Everyone">${pool.map(p => html`<option key=${p.id} value=${p.id}>${p.name}</option>`)}</optgroup></select>
+            ${x.e != null && x.how === 'close' && html`<span className="cell-secondary warn-text">Close name match: check it's the right person</span>`}${x.e == null && html`<span className="cell-secondary warn-text">${x.others.length ? 'Not sure: same last name as ' + x.others.map(p => p.name).join(', ') : 'Not found in People'}</span>`}</td>
+          <td>${leg(x.inFlight, x.inArrive, e0.tz)}</td><td>${leg(x.outFlight, x.outDepart, e0.tz)}${x.intl && html`<span className="cell-secondary">International (4-hour pickup)</span>`}</td>
+          <td>${fx[i].text}${x.warns.map(w => html`<span key=${w} className="cell-secondary warn-text">${w}</span>`)}</td></tr>`)}
+        </tbody></table></div>`}
+      ${done && html`<p className="mute" role="status">${done}</p>`}
+      <div className="dialog-actions"><button type="button" className="btn ghost" disabled=${busy} onClick=${onClose}>${done ? 'Close' : 'Cancel'}</button>
+        ${items && !done && html`<button type="button" className="btn" disabled=${busy || bad || !sendable.length} onClick=${save}>${busy ? 'Importing…' : 'Import ' + sendable.length + ' flight' + (sendable.length === 1 ? '' : 's')}</button>`}</div>
+      ${bad && html`<p className="connection-error" role="alert">Fix the rows marked in red (or skip them) before importing.</p>`}
+    </div><//>`;
+  }
+
   // Admin page: everyone working the event (plus anyone with a booking); optional full roster.
   function ItinerariesAdmin({ S, A, me }) {
-    const [q, setQ] = useState(''), [show, setShow] = useState('event'), [ed, setEd] = useState(null), [open, setOpen] = useState(null), [report, setReport] = useState(false), [importing, setImporting] = useState(false);
+    const [q, setQ] = useState(''), [show, setShow] = useState('event'), [ed, setEd] = useState(null), [open, setOpen] = useState(null), [report, setReport] = useState(false), [importing, setImporting] = useState(false), [importingFlights, setImportingFlights] = useState(false);
     const ev = current.id, e0 = evOf(ev), acts = new Set(activities.filter(s => s.ev === ev).map(s => s.id));
     const working = new Set((S.asg || []).filter(a => acts.has(a.s)).map(a => a.e));
     const fl = (S.flights || []).filter(x => x.ev === ev), ho = (S.hotels || []).filter(x => x.ev === ev);
@@ -346,7 +386,7 @@ export function createItineraries({ React, html, Modal, Icon, people, events, ac
       <p className="mute">${counts.f} flight${counts.f === 1 ? '' : 's'} · ${counts.h} hotel booking${counts.h === 1 ? '' : 's'} · ${counts.car} with car service · ${counts.shuttle} on the group shuttle. People can enter their own flights: <b>${e0.staffFlights ? 'yes' : 'no'}</b>, hotels: <b>${e0.staffHotels ? 'yes' : 'no'}</b> (change in Event setup).</p>
       <div className="people-toolbar"><label className="search-field"><${Icon} name="search"/><input type="search" aria-label="Search people" placeholder="Search people" value=${q} onChange=${e => setQ(e.target.value)}/></label>
         <select aria-label="Show" value=${show} onChange=${e => setShow(e.target.value)}><option value="event">Working this event</option><option value="noflight">No flight yet</option><option value="nohotel">No hotel yet</option><option value="all">Everyone in People</option></select>
-        <span className="mute">${list.length} ${list.length === 1 ? 'person' : 'people'}</span><div className="heading-actions">${compOn(S) && html`<button className="btn ghost" onClick=${() => setImporting(true)}><${Icon} name="upload"/>Import rooming list</button>`}<button className="btn ghost" onClick=${() => setReport(true)}><${Icon} name="print"/>Report</button></div></div>
+        <span className="mute">${list.length} ${list.length === 1 ? 'person' : 'people'}</span><div className="heading-actions">${flightImportOn(S) && html`<button className="btn ghost" onClick=${() => setImportingFlights(true)}><${Icon} name="upload"/>Import flights</button>`}${compOn(S) && html`<button className="btn ghost" onClick=${() => setImporting(true)}><${Icon} name="upload"/>Import rooming list</button>`}<button className="btn ghost" onClick=${() => setReport(true)}><${Icon} name="print"/>Report</button></div></div>
       <div className="data-surface"><table className="data-table travel-table"><thead><tr><th scope="col">Person</th><th scope="col">Flights</th><th scope="col">Hotel</th><th scope="col">Airport transfer</th></tr></thead><tbody>
       ${list.length ? list.map(p => { const f = fOf(p.id), h = hOf(p.id); return html`<tr key=${p.id}>
         <td><b>${p.name}</b><span className="cell-secondary">${p.role || ''}${!working.has(p.id) ? ' · not on this event' : ''}</span></td>
@@ -361,6 +401,7 @@ export function createItineraries({ React, html, Modal, Icon, people, events, ac
       </tbody></table></div>
       ${report && html`<${ReportDialog} S=${S} shown=${list} onClose=${() => setReport(false)}/>`}
       ${importing && html`<${RoomingImport} S=${S} A=${A} onClose=${() => setImporting(false)}/>`}
+      ${importingFlights && html`<${FlightImport} S=${S} A=${A} onClose=${() => setImportingFlights(false)}/>`}
       ${ed && ed.kind === 'flight' && html`<${FlightEditor} ev=${ev} who=${ed.who} booking=${ed.b} me=${me} admin=${true} A=${A} S=${S} onClose=${() => setEd(null)}/>`}
       ${ed && ed.kind === 'hotel' && html`<${HotelEditor} ev=${ev} who=${ed.who} booking=${ed.b} me=${me} admin=${true} A=${A} S=${S} onClose=${() => setEd(null)}/>`}
     </div>`;
