@@ -38,12 +38,19 @@ export function createRepository(client, { testLoginsEnabled = false, testLoginE
     // Production sign-in logins created by admins (People › Login); see server/logins.js.
     logins: async (action, body = {}) => {
       if (!loginsEnabled) throw new Error('Logins are created this way in production only.');
-      const session = (await result(client.auth.getSession())).session;
-      if (!session) throw new Error('Sign in required.');
-      const response = await fetch('/api/logins', { method: 'POST', cache: 'no-store',
-        headers: { Authorization: 'Bearer ' + session.access_token, 'Content-Type': 'application/json' },
+      const send = token => fetch('/api/logins', { method: 'POST', cache: 'no-store',
+        headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
         body: JSON.stringify({ action, ...body }) });
+      const session = (await result(client.auth.getSession())).session;
+      if (!session) throw new Error('Your sign-in has expired. Sign out, sign in again, and try once more.');
+      let response = await send(session.access_token);
+      // A tab left open for a long time can hold a stale sign-in token: refresh it and try once more.
+      if (response.status === 401) {
+        const { data: fresh } = await client.auth.refreshSession();
+        if (fresh?.session) response = await send(fresh.session.access_token);
+      }
       const data = await response.json().catch(() => ({}));
+      if (response.status === 401) throw new Error('Your sign-in has expired. Sign out, sign in again, and try once more.');
       if (!response.ok) throw new Error(data.error || 'The login request failed.');
       return data;
     },

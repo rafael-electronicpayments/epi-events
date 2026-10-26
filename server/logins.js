@@ -35,7 +35,11 @@ export function createLoginHandler({ createClient, env, password = temporaryPass
       if (!env.SUPABASE_SECRET_KEY) return reply({ error: 'Login setup is incomplete: the server key is missing.' }, 503);
       const client = createClient(url, env.SUPABASE_SECRET_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
       const { data: identity, error: authError } = await client.auth.getUser(token);
-      if (authError || !identity?.user) return reply({ error: 'Sign in required.' }, 401);
+      if (authError || !identity?.user) {
+        // Why the session was refused (status and code only, never the token), for the Vercel function logs.
+        console.error('login_auth_refused', authError?.status ?? '', authError?.code ?? authError?.name ?? 'no_user');
+        return reply({ error: 'Your sign-in has expired. Sign out, sign in again, and try once more.' }, 401);
+      }
       const actor = identity.user.id;
       const { data: me, error: meError } = await client.from('profiles').select('role').eq('user_id', actor).maybeSingle();
       if (meError || me?.role !== 'admin') return reply({ error: 'Administrator access required.' }, 403);
