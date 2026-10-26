@@ -57,8 +57,15 @@ export function createConnection(React, html, repository, App, hydrate) {
       refresh();
       const timer = setInterval(() => { if (!writing.current) refresh(); }, 10000);
       const focus = () => { if (!writing.current) refresh(); };
+      // Phones and tablets don't always fire "focus" when the app comes back from sleep or the background, or
+      // when Wi-Fi returns; reload then too (the sign-in token is renewed first if it ran out meanwhile).
+      const visible = () => { if (document.visibilityState === 'visible') focus(); };
       window.addEventListener('focus', focus);
-      return () => { clearInterval(timer); window.removeEventListener('focus', focus); };
+      window.addEventListener('online', focus);
+      window.addEventListener('pageshow', focus);
+      document.addEventListener('visibilitychange', visible);
+      return () => { clearInterval(timer); window.removeEventListener('focus', focus); window.removeEventListener('online', focus);
+        window.removeEventListener('pageshow', focus); document.removeEventListener('visibilitychange', visible); };
     }, [session?.user.id]);
     const command = async (action, args, expectedRevision) => {
       if (writing.current || !current.current) return false;
