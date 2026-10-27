@@ -11,6 +11,7 @@ import { createAppSettings } from './app-settings.js';
 import { createItineraries, pickupDefault, hasPickup } from './itineraries.js';
 import { createTravelInfo } from './travel-info.js';
 import { createReminders } from './reminders.js';
+import { createSessionSupport } from './session-support.js';
 import { getBrand, setBrand, ICON_FILES } from './branding.js';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
@@ -124,7 +125,7 @@ const ntext=(a,p)=>p+': '+SM[a.s].t+', '+SM[a.s].r+', '+span(SM[a.s])+' ('+dayDa
 let uid=100;
 const H=[];
 const seed=()=>{const asg=SEED.map((r,i)=>({id:i+1,e:r[0],s:r[1],ack:r[2],in:r[3],conf:0,tag:r[4]}));
- return {asg,log:[],breaks:[],clocks:[],expenses:[],documents:[],flights:[],hotels:[],notes:asg.filter(a=>!a.ack).map(a=>({id:++uid,e:a.e,aid:a.id,done:0,x:ntext(a,a.tag==='new'?'New assignment':'Changed assignment')}))}};
+ return {asg,log:[],breaks:[],clocks:[],expenses:[],documents:[],flights:[],hotels:[],support:[],notes:asg.filter(a=>!a.ack).map(a=>({id:++uid,e:a.e,aid:a.id,done:0,x:ntext(a,a.tag==='new'?'New assignment':'Changed assignment')}))}};
 const clash=(asg,a)=>asg.filter(x=>x.id!==a.id&&x.e===a.e&&SM[x.s].ev===SM[a.s].ev&&SM[x.s].d===SM[a.s].d&&!SM[x.s].ov&&!SM[a.s].ov&&SM[x.s].a<SM[x.s].b&&SM[a.s].a<SM[a.s].b&&SM[x.s].a<SM[a.s].b&&SM[a.s].a<SM[x.s].b).map(x=>SM[x.s]);
 const st=a=>!need(SM[a.s])?['ok','No check-in needed']:a.in||a.conf?['ok',a.conf&&!a.in?'Confirmed by coordinator':'Checked in']:a.ack?['','Acknowledged']:['warn',(a.tag==='changed'?'Changed':'New')+', needs acknowledgment'];
 const cover=(s,asg)=>{const as=asg.filter(x=>x.s===s.id),p=need(s)?as.filter(x=>x.in||x.conf).length:as.length;
@@ -302,6 +303,7 @@ function Staff({S,A,me,canFull=false,embedded=false,push=null}){
  ${ITIN_SUPPORT.on&&Array.isArray(S.flights)&&html`<${ITIN.MyTravel} S=${S} A=${A} me=${me}/>`}
  ${TRAVEL_INFO_SUPPORT.on&&ITIN_SUPPORT.on&&html`<${TINFO.TravelInfoCards} S=${S} me=${me}/>`}
  ${!embedded&&Array.isArray(S.documents)&&html`<${DOCS.DocumentList} S=${S} A=${A} me=${me}/>`}
+ ${Array.isArray(S.support)&&html`<${SUP.MySupport} S=${S} me=${me}/>`}
  <h2>Next assignment</h2>${next?html`<${Card} a=${next} cls="next"/>`:html`<p className="mute">Nothing coming up. Your admin will notify you of new assignments.</p>`}
  <h2>${full?'Full schedule':'My schedule'}</h2>
  ${canFull&&html`<div className="seg" role="group" aria-label="Schedule view" style=${{marginBottom:8}}><button aria-pressed=${!full} onClick=${()=>setView('mine')}>My schedule</button><button aria-pressed=${full} onClick=${()=>setView('full')}>Full schedule</button></div>`}
@@ -360,8 +362,9 @@ const AppSettings=createAppSettings({React,html,Icon});
 const ITIN=createItineraries({React,html,Modal,Icon,people:EMPS,events:EVS,activities:SESS,current:CUR,demo:!CONNECTED});
 const TINFO=createTravelInfo({React,html,Icon,events:EVS,current:CUR,demo:!CONNECTED});
 const REM=createReminders({React,html,Modal,Icon,people:EMPS,events:EVS,activities:SESS,current:CUR});
+const SUP=createSessionSupport({React,html,Modal,Icon,people:EMPS,events:EVS,current:CUR});
 const DOCS=createDocuments({React,html,Modal,Icon,people:EMPS,events:EVS,activities:SESS,current:CUR});
-const Admin=createAdminWorkspace({people:EMPS,events:EVS,rooms:ROOMS,activities:SESS,current:CUR,days:DAYS,daysShort:DAYS_SHORT,cover,clash,span,evEnd,evStatus,need,roomAck:ROOM_ACK,ackSupport:ACK_SUPPORT,BREAK,breaksOn,breaksDuring,openClock,lateBy,liveNow,clockTime,breakOf,todayIndex,breakExport,floorSupport:FLOOR_SUPPORT,closeSupport:CLOSE_SUPPORT,pushSupport:PUSH_SUPPORT,infoSupport:INFO_SUPPORT,eventInfoSupport:EVENT_INFO_SUPPORT,brandSupport:BRAND_SUPPORT,itinSupport:ITIN_SUPPORT,travelInfoSupport:TRAVEL_INFO_SUPPORT,remindersSupport:REMINDER_SUPPORT,scheduleImportSupport:SCHEDULE_IMPORT_SUPPORT,runShowSupport:RUN_SHOW_SUPPORT,overlapSupport:OVERLAP_SUPPORT,staffText,logoSupport:LOGO_SUPPORT,splashSupport:SPLASH_SUPPORT,prepLogo,prepSplash,imageUrl,hrPdf:(list,scope)=>{const url=URL.createObjectURL(new Blob([hrReport({list,people:EMPS,eventName:evOf(CUR.id).name,scope,autoPrint:true})],{type:'text/html'})),w=window.open(url,'_blank');setTimeout(()=>URL.revokeObjectURL(url),60000);return w?'':'Your browser blocked the report window. Allow pop-ups for this site and try again.'},connected:CONNECTED},{AdminSession,Grid,Floorplans,Incoming,Staff,ExpensesAdmin:EXP.ExpensesAdmin,EventLogo,Splash,DocumentsAdmin:DOCS.DocumentsAdmin,AppSettings,ItinerariesAdmin:ITIN.ItinerariesAdmin,TravelInfoAdmin:TINFO.TravelInfoAdmin,MessagesAdmin:REM.MessagesAdmin});
+const Admin=createAdminWorkspace({people:EMPS,events:EVS,rooms:ROOMS,activities:SESS,current:CUR,days:DAYS,daysShort:DAYS_SHORT,cover,clash,span,evEnd,evStatus,need,roomAck:ROOM_ACK,ackSupport:ACK_SUPPORT,BREAK,breaksOn,breaksDuring,openClock,lateBy,liveNow,clockTime,breakOf,todayIndex,breakExport,floorSupport:FLOOR_SUPPORT,closeSupport:CLOSE_SUPPORT,pushSupport:PUSH_SUPPORT,infoSupport:INFO_SUPPORT,eventInfoSupport:EVENT_INFO_SUPPORT,brandSupport:BRAND_SUPPORT,itinSupport:ITIN_SUPPORT,travelInfoSupport:TRAVEL_INFO_SUPPORT,remindersSupport:REMINDER_SUPPORT,scheduleImportSupport:SCHEDULE_IMPORT_SUPPORT,runShowSupport:RUN_SHOW_SUPPORT,overlapSupport:OVERLAP_SUPPORT,staffText,logoSupport:LOGO_SUPPORT,splashSupport:SPLASH_SUPPORT,prepLogo,prepSplash,imageUrl,hrPdf:(list,scope)=>{const url=URL.createObjectURL(new Blob([hrReport({list,people:EMPS,eventName:evOf(CUR.id).name,scope,autoPrint:true})],{type:'text/html'})),w=window.open(url,'_blank');setTimeout(()=>URL.revokeObjectURL(url),60000);return w?'':'Your browser blocked the report window. Allow pop-ups for this site and try again.'},connected:CONNECTED},{AdminSession,Grid,Floorplans,Incoming,Staff,ExpensesAdmin:EXP.ExpensesAdmin,EventLogo,Splash,DocumentsAdmin:DOCS.DocumentsAdmin,AppSettings,ItinerariesAdmin:ITIN.ItinerariesAdmin,TravelInfoAdmin:TINFO.TravelInfoAdmin,MessagesAdmin:REM.MessagesAdmin,SupportAdmin:SUP.SupportAdmin});
 function App({connected}){
  const [demoS,setS]=useState(()=>connected?connected.snapshot:seed()),[demoRole,setRole]=useState('admin'),[demoMe,setMe]=useState(0),[toast,setToast]=useState('');
  const S=connected?connected.snapshot:demoS,role=connected?connected.snapshot.role:demoRole,me=connected?connected.snapshot.me:demoMe;
@@ -421,6 +424,23 @@ function App({connected}){
   sendReminder:(ev,ids,text)=>{const to=[...new Set(ids)].filter(e=>EMPS[e]&&!EMPS[e].gone);if(!to.length||!text.trim()){say('Choose who to send it to');return false}
    setS(s=>{const id=Math.max(0,...(s.reminders||[]).map(r=>r.id))+1,from=EMPS[me]?.name||'An administrator';return L({...s,reminders:[{id,ev,x:text.trim(),from,at:new Date().toISOString(),to:to.map(e=>({e,ack:null}))},...(s.reminders||[])],notes:[...s.notes,...to.map(e=>({id:++uid,e,aid:null,done:0,x:text.trim(),rid:id,from}))]},'Sent a reminder to '+to.length+(to.length===1?' person':' people'))});say('Reminder sent to '+to.length);return true},
   ackReminder:rid=>{setS(s=>Lg({...s,reminders:(s.reminders||[]).map(r=>r.id===rid?{...r,to:r.to.map(t=>t.e===me&&!t.ack?{...t,ack:new Date().toISOString()}:t)}:r),notes:s.notes.map(n=>n.rid===rid&&n.e===me?{...n,done:1}:n)},EMPS[me].name+' acknowledged a reminder'));return true},
+  // Session Support (demo): the same rules as the database, in memory.
+  importSupport:(ev,rows)=>{setS(s=>{let list=[...(s.support||[])];const notes=[...s.notes],used=new Set();
+   rows.forEach(r=>{let o=list.find(x=>!used.has(x.id)&&x.ev===ev&&x.d===r.d&&x.a===r.a&&x.t.trim().toLowerCase()===r.t.toLowerCase());
+    const ppl=(r.ppl||[]).filter(p=>EMPS[p.e]&&!EMPS[p.e].gone).map(p=>({...p,n:EMPS[p.e].name})),before=new Set(o?o.ppl.map(p=>p.e):[]);
+    const f={d:r.d,a:r.a,b:r.b,blk:r.blk||'',trk:r.trk||'',t:r.t,r:r.r||'',sp:r.sp||'',brk:!!r.brk,note:r.note||'',roles:r.roles||[],ppl};
+    if(o){o={...o,...f};list=list.map(x=>x.id===o.id?o:x)}else{o={id:Math.max(0,...list.map(x=>x.id))+1,ev,ntn:'',mdn:'',...f};list.push(o)}
+    used.add(o.id);const after=new Set(ppl.map(p=>p.e));
+    after.forEach(e=>{if(!before.has(e))notes.push({id:++uid,e,aid:null,done:0,x:'Session Support: '+o.t})});before.forEach(e=>{if(!after.has(e))notes.push({id:++uid,e,aid:null,done:0,x:'Removed from Session Support: '+o.t})})});
+   return L({...s,support:list,notes},'Imported Session Support ('+rows.length+' rows)')});return true},
+  saveSupport:(id,ev,o)=>{if(!o.t){say('Enter a title');return false}setS(s=>{const list=s.support||[];if(id==null){const n={id:Math.max(0,...list.map(x=>x.id))+1,ev,ntn:'',mdn:'',ppl:[],...o};return L({...s,support:[...list,n]},'Added Session Support card '+o.t)}
+   return L({...s,support:list.map(x=>x.id===id?{...x,...o,ppl:x.ppl.filter(p=>o.roles.some(r=>r.box===p.box&&r.label===p.role))}:x)},'Updated Session Support card '+o.t)});return true},
+  setSupportPeople:(id,box,role,ids)=>{setS(s=>{const list=s.support||[],c=list.find(x=>x.id===id),before=new Set(c.ppl.map(p=>p.e));
+   const ppl=[...c.ppl.filter(p=>!(p.box===box&&p.role===role)),...ids.filter(e=>EMPS[e]).map(e=>({box,role,e,n:EMPS[e].name}))],roles=c.roles.some(r=>r.box===box&&r.label===role)?c.roles:[...c.roles,{box,label:role}];
+   const after=new Set(ppl.map(p=>p.e)),notes=[...s.notes];after.forEach(e=>{if(!before.has(e))notes.push({id:++uid,e,aid:null,done:0,x:'Session Support: '+c.t})});before.forEach(e=>{if(!after.has(e))notes.push({id:++uid,e,aid:null,done:0,x:'Removed from Session Support: '+c.t})});
+   return L({...s,notes,support:list.map(x=>x.id===id?{...x,ppl,roles}:x)},'Updated '+role+' on '+c.t)});return true},
+  setSupportNotes:(id,box,t)=>{setS(s=>L({...s,support:(s.support||[]).map(x=>x.id===id?{...x,[box==='nt'?'ntn':'mdn']:t}:x)},'Updated Session Support notes'));return true},
+  delSupport:id=>{setS(s=>{const c=(s.support||[]).find(x=>x.id===id);return L({...s,support:s.support.filter(x=>x.id!==id),notes:[...s.notes,...[...new Set(c.ppl.map(p=>p.e))].map(e=>({id:++uid,e,aid:null,done:0,x:'Session Support cancelled: '+c.t}))]},'Deleted Session Support card '+c.t)});return true},
   setTravelInfo:(ev,o)=>{const e=evOf(ev);if(!e)return false;e.arrInfo=o.arr||'';e.depInfo=o.dep||'';setS(s=>L({...s},'Updated arrival and departure instructions for '+e.name));say('Instructions saved');return true},
   delHotel:id=>{setS(s=>{const h=(s.hotels||[]).find(x=>x.id===id);return L({...s,expenses:(s.expenses||[]).filter(x=>!h||x.id!==h.exp),hotels:h?demoRemoveHotel(s.hotels,h):s.hotels},'Removed a hotel')});say('Hotel removed');return true},
   setBranding:(o,icons,reset)=>{const b=getBrand(),iconData=icons?Object.fromEntries(Object.entries(icons).map(([k,v])=>[k,URL.createObjectURL(v)])):reset?null:b.iconData;setBrand({...o,short:o.short||o.name.slice(0,12),iconData,icon:iconData?'demo':null,v:Date.now()});setS(s=>L({...s},'Updated app settings'));say('App settings saved');return true},

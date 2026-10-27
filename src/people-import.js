@@ -35,7 +35,7 @@ export async function unzip(buffer, wanted) {
 const tags = (node, name) => [...node.getElementsByTagNameNS('*', name)];
 const colIndex = ref => { let n = 0; for (const c of ref.replace(/\d+$/, '')) n = n * 26 + c.charCodeAt(0) - 64; return n - 1; };
 
-async function readXlsx(buffer, parseXml) {
+async function readXlsx(buffer, parseXml, all = false) {
   const files = await unzip(buffer, n => n === 'xl/workbook.xml' || n === 'xl/_rels/workbook.xml.rels' || n === 'xl/sharedStrings.xml' || /^xl\/worksheets\/[^/]+\.xml$/.test(n));
   if (!files['xl/workbook.xml']) throw new Error('This file is not a valid Excel workbook.');
   const shared = files['xl/sharedStrings.xml'] ? tags(parseXml(files['xl/sharedStrings.xml']), 'si').map(si => tags(si, 't').map(t => t.textContent).join('')) : [];
@@ -45,7 +45,8 @@ async function readXlsx(buffer, parseXml) {
     const target = String(rels[id] || '').replace(/^\/?(xl\/)?/, '');
     return { name: s.getAttribute('name'), path: 'xl/' + target };
   });
-  // Use the first sheet in workbook order that actually has data.
+  // Use the first sheet in workbook order that actually has data (or, with all, every sheet that has data).
+  const found = [];
   for (const sheet of sheets) {
     const xml = files[sheet.path];
     if (!xml) continue;
@@ -58,8 +59,10 @@ async function readXlsx(buffer, parseXml) {
       });
       return Array.from(out, v => v ?? '');
     }).filter(r => r.some(v => String(v).trim()));
-    if (rows.length) return { sheet: sheet.name, rows };
+    if (rows.length && !all) return { sheet: sheet.name, rows };
+    if (rows.length) found.push({ sheet: sheet.name, rows });
   }
+  if (found.length) return found;
   throw new Error('The workbook has no rows to import.');
 }
 
@@ -76,6 +79,14 @@ export function parseCsv(text) {
   }
   if (cell || row.length) { row.push(cell); rows.push(row); }
   return rows.filter(r => r.some(v => v.trim()));
+}
+
+// Every sheet (tab) that has data: [{sheet, rows}]. A CSV is one sheet.
+export async function readAllSheets(file, parseXml = s => new DOMParser().parseFromString(s, 'application/xml')) {
+  const name = file.name || '';
+  if (/\.csv$/i.test(name)) return [{ sheet: name, rows: parseCsv(await file.text()) }];
+  if (/\.xlsx$/i.test(name)) return readXlsx(await file.arrayBuffer(), parseXml, true);
+  throw new Error('Choose an Excel (.xlsx) or CSV file. Older .xls files must be re-saved as .xlsx first.');
 }
 
 export async function readSpreadsheet(file, parseXml = s => new DOMParser().parseFromString(s, 'application/xml')) {
