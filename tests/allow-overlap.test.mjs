@@ -45,3 +45,31 @@ test('activities can allow overlap, from the editor and the import', async () =>
     assert.deepEqual([by['Staff Departures'].ov, by['Room checks'].ov, by['Doors'].ov], [undefined, true, undefined]);
   } finally { await db.close(); }
 });
+
+test('the import keeps repeated names on the same day as separate activities', async () => {
+  const db = new PGlite();
+  try {
+    await db.exec(`create role anon; create role authenticated;
+      create schema auth; create table auth.users(id uuid primary key, email text);
+      create function auth.uid() returns uuid language sql as
+      $$select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid$$;
+      grant usage on schema auth to authenticated;`);
+    const dir = new URL('../supabase/migrations/', import.meta.url);
+    for (const file of (await readdir(dir)).filter(f => f.endsWith('.sql')).sort()) await db.exec(await readFile(new URL(file, dir), 'utf8'));
+    await db.exec(`insert into public.access_invites(email,role) values('admin@example.test','admin');
+      insert into auth.users values('${admin}','admin@example.test');`);
+    await db.query("select set_config('request.jwt.claim.sub', $1, false)", [admin]);
+    const snapshot = async () => (await db.query('select public.ops_snapshot() as data')).rows[0].data;
+    const command = async (action, args) => (await db.query('select public.ops_command($1,$2::jsonb,$3) as data',
+      [action, JSON.stringify(args), (await snapshot()).revision])).rows[0].data;
+    await command('addEvent', [{ n: 'Impact 2026', b: '2026-11-07', d: 6, tz: 'America/Puerto_Rico' }]);
+    const row = (start, end, det, ov) => ({ title: 'General Session', room: 'GS', day: 2, start, end, det, leads: [], members: [], ...(ov == null ? {} : { ov }) });
+    let data = await command('importSchedule', [1, {}, [row(510, 540, 'Doors open'), row(540, 690, 'Main', true), row(600, 615, 'Valor')]]);
+    let gs = data.activities.filter(a => a.t === 'General Session').sort((x, y) => x.a - y.a);
+    assert.deepEqual(gs.map(a => [a.a, a.det, !!a.ov]), [[510, 'Doors open', false], [540, 'Main', true], [600, 'Valor', false]]);
+    // Re-import with one time changed: still three, each updated in place.
+    data = await command('importSchedule', [1, {}, [row(510, 540, 'Doors open'), row(540, 690, 'Main'), row(605, 620, 'Valor moved')]]);
+    const again = data.activities.filter(a => a.t === 'General Session').sort((x, y) => x.a - y.a);
+    assert.deepEqual(again.map(a => [a.id, a.a, a.det, !!a.ov]), [[gs[0].id, 510, 'Doors open', false], [gs[1].id, 540, 'Main', true], [gs[2].id, 605, 'Valor moved', false]]);
+  } finally { await db.close(); }
+});

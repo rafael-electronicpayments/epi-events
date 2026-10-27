@@ -14,15 +14,26 @@ const key = h => String(h ?? '').toLowerCase().replace(/[^a-z]/g, '');
 const text = v => String(v ?? '').replace(/ /g, ' ').trim();
 
 // "THURSDAY, NOVEMBER 12" or "Thu 11/12" (alone on its row) -> "2026-11-12" in the event's year.
-export function dayHeading(cells, year) {
-  const filled = cells.map(text).filter(Boolean);
-  if (filled.length !== 1) return '';
+export function dayHeading(cells, year) { return headingDates(cells, year).date; }
+
+// -> {date, alt, text}: alt is the nearest date (within 3 days) that falls on the weekday the heading names, when the
+// date itself falls on another weekday ("FRIDAY, NOVEMBER 7" when November 7 is a Saturday -> alt "...-11-06").
+const WEEK = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+export function headingDates(cells, year) {
+  const filled = cells.map(text).filter(Boolean), none = { date: '', alt: null, text: '' };
+  if (filled.length !== 1) return none;
   const s = filled[0].toLowerCase();
-  let m = s.match(/^(?:sun|mon|tue|wed|thu|fri|sat)[a-z]*\.?,?\s+([a-z]+)\.?\s+(\d{1,2})(?:,?\s+(\d{4}))?$/);
-  if (m) { const mo = MONTHS.findIndex(x => m[1].startsWith(x)); if (mo < 0) return ''; return iso(m[3] ? +m[3] : year, mo + 1, +m[2]); }
-  m = s.match(/^(?:sun|mon|tue|wed|thu|fri|sat)[a-z]*\.?,?\s+(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?$/);
-  if (m) return iso(m[3] ? (m[3].length === 2 ? 2000 + +m[3] : +m[3]) : year, +m[1], +m[2]);
-  return '';
+  let date = '', m = s.match(/^(sun|mon|tue|wed|thu|fri|sat)[a-z]*\.?,?\s+([a-z]+)\.?\s+(\d{1,2})(?:,?\s+(\d{4}))?$/);
+  if (m) { const mo = MONTHS.findIndex(x => m[2].startsWith(x)); if (mo < 0) return none; date = iso(m[4] ? +m[4] : year, mo + 1, +m[3]); }
+  else {
+    m = s.match(/^(sun|mon|tue|wed|thu|fri|sat)[a-z]*\.?,?\s+(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?$/);
+    if (m) date = iso(m[4] ? (m[4].length === 2 ? 2000 + +m[4] : +m[4]) : year, +m[2], +m[3]);
+  }
+  if (!date) return none;
+  const said = WEEK.indexOf(m[1]), t = Date.parse(date + 'T00:00:00Z'), actual = new Date(t).getUTCDay();
+  let alt = null;
+  if (said !== actual) { const diff = ((said - actual + 10) % 7) - 3; alt = new Date(t + diff * 86400000).toISOString().slice(0, 10); }
+  return { date, alt, text: filled[0] };
 }
 const iso = (y, m, d) => { const t = new Date(Date.UTC(y, m - 1, d)); return t.getUTCMonth() === m - 1 ? t.toISOString().slice(0, 10) : ''; };
 const minutes = hhmm => { const [h, m] = hhmm.split(':').map(Number); return h * 60 + m; };
@@ -54,12 +65,14 @@ export function matchNames(raw, people) {
 // one-moment actions, so a row with a start and a blank stop is kept at its start time (end = start).
 export function planSchedule(rows, people, eventStart, { moments = false } = {}) {
   const year = Number(eventStart.slice(0, 4)), start = Date.parse(eventStart + 'T00:00:00Z');
-  let cols = columns([]), date = '', sawHeader = false;
-  const items = [];
+  let cols = columns([]), date = '', hk = null, sawHeader = false;
+  const items = [], headings = [];
   rows.forEach((cells, i) => {
     if (isHeader(cells)) { cols = columns(cells); sawHeader = true; return; }
-    const heading = dayHeading(cells, year);
-    if (heading) { date = heading; return; }
+    const h = headingDates(cells, year);
+    // A heading whose weekday and date disagree is listed for the admin to settle; rows go on the named weekday
+    // unless they choose the date.
+    if (h.date) { hk = h.alt ? 'h' + headings.length : null; if (hk) headings.push({ key: hk, text: h.text, date: h.date, alt: h.alt }); date = h.alt || h.date; return; }
     // First line is the activity name; any further lines ("IF YOU ARE ON THIS LIST BE HERE") go to the top of Details.
     const [title = '', ...extra] = text(cells[cols.title]).split(/\s*\n\s*/).filter(Boolean);
     if (!sawHeader || !title) return; // titles and banners above the table
@@ -72,7 +85,7 @@ export function planSchedule(rows, people, eventStart, { moments = false } = {})
     const day = date ? Math.round((Date.parse(date + 'T00:00:00Z') - start) / 86400000) : null;
     const roomRaw = text(cells[cols.room]);
     const lead = matchNames(cells[cols.lead], people), mem = matchNames(cells[cols.members], people);
-    items.push({ line: i + 1, date, day, title, room: roomRaw || DEFAULT_ROOM, roomDefault: !roomRaw, start: s, end: e, allDay,
+    items.push({ line: i + 1, hk, date, day, title, room: roomRaw || DEFAULT_ROOM, roomDefault: !roomRaw, start: s, end: e, allDay,
       det: [...extra, text(cells[cols.det])].filter(Boolean).join('\n').slice(0, 2000), leadNames: lead.names.filter(n => !n.all), memberNames: mem.names.filter(n => !n.all),
       all: mem.all || lead.all || mem.names.some(n => n.all), warns, skip: false });
   });
@@ -83,7 +96,15 @@ export function planSchedule(rows, people, eventStart, { moments = false } = {})
     if (!unmatched[k]) unmatched[k] = { raw: n.raw, e: n.e, how: n.how, others: n.others, rows: 0 };
     unmatched[k].rows++;
   }
-  return { items, unmatched, year };
+  return { items, unmatched, year, headings };
+}
+
+// A row's date and day index once the admin has settled a mismatched heading (use: 'weekday' or 'date').
+export function withHeading(it, headings, use, eventStart) {
+  const h = it.hk && headings.find(x => x.key === it.hk);
+  if (!h) return it;
+  const date = use[h.key] === 'date' ? h.date : h.alt;
+  return { ...it, date, day: Math.round((Date.parse(date + 'T00:00:00Z') - Date.parse(eventStart + 'T00:00:00Z')) / 86400000) };
 }
 
 // People ids for a row, applying the admin's choices for unmatched names. "All staff" adds nobody: only the
@@ -95,13 +116,27 @@ export function rowPeople(it, choice) {
   return { leads, members };
 }
 
+// Which existing activity each row updates, as the database does it: same day and name; when a name repeats on a
+// day ("General Session" at 8:30 and 9:00), each row takes its own, preferring the same start time.
+export function pairExisting(items, existing) {
+  const used = new Set();
+  return items.map(it => {
+    if (it.skip || it.day == null) return null;
+    const c = existing.filter(x => !used.has(x.id) && x.d === it.day && x.t.trim().toLowerCase() === it.title.toLowerCase())
+      .sort((x, y) => (y.a === it.start) - (x.a === it.start) || x.a - y.a || x.id - y.id)[0] || null;
+    if (c) used.add(c.id);
+    return c;
+  });
+}
+
 // What saving a row would do. existing: activities of this event [{id, t, d, a, b, r, det}]; asg [{s, e, lead}].
-export function scheduleEffect(it, existing, asg, days, people) {
+// old: the activity this row updates (from pairExisting); left out, it is looked up by day and name.
+export function scheduleEffect(it, existing, asg, days, people, old) {
   if (it.skip) return { kind: 'skip', text: 'Skipped' };
   if (it.day == null) return { kind: 'error', text: 'No day heading above this row' };
   if (it.day < 0) return { kind: 'error', text: 'Before the event starts' };
   if (it.day >= days) return { kind: 'extend', text: 'After the event ends: extend the event to import it' };
-  const old = existing.find(x => x.d === it.day && x.t.trim().toLowerCase() === it.title.toLowerCase());
+  if (old === undefined) old = existing.find(x => x.d === it.day && x.t.trim().toLowerCase() === it.title.toLowerCase()) || null;
   if (!old) return { kind: 'new', text: 'New activity' };
   const ch = [], team = new Set(asg.filter(a => a.s === old.id).map(a => a.e)), want = new Set([...people.leads, ...people.members]);
   if (old.a !== it.start || old.b !== it.end) ch.push('time');
