@@ -371,3 +371,13 @@ body:has(dialog[open]) .app-error{display:none}
 .team-meal-people{display:flex;flex-direction:column;gap:6px;align-items:flex-start;border:1px solid var(--line);border-radius:10px;padding:10px 12px}
 .team-meal-people p{margin:0}
 .iso-help{margin:0;padding:10px 12px;border-radius:8px;background:var(--warnb);color:var(--warn);font-weight:600}
+/* Offsite check-out */
+.offsite-card{border-width:2px}.offsite-card.away{background:var(--warnb);border-color:var(--warn)}
+.offsite-card .btn.offsite-go{background:var(--warn);border-color:var(--warn);color:#fff}
+.offsite-form{display:flex;flex-direction:column;gap:8px;margin-top:8px}.offsite-form label{display:flex;flex-direction:column;gap:4px;font-weight:600}
+.offsite-form textarea{font:inherit;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--card);color:var(--ink)}
+.offsite-notices{display:flex;flex-direction:column;gap:8px;margin-bottom:16px}
+.offsite-notice{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:space-between;padding:10px 14px;border-radius:10px;border:2px solid var(--warn);background:var(--warnb)}
+.offsite-notice.back{border-color:var(--line);background:var(--card)}
+.offsite-pill{margin-left:6px;vertical-align:middle}
+.offsite-reports{display:flex;flex-direction:column;gap:12px}
