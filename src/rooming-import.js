@@ -69,7 +69,24 @@ export function matchPerson(raw, people) {
   if (exact.length === 1) return { person: exact[0].p, how: 'exact', others: sameLast.map(x => x.p) };
   const close = sameLast.filter(x => sameFirst(x.first, n.first) || (n.first && x.first[0] === n.first[0] && n.first.length <= 2));
   if (close.length === 1) return { person: close[0].p, how: 'close', others: sameLast.map(x => x.p) };
+  if (!sameLast.length && n.first) {
+    // A misspelled last name ("Washurn", "Herman"): same or nickname first name, last name one or two letters off.
+    const typo = pool.filter(x => x.lastWords.length && sameFirst(x.first, n.first) && Math.min(...x.lastWords.map(w => near(w, n.last)), near(x.lastWords.join(''), n.last)) <= (n.last.length > 5 ? 2 : 1));
+    if (typo.length === 1) return { person: typo[0].p, how: 'close', others: typo.map(x => x.p) };
+    if (typo.length > 1) return { person: null, how: null, others: typo.map(x => x.p) };
+  }
   return { person: null, how: null, others: sameLast.map(x => x.p) };
+}
+// Edit distance (letters added, removed, or changed), stopping early past 3.
+function near(a, b) {
+  if (Math.abs(a.length - b.length) > 3) return 9;
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    prev = cur;
+  }
+  return prev[b.length];
 }
 
 // Turn sheet rows into a plan. hotels: the event's existing bookings.
