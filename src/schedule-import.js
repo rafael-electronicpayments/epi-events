@@ -50,8 +50,9 @@ export function matchNames(raw, people) {
     return { raw: n, e: m.person ? m.person.id : null, how: m.how, others: m.others }; }) };
 }
 
-// -> {items, unmatched (name -> {e, others}), year}. eventStart "2026-11-07".
-export function planSchedule(rows, people, eventStart) {
+// -> {items, unmatched (name -> {e, others}), year}. eventStart "2026-11-07". moments: the database accepts
+// one-moment actions, so a row with a start and a blank stop is kept at its start time (end = start).
+export function planSchedule(rows, people, eventStart, { moments = false } = {}) {
   const year = Number(eventStart.slice(0, 4)), start = Date.parse(eventStart + 'T00:00:00Z');
   let cols = columns([]), date = '', sawHeader = false;
   const items = [];
@@ -64,9 +65,10 @@ export function planSchedule(rows, people, eventStart) {
     if (!sawHeader || !title) return; // titles and banners above the table
     const warns = [];
     let a = parseTime(cells[cols.start]), b = parseTime(cells[cols.end]), allDay = false;
+    if (moments && a && !b && !text(cells[cols.end])) b = a;
     if (!a || !b) { allDay = true; warns.push((text(cells[cols.start]) || 'No time') + ': scheduled all day (6:00 AM–10:00 PM); check the times'); }
     let s = allDay ? ALL_DAY[0] : minutes(a), e = allDay ? ALL_DAY[1] : minutes(b);
-    if (!allDay && e <= s) { if (e === 0) e = 1440; else warns.push('Stop time is before the start time'); }
+    if (!allDay && (e < s || (e === s && !moments))) { if (e === 0) e = 1440; else warns.push('Stop time is before the start time'); }
     const day = date ? Math.round((Date.parse(date + 'T00:00:00Z') - start) / 86400000) : null;
     const roomRaw = text(cells[cols.room]);
     const lead = matchNames(cells[cols.lead], people), mem = matchNames(cells[cols.members], people);
