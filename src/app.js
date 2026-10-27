@@ -73,6 +73,8 @@ const REMINDER_SUPPORT={on:!CONNECTED};
 const SCHEDULE_IMPORT_SUPPORT={on:!CONNECTED};
 // Optional staff numbers, one-moment actions (no end time), and Managed by (migration 20261028100000).
 const RUN_SHOW_SUPPORT={on:!CONNECTED};
+// Team Meal and ISO/Rep Hosting expense types (migration 20261030120000).
+const TEAM_MEAL_SUPPORT={on:!CONNECTED};
 // Allow overlap per activity (migration 20261028120000).
 const OVERLAP_SUPPORT={on:!CONNECTED};
 // Demo only: keep each hotel's pickup in step with the flight (the server does this for real).
@@ -358,7 +360,7 @@ function Grid({S}){
  <//>`})}</tbody></table></div>
  ${!rows.length&&html`<p className="mute">No activities yet for this event.</p>`}
  <h3 style=${{marginTop:16}}>Staff colors</h3><div className="legend">${used.map(e=>html`<span key=${e}><i className="sw" style=${{background:col(e,1)}}></i>${EMPS[e].name}</span>`)}</div></div>`}
-const EXP=createExpenses({React,html,Modal,Icon,IconButton,people:EMPS,events:EVS,current:CUR});
+const EXP=createExpenses({React,html,Modal,Icon,IconButton,people:EMPS,events:EVS,current:CUR,activities:SESS,teamMeals:TEAM_MEAL_SUPPORT});
 const AppSettings=createAppSettings({React,html,Icon});
 const ITIN=createItineraries({React,html,Modal,Icon,people:EMPS,events:EVS,activities:SESS,current:CUR,demo:!CONNECTED});
 const TINFO=createTravelInfo({React,html,Icon,events:EVS,current:CUR,demo:!CONNECTED});
@@ -469,7 +471,7 @@ function App({connected}){
   clockIn:()=>{const c=openClock(S,me);if(!c){say('Not clocked out');return false}setS(s=>Lg({...s,clocks:s.clocks.map(x=>x.id===c.id?{...x,in:new Date().toISOString()}:x)},EMPS[me].name+' clocked back in'));say('Clocked back in');return true},
   saveExpense:(id,o,file,drop)=>{const list=S.expenses||[],old=id!=null?list.find(x=>x.id===id):null,owner=old?old.e:(o.e??me);if(owner==null||!EMPS[owner]){say('Choose a person');return false}
    let rp=old&&old.rp&&!drop?old.rp:null,rt=rp?old.rt:null;if(file){rp=owner+'/'+uuid()+'.'+RECEIPT_TYPES[file.type];rt=file.type;RECEIPTS[rp]=file}
-   const rec={cat:o.cat,loc:o.loc,ref:o.ref,date:o.date,amt:Number(o.amt).toFixed(2),pay:o.pay,reimb:!!o.reimb,notes:o.notes,rp,rt};
+   const rec={cat:o.cat,loc:o.loc,ref:o.ref,date:o.date,amt:Number(o.amt).toFixed(2),pay:o.pay,reimb:!!o.reimb,notes:o.notes,rp,rt,att:o.cat==='team_meal'&&(o.att||[]).length?[...o.att]:undefined};
    setS(s=>{const l=s.expenses||[];if(old)return L({...s,expenses:l.map(x=>x.id===id?{...x,...rec}:x)},'Updated expense for '+EMPS[owner].name);const nid=Math.max(0,...l.map(x=>x.id))+1;return L({...s,expenses:[...l,{id:nid,e:owner,ev:CUR.id,ok:false,okAt:null,...rec}]},'Added expense for '+EMPS[owner].name)});say(old?'Expense saved':'Expense added');return true},
   delExpense:id=>{const x=(S.expenses||[]).find(y=>y.id===id);setS(s=>L({...s,expenses:s.expenses.filter(y=>y.id!==id)},'Deleted expense'+(x&&EMPS[x.e]?' for '+EMPS[x.e].name:'')));say('Expense deleted');return true},
   approveExpense:(id,ok)=>{setS(s=>L({...s,expenses:s.expenses.map(x=>x.id===id?{...x,ok:!!ok,okAt:ok?new Date().toISOString():null,okBy:ok?'Demo admin':null}:x)},(ok?'Approved':'Unapproved')+' expense'));return true},
@@ -501,7 +503,7 @@ function App({connected}){
   A.saveExpense=async(id,o,file,drop)=>{const old=id!=null?(S.expenses||[]).find(x=>x.id===id):null,owner=old?old.e:(o.e??me);
    let rp=old&&old.rp&&!drop?old.rp:null,rt=rp?old.rt:null,up=null;
    if(file){if(owner==null){say('Choose a person');return false}up=owner+'/'+uuid()+'.'+RECEIPT_TYPES[file.type];try{await repo.receiptUpload(up,file.data,file.type)}catch(e){say('Receipt upload failed: '+(e&&e.message||'try again'));return false}RECEIPT_CACHE[up]={data:file.data,type:file.type};rp=up;rt=file.type}
-   const body={cat:o.cat,loc:o.loc,ref:o.ref,date:o.date,amt:o.amt,pay:o.pay,reimb:!!o.reimb,notes:o.notes,rp,rt,...(!old&&o.e!=null?{e:o.e}:{})};
+   const body={cat:o.cat,loc:o.loc,ref:o.ref,date:o.date,amt:o.amt,pay:o.pay,reimb:!!o.reimb,notes:o.notes,rp,rt,...(!old&&o.e!=null?{e:o.e}:{}),...(o.att?{att:o.att}:{})};
    const ok=await cmd(old?'editExpense':'addExpense',old?[id,body]:[CUR.id,body]);
    if(!ok){if(up){delete RECEIPT_CACHE[up];repo.receiptRemove(up).catch(()=>{})}return false}
    if(old&&old.rp&&old.rp!==rp){delete RECEIPT_CACHE[old.rp];repo.receiptRemove(old.rp).catch(()=>{})}say(old?'Expense saved':'Expense added');return true};
@@ -558,7 +560,7 @@ function hydrate(data){
  data.activities.forEach(s=>{s.q=data.actAck&&Object.hasOwn(data.actAck,s.id)?data.actAck[s.id]:null});
  SESS.splice(0,SESS.length,...data.activities);Object.keys(SM).forEach(k=>delete SM[k]);SESS.forEach(s=>{SM[s.id]=s});
  FP.length=0;INV.length=0;H.length=0;
- PUSH_SUPPORT.on=!!data.push;INFO_SUPPORT.on=data.activityInfo===true;EVENT_INFO_SUPPORT.on=data.eventInfo===true;BRAND_SUPPORT.on=!!data.branding;ITIN_SUPPORT.on=data.itineraries===true;TRAVEL_INFO_SUPPORT.on=data.travelInfo===true;REMINDER_SUPPORT.on=Array.isArray(data.reminders);SCHEDULE_IMPORT_SUPPORT.on=data.scheduleImport===true;RUN_SHOW_SUPPORT.on=data.runOfShow===true;OVERLAP_SUPPORT.on=data.overlapOption===true;LOGO_SUPPORT.on=data.logos===true;SPLASH_SUPPORT.on=data.splashes===true;FLOOR_SUPPORT.on=Array.isArray(data.floorplans);if(FLOOR_SUPPORT.on)FP.push(...data.floorplans.map(f=>({id:f.id,ev:f.ev,name:f.name,size:f.size,path:f.path})));
+ PUSH_SUPPORT.on=!!data.push;INFO_SUPPORT.on=data.activityInfo===true;EVENT_INFO_SUPPORT.on=data.eventInfo===true;BRAND_SUPPORT.on=!!data.branding;ITIN_SUPPORT.on=data.itineraries===true;TRAVEL_INFO_SUPPORT.on=data.travelInfo===true;REMINDER_SUPPORT.on=Array.isArray(data.reminders);SCHEDULE_IMPORT_SUPPORT.on=data.scheduleImport===true;RUN_SHOW_SUPPORT.on=data.runOfShow===true;TEAM_MEAL_SUPPORT.on=data.teamMeals===true;OVERLAP_SUPPORT.on=data.overlapOption===true;LOGO_SUPPORT.on=data.logos===true;SPLASH_SUPPORT.on=data.splashes===true;FLOOR_SUPPORT.on=Array.isArray(data.floorplans);if(FLOOR_SUPPORT.on)FP.push(...data.floorplans.map(f=>({id:f.id,ev:f.ev,name:f.name,size:f.size,path:f.path})));
  if(EVS.length){if(!evOf(CUR.id))CUR.id=EVS[0].id;syncEv()}
 }
 const Root=CONNECTED?createConnection(React,html,window.eventOpsRepository,App,hydrate):App;

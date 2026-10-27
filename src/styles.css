@@ -367,3 +367,7 @@ body:has(dialog[open]) .app-error{display:none}
 .support-break{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;padding:8px 14px;border:1px dashed var(--line);border-radius:10px;color:var(--mute);grid-column:1/-1}
 .support-break b{color:var(--ink)}.support-break-actions{margin-left:auto}
 .my-support{display:flex;flex-direction:column;gap:12px;margin-bottom:12px}.my-support h2{margin-bottom:0}
+/* Expenses: Team Meal people and ISO/Rep Hosting help */
+.team-meal-people{display:flex;flex-direction:column;gap:6px;align-items:flex-start;border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.team-meal-people p{margin:0}
+.iso-help{margin:0;padding:10px 12px;border-radius:8px;background:var(--warnb);color:var(--warn);font-weight:600}
