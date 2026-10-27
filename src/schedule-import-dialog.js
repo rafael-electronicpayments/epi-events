@@ -3,33 +3,34 @@
 import React from 'react';
 import htm from 'htm';
 import { Icon, Modal } from './ui.js';
-import { readSpreadsheet, planSchedule, rowPeople, scheduleEffect, ALL_DAY } from './schedule-import.js';
+import { readSpreadsheet, planSchedule, rowPeople, scheduleEffect, pairExisting, withHeading, ALL_DAY } from './schedule-import.js';
 
 const html = htm.bind(React.createElement);
 const hm = m => { const h = Math.floor(m / 60) % 24, mm = m % 60; return (h % 12 || 12) + ':' + String(mm).padStart(2, '0') + (h < 12 ? ' AM' : ' PM'); };
 const toInput = m => String(Math.floor(m / 60) % 24).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
 const fromInput = v => { const [h, m] = v.split(':').map(Number); return h * 60 + m; };
+const longDay = iso => new Date(iso + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 const dayText = iso => iso ? new Date(iso + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : 'No day';
 
 export function ScheduleImport({ S, A, moments = false, overlap = false, people, events, activities, rooms, current, onClose }) {
   const e0 = events.find(e => e.id === current.id) || {};
   const [plan, setPlan] = React.useState(null), [file, setFile] = React.useState(''), [choice, setChoice] = React.useState({}), [err, setErr] = React.useState('');
-  const [busy, setBusy] = React.useState(false), [done, setDone] = React.useState(''), [extend, setExtend] = React.useState(true);
+  const [busy, setBusy] = React.useState(false), [use, setUse] = React.useState({}), [done, setDone] = React.useState(''), [extend, setExtend] = React.useState(true);
   const pool = people.filter(p => p && !p.gone).sort((a, b) => a.name.localeCompare(b.name));
   const pick = async ev => { const f = ev.target.files[0]; ev.target.value = ''; if (!f) return; setErr(''); setDone('');
     try { const { rows } = await readSpreadsheet(f); const p = planSchedule(rows, people, e0.start, { moments });
       if (!p.items.length) throw new Error('No activities found. The sheet needs a Start / Stop / Event header row and day headings like "THURSDAY, NOVEMBER 12".');
-      setPlan(p); setFile(f.name); setChoice(Object.fromEntries(Object.entries(p.unmatched).map(([k, u]) => [k, u.e ?? null]))); }
+      setPlan(p); setFile(f.name); setUse({}); setChoice(Object.fromEntries(Object.entries(p.unmatched).map(([k, u]) => [k, u.e ?? null]))); }
     catch (x) { setPlan(null); setErr(x.message || 'Could not read the file.'); } };
   const setItem = (i, patch) => setPlan(p => ({ ...p, items: p.items.map((x, j) => j === i ? { ...x, ...patch } : x) }));
-  const items = plan ? plan.items : [];
+  const items = plan ? plan.items.map(it => withHeading(it, plan.headings, use, e0.start)) : [];
   const maxDay = Math.max(-1, ...items.filter(x => !x.skip && x.day != null).map(x => x.day));
   const days = extend && maxDay >= e0.days ? Math.min(14, maxDay + 1) : e0.days;
   const existing = activities.filter(a => a.ev === current.id);
   // Allow overlap: ticked for all-day rows (6:00 AM-10:00 PM) or when the activity already allows it, unless changed here.
-  const oldOf = it => existing.find(x => x.d === it.day && x.t.trim().toLowerCase() === it.title.toLowerCase());
+  const olds = pairExisting(items, existing), oldOf = it => olds[items.indexOf(it)];
   const ovOf = it => it.ov ?? (!!oldOf(it)?.ov || (it.start === ALL_DAY[0] && it.end === ALL_DAY[1]));
-  const fx = items.map(it => { const ppl = rowPeople(it, choice), f = scheduleEffect(it, existing, S.asg || [], days, ppl), old = oldOf(it);
+  const fx = items.map((it, i) => { const ppl = rowPeople(it, choice), old = olds[i], f = scheduleEffect(it, existing, S.asg || [], days, ppl, old);
     if (overlap && old && ['same', 'update'].includes(f.kind) && !!old.ov !== ovOf(it)) return { ppl, kind: 'update', text: f.kind === 'same' ? 'Updates overlap' : f.text + ', overlap' };
     return { ppl, ...f }; });
   const ok = items.filter((x, i) => ['new', 'update', 'same'].includes(fx[i].kind));
@@ -50,6 +51,10 @@ export function ScheduleImport({ S, A, moments = false, overlap = false, people,
     ${plan && !done && html`
       <p className="import-summary"><b>${file}</b>: ${items.length} rows · ${tally('new')} new · ${tally('update')} updates · ${tally('same')} no change${tally('skip') ? ' · ' + tally('skip') + ' skipped' : ''}${tally('extend') ? ' · ' + tally('extend') + ' after the event ends' : ''}${bad ? ' · ' + tally('error') + ' to fix' : ''}${newRooms.length ? ' · new rooms: ' + newRooms.join(', ') : ''}</p>
       ${maxDay >= e0.days && html`<label className="chk"><input type="checkbox" checked=${extend} onChange=${e => setExtend(e.target.checked)}/>Extend ${e0.name} to ${Math.min(14, maxDay + 1)} days so the later rows can be imported</label>`}
+      ${plan.headings.length > 0 && html`<fieldset className="name-fixes"><legend>Dates to check <span className="mute">${plan.headings.length}</span></legend>
+        ${plan.headings.map(h => html`<label key=${h.key} className="name-fix"><span><b>${h.text}</b><span className="cell-secondary warn-text">The weekday and date don't match</span></span>
+          <select aria-label=${'Day for ' + h.text} value=${use[h.key] || 'weekday'} onChange=${e => setUse(u => ({ ...u, [h.key]: e.target.value }))}>
+            <option value="weekday">${longDay(h.alt)} (the weekday)</option><option value="date">${longDay(h.date)} (the date)</option></select></label>`)}</fieldset>`}
       ${unmatched.length > 0 && html`<fieldset className="name-fixes"><legend>Names to check <span className="mute">${unmatched.length}</span></legend>
         ${unmatched.map(([k, u]) => html`<label key=${k} className="name-fix"><span><b>${u.raw}</b><span className="cell-secondary ${u.e != null ? 'warn-text' : ''}">${u.how === 'close' ? 'Close match' : u.others.length ? 'Not sure' : 'Not found in People'} · ${u.rows} row${u.rows === 1 ? '' : 's'}</span></span>
           <select aria-label=${'Person for ' + u.raw} value=${choice[k] ?? ''} onChange=${e => setChoice(c => ({ ...c, [k]: e.target.value === '' ? null : Number(e.target.value) }))}>

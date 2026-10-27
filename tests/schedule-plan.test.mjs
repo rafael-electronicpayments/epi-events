@@ -26,3 +26,19 @@ test('a row with a start and no stop becomes a one-moment action when the databa
   const old = planSchedule(rows, [], '2026-11-07').items[0];
   assert.equal(old.allDay, true, 'older databases still get the all-day fallback');
 });
+
+test('headings whose weekday and date disagree are flagged and placed on the named weekday by default', async () => {
+  const { withHeading, pairExisting } = await import('../src/schedule-import.js');
+  const rows = [['Start', 'Stop', 'Event', 'Location', 'Responsibilities', 'Team Lead', 'Team Members'],
+    ['THURSDAY, NOVEMBER 6'], ['2:00 PM', '11:00 PM', 'Team Arrivals', '', '', '', ''],
+    ['FRIDAY, NOVEMBER 7'], ['8:00 AM', '9:00 AM', 'Breakfast', '', '', '', ''],
+    ['WEDNESDAY, NOVEMBER 11'], ['8:30 AM', '9:00 AM', 'General Session', '', '', '', ''], ['9:00 AM', '11:30 AM', 'General Session', '', '', '', '']];
+  const p = planSchedule(rows, [], '2026-11-05', { moments: true });
+  assert.deepEqual(p.headings.map(h => [h.text, h.date, h.alt]), [['THURSDAY, NOVEMBER 6', '2026-11-06', '2026-11-05'], ['FRIDAY, NOVEMBER 7', '2026-11-07', '2026-11-06']]);
+  assert.deepEqual(p.items.map(x => [x.title, x.date, x.day]), [['Team Arrivals', '2026-11-05', 0], ['Breakfast', '2026-11-06', 1], ['General Session', '2026-11-11', 6], ['General Session', '2026-11-11', 6]]);
+  const asDate = withHeading(p.items[1], p.headings, { [p.headings[1].key]: 'date' }, '2026-11-05');
+  assert.deepEqual([asDate.date, asDate.day], ['2026-11-07', 2]);
+  // Repeated names on a day pair with separate activities, preferring the same start.
+  const existing = [{ id: 9, t: 'General Session', d: 6, a: 540 }, { id: 8, t: 'General Session', d: 6, a: 510 }];
+  assert.deepEqual(pairExisting(p.items, existing).map(x => x && x.id), [null, null, 8, 9]);
+});
