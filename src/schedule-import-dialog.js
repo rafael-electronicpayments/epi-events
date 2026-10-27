@@ -15,7 +15,7 @@ export function ScheduleImport({ S, A, people, events, activities, rooms, curren
   const e0 = events.find(e => e.id === current.id) || {};
   const [plan, setPlan] = React.useState(null), [file, setFile] = React.useState(''), [choice, setChoice] = React.useState({}), [err, setErr] = React.useState('');
   const [busy, setBusy] = React.useState(false), [done, setDone] = React.useState(''), [extend, setExtend] = React.useState(true);
-  const pool = people.filter(p => p && !p.gone).sort((a, b) => a.name.localeCompare(b.name)), allIds = pool.map(p => p.id);
+  const pool = people.filter(p => p && !p.gone).sort((a, b) => a.name.localeCompare(b.name));
   const pick = async ev => { const f = ev.target.files[0]; ev.target.value = ''; if (!f) return; setErr(''); setDone('');
     try { const { rows } = await readSpreadsheet(f); const p = planSchedule(rows, people, e0.start);
       if (!p.items.length) throw new Error('No activities found. The sheet needs a Start / Stop / Event header row and day headings like "THURSDAY, NOVEMBER 12".');
@@ -26,20 +26,20 @@ export function ScheduleImport({ S, A, people, events, activities, rooms, curren
   const maxDay = Math.max(-1, ...items.filter(x => !x.skip && x.day != null).map(x => x.day));
   const days = extend && maxDay >= e0.days ? Math.min(14, maxDay + 1) : e0.days;
   const existing = activities.filter(a => a.ev === current.id);
-  const fx = items.map(it => { const ppl = rowPeople(it, choice, allIds); return { ppl, ...scheduleEffect(it, existing, S.asg || [], days, ppl) }; });
+  const fx = items.map(it => { const ppl = rowPeople(it, choice); return { ppl, ...scheduleEffect(it, existing, S.asg || [], days, ppl) }; });
   const ok = items.filter((x, i) => ['new', 'update', 'same'].includes(fx[i].kind));
   const tally = k => fx.filter(f => f.kind === k).length, bad = fx.some(f => f.kind === 'error');
   const roomSet = new Set(rooms.map(r => r.toLowerCase()));
   const newRooms = [...new Set(ok.map(x => x.room).filter(r => !roomSet.has(r.toLowerCase())))];
   const nameOf = id => people[id]?.name || '?';
   const save = async () => { setBusy(true); setErr('');
-    const rows = items.map((x, i) => [x, fx[i]]).filter(([, f]) => ['new', 'update', 'same'].includes(f.kind)).map(([x, f]) => ({ title: x.title, room: x.room, day: x.day, start: x.start, end: x.end, det: x.det, leads: f.ppl.leads, members: f.ppl.members, all: x.all }));
+    const rows = items.map((x, i) => [x, fx[i]]).filter(([, f]) => ['new', 'update', 'same'].includes(f.kind)).map(([x, f]) => ({ title: x.title, room: x.room, day: x.day, start: x.start, end: x.end, det: x.det, leads: f.ppl.leads, members: f.ppl.members }));
     const r = await A.importSchedule(current.id, days > e0.days ? { days } : {}, rows); setBusy(false);
     if (r !== false) setDone(tally('new') + ' activities added, ' + tally('update') + ' updated' + (newRooms.length ? ', ' + newRooms.length + ' new room' + (newRooms.length === 1 ? '' : 's') : '') + '. No pushes were sent; people see their new assignments in the app.');
     else setErr('Could not import. Check the rows and try again.'); };
   const unmatched = plan ? Object.entries(plan.unmatched) : [];
   return html`<${Modal} title="Import run of show" onClose=${busy ? () => {} : onClose}><div className="rooming-import schedule-import">
-    <p className="mute">For ${e0.name}. Choose the run-of-show spreadsheet (Excel or CSV). Day headings set each row's date; columns are Start, Stop, Event, Location, Responsibilities, Team Lead, Team Members. A blank location becomes <b>Wyndham Grand Rio Mar</b>; rooms that don't exist are added. "All staff" assigns everyone in People (${allIds.length}) with no check-in. Re-importing updates activities with the same day and name. No pushes are sent; 30-minute reminders are still scheduled.</p>
+    <p className="mute">For ${e0.name}. Choose the run-of-show spreadsheet (Excel or CSV). Day headings set each row's date; columns are Start, Stop, Event, Location, Responsibilities, Team Lead, Team Members. A blank location becomes <b>Wyndham Grand Rio Mar</b>; rooms that don't exist are added. "All staff" isn't assigned to everyone: only the team lead (if one is named) is assigned. Re-importing updates activities with the same day and name. No pushes are sent; 30-minute reminders are still scheduled.</p>
     <label className="btn ghost file-pick"><${Icon} name="upload"/>${plan ? 'Choose a different file' : 'Choose file'}<input type="file" accept=".xlsx,.csv" onChange=${pick}/></label>
     ${err && html`<p className="connection-error" role="alert">${err}</p>`}
     ${plan && !done && html`
@@ -56,7 +56,7 @@ export function ScheduleImport({ S, A, people, events, activities, rooms, curren
         <td><b>${x.title}</b>${x.det && html`<span className="cell-secondary det-preview">${x.det}</span>`}</td>
         <td><input aria-label=${'Room for ' + x.title} value=${x.room} maxLength="120" onChange=${e => setItem(i, { room: e.target.value, roomDefault: false })}/>${!roomSet.has(x.room.trim().toLowerCase()) && html`<span className="cell-secondary">New room</span>`}${x.roomDefault && html`<span className="cell-secondary">Blank in the sheet</span>`}</td>
         <td>${f.ppl.leads.map(nameOf).join(', ') || html`<span className="mute">–</span>`}</td>
-        <td>${x.all ? 'Everyone (' + f.ppl.members.length + ')' : f.ppl.members.filter(e => !f.ppl.leads.includes(e)).map(nameOf).join(', ') || html`<span className="mute">–</span>`}</td>
+        <td>${f.ppl.members.filter(e => !f.ppl.leads.includes(e)).map(nameOf).join(', ') || html`<span className="mute">–</span>`}${x.all && html`<span className="cell-secondary">All staff: lead only</span>`}</td>
         <td>${f.text}${x.warns.map(w => html`<span key=${w} className="cell-secondary warn-text">${w}</span>`)}
           <label className="chk"><input type="checkbox" checked=${x.skip} onChange=${e => setItem(i, { skip: e.target.checked })}/>Skip</label></td></tr>`; })}
       </tbody></table></div>`}

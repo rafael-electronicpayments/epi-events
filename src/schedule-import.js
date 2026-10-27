@@ -1,7 +1,8 @@
 // Run-of-show import: reads the staff schedule spreadsheet in the browser (nothing is uploaded) and plans the event's
 // activities. Day headings ("THURSDAY, NOVEMBER 12") set the date for the rows under them; each row is
 // Start, Stop, Event (activity), Location (room), Responsibilities (details), Team Lead, Team Members.
-// Team members can be names or "All staff" / "All team members". The admin reviews everything before it's saved.
+// Team members can be names or "All staff" / "All team members"; "All staff" assigns nobody extra, only the
+// designated team lead(s). The admin reviews everything before it's saved.
 import { readSpreadsheet, matchPerson, listName } from './rooming-import.js';
 import { parseTime } from './flight-import.js';
 
@@ -83,11 +84,12 @@ export function planSchedule(rows, people, eventStart) {
   return { items, unmatched, year };
 }
 
-// People ids for a row, applying the admin's choices for unmatched names. allIds = everyone for "All staff".
-export function rowPeople(it, choice, allIds) {
+// People ids for a row, applying the admin's choices for unmatched names. "All staff" adds nobody: only the
+// team lead(s) and any members named alongside it are assigned.
+export function rowPeople(it, choice) {
   const pick = n => n.how === 'exact' ? n.e : choice[n.raw.toLowerCase()] ?? null;
   const leads = [...new Set(it.leadNames.map(pick).filter(x => x != null))];
-  const members = [...new Set([...it.memberNames.map(pick).filter(x => x != null), ...(it.all ? allIds : [])])];
+  const members = [...new Set([...it.memberNames.map(pick).filter(x => x != null)])];
   return { leads, members };
 }
 
@@ -98,7 +100,7 @@ export function scheduleEffect(it, existing, asg, days, people) {
   if (it.day < 0) return { kind: 'error', text: 'Before the event starts' };
   if (it.day >= days) return { kind: 'extend', text: 'After the event ends: extend the event to import it' };
   const old = existing.find(x => x.d === it.day && x.t.trim().toLowerCase() === it.title.toLowerCase());
-  if (!old) return { kind: 'new', text: 'New activity' + (it.all ? ', everyone assigned (no check-in)' : '') };
+  if (!old) return { kind: 'new', text: 'New activity' };
   const ch = [], team = new Set(asg.filter(a => a.s === old.id).map(a => a.e)), want = new Set([...people.leads, ...people.members]);
   if (old.a !== it.start || old.b !== it.end) ch.push('time');
   if (old.r.toLowerCase() !== it.room.toLowerCase()) ch.push('room');
