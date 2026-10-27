@@ -332,3 +332,9 @@ body:has(dialog[open]) .app-error{display:none}
 .bulk-logins{display:grid;gap:12px}
 .editor-dialog:has(.bulk-logins){width:760px}
 .login-code{font-size:.95rem;user-select:all;white-space:nowrap}
+/* Run-of-show import */
+.name-fixes{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),1fr));gap:8px 16px;border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.name-fix{display:grid;grid-template-columns:1fr minmax(150px,180px);gap:8px;align-items:center}.name-fix>span{display:grid}
+.time-edit{display:flex;align-items:center;gap:4px;margin-top:4px}.time-edit input{min-height:36px;padding:0 4px;width:7.2em}
+.det-preview{white-space:pre-line;max-height:4.5em;overflow:hidden}
+.schedule-import .rooming-table td input:not([type=checkbox]){width:100%;min-width:140px}

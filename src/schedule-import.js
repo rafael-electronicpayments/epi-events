@@ -1,0 +1,110 @@
+// Run-of-show import: reads the staff schedule spreadsheet in the browser (nothing is uploaded) and plans the event's
+// activities. Day headings ("THURSDAY, NOVEMBER 12") set the date for the rows under them; each row is
+// Start, Stop, Event (activity), Location (room), Responsibilities (details), Team Lead, Team Members.
+// Team members can be names or "All staff" / "All team members". The admin reviews everything before it's saved.
+import { readSpreadsheet, matchPerson, listName } from './rooming-import.js';
+import { parseTime } from './flight-import.js';
+
+export { readSpreadsheet };
+export const DEFAULT_ROOM = 'Wyndham Grand Rio Mar';
+export const ALL_DAY = [360, 1320]; // 6:00 AM - 10:00 PM for "Ongoing" or blank times
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+const key = h => String(h ?? '').toLowerCase().replace(/[^a-z]/g, '');
+const text = v => String(v ?? '').replace(/ /g, ' ').trim();
+
+// "THURSDAY, NOVEMBER 12" or "Thu 11/12" (alone on its row) -> "2026-11-12" in the event's year.
+export function dayHeading(cells, year) {
+  const filled = cells.map(text).filter(Boolean);
+  if (filled.length !== 1) return '';
+  const s = filled[0].toLowerCase();
+  let m = s.match(/^(?:sun|mon|tue|wed|thu|fri|sat)[a-z]*\.?,?\s+([a-z]+)\.?\s+(\d{1,2})(?:,?\s+(\d{4}))?$/);
+  if (m) { const mo = MONTHS.findIndex(x => m[1].startsWith(x)); if (mo < 0) return ''; return iso(m[3] ? +m[3] : year, mo + 1, +m[2]); }
+  m = s.match(/^(?:sun|mon|tue|wed|thu|fri|sat)[a-z]*\.?,?\s+(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?$/);
+  if (m) return iso(m[3] ? (m[3].length === 2 ? 2000 + +m[3] : +m[3]) : year, +m[1], +m[2]);
+  return '';
+}
+const iso = (y, m, d) => { const t = new Date(Date.UTC(y, m - 1, d)); return t.getUTCMonth() === m - 1 ? t.toISOString().slice(0, 10) : ''; };
+const minutes = hhmm => { const [h, m] = hhmm.split(':').map(Number); return h * 60 + m; };
+
+// Column positions from the header row; falls back to the standard order (Start, Stop, Event, Location,
+// Responsibilities, Team Lead, Team Members).
+function columns(header) {
+  const k = header.map(key), at = (test, dflt) => { const i = k.findIndex(test); return i >= 0 ? i : dflt; };
+  return { start: at(x => x === 'start' || x === 'starttime' || x === 'begin', 0), end: at(x => x === 'stop' || x === 'end' || x === 'endtime' || x === 'stoptime', 1),
+    title: at(x => x === 'event' || x === 'activity' || x === 'session' || x === 'title', 2), room: at(x => x === 'location' || x === 'room' || x === 'venue', 3),
+    det: at(x => x.startsWith('responsib') || x === 'details' || x === 'notes', 4), lead: at(x => x.startsWith('teamlead') || x === 'lead' || x === 'leads', 5),
+    members: at(x => x.startsWith('teammember') || x === 'team' || x === 'staff' || x === 'members', 6) };
+}
+const isHeader = cells => { const k = cells.map(key); return k.includes('start') && (k.includes('stop') || k.includes('end')); };
+const ALL = /^(all|all staff|all team( members)?|all members|everyone|all hands)$/i;
+
+// Split "Bre Binder,  Erin Washburn" / "A & B" / lines into names; match each to People.
+export function matchNames(raw, people) {
+  const s = text(raw);
+  if (!s) return { all: false, names: [] };
+  if (ALL.test(s)) return { all: true, names: [] };
+  const names = s.split(/\s*(?:,|;|\n|&|\band\b|\/)\s*/i).map(x => x.trim()).filter(Boolean);
+  return { all: false, names: names.map(n => { if (ALL.test(n)) return { raw: n, all: true };
+    const m = matchPerson(listName(n), people);
+    return { raw: n, e: m.person ? m.person.id : null, how: m.how, others: m.others }; }) };
+}
+
+// -> {items, unmatched (name -> {e, others}), year}. eventStart "2026-11-07".
+export function planSchedule(rows, people, eventStart) {
+  const year = Number(eventStart.slice(0, 4)), start = Date.parse(eventStart + 'T00:00:00Z');
+  let cols = columns([]), date = '', sawHeader = false;
+  const items = [];
+  rows.forEach((cells, i) => {
+    if (isHeader(cells)) { cols = columns(cells); sawHeader = true; return; }
+    const heading = dayHeading(cells, year);
+    if (heading) { date = heading; return; }
+    // First line is the activity name; any further lines ("IF YOU ARE ON THIS LIST BE HERE") go to the top of Details.
+    const [title = '', ...extra] = text(cells[cols.title]).split(/\s*\n\s*/).filter(Boolean);
+    if (!sawHeader || !title) return; // titles and banners above the table
+    const warns = [];
+    let a = parseTime(cells[cols.start]), b = parseTime(cells[cols.end]), allDay = false;
+    if (!a || !b) { allDay = true; warns.push((text(cells[cols.start]) || 'No time') + ': scheduled all day (6:00 AM–10:00 PM); check the times'); }
+    let s = allDay ? ALL_DAY[0] : minutes(a), e = allDay ? ALL_DAY[1] : minutes(b);
+    if (!allDay && e <= s) { if (e === 0) e = 1440; else warns.push('Stop time is before the start time'); }
+    const day = date ? Math.round((Date.parse(date + 'T00:00:00Z') - start) / 86400000) : null;
+    const roomRaw = text(cells[cols.room]);
+    const lead = matchNames(cells[cols.lead], people), mem = matchNames(cells[cols.members], people);
+    items.push({ line: i + 1, date, day, title, room: roomRaw || DEFAULT_ROOM, roomDefault: !roomRaw, start: s, end: e, allDay,
+      det: [...extra, text(cells[cols.det])].filter(Boolean).join('\n').slice(0, 2000), leadNames: lead.names.filter(n => !n.all), memberNames: mem.names.filter(n => !n.all),
+      all: mem.all || lead.all || mem.names.some(n => n.all), warns, skip: false });
+  });
+  // Every distinct name not matched exactly, for one decision each in the review.
+  const unmatched = {};
+  for (const it of items) for (const n of [...it.leadNames, ...it.memberNames]) if (n.how !== 'exact') {
+    const k = n.raw.toLowerCase();
+    if (!unmatched[k]) unmatched[k] = { raw: n.raw, e: n.e, how: n.how, others: n.others, rows: 0 };
+    unmatched[k].rows++;
+  }
+  return { items, unmatched, year };
+}
+
+// People ids for a row, applying the admin's choices for unmatched names. allIds = everyone for "All staff".
+export function rowPeople(it, choice, allIds) {
+  const pick = n => n.how === 'exact' ? n.e : choice[n.raw.toLowerCase()] ?? null;
+  const leads = [...new Set(it.leadNames.map(pick).filter(x => x != null))];
+  const members = [...new Set([...it.memberNames.map(pick).filter(x => x != null), ...(it.all ? allIds : [])])];
+  return { leads, members };
+}
+
+// What saving a row would do. existing: activities of this event [{id, t, d, a, b, r, det}]; asg [{s, e, lead}].
+export function scheduleEffect(it, existing, asg, days, people) {
+  if (it.skip) return { kind: 'skip', text: 'Skipped' };
+  if (it.day == null) return { kind: 'error', text: 'No day heading above this row' };
+  if (it.day < 0) return { kind: 'error', text: 'Before the event starts' };
+  if (it.day >= days) return { kind: 'extend', text: 'After the event ends: extend the event to import it' };
+  const old = existing.find(x => x.d === it.day && x.t.trim().toLowerCase() === it.title.toLowerCase());
+  if (!old) return { kind: 'new', text: 'New activity' + (it.all ? ', everyone assigned (no check-in)' : '') };
+  const ch = [], team = new Set(asg.filter(a => a.s === old.id).map(a => a.e)), want = new Set([...people.leads, ...people.members]);
+  if (old.a !== it.start || old.b !== it.end) ch.push('time');
+  if (old.r.toLowerCase() !== it.room.toLowerCase()) ch.push('room');
+  if ((old.det || '') !== it.det) ch.push('details');
+  if (team.size !== want.size || [...want].some(e => !team.has(e))) ch.push('team');
+  const leadsNow = new Set(asg.filter(a => a.s === old.id && a.lead).map(a => a.e));
+  if (leadsNow.size !== people.leads.length || people.leads.some(e => !leadsNow.has(e))) ch.push('leads');
+  return ch.length ? { kind: 'update', text: 'Updates ' + ch.join(', ') } : { kind: 'same', text: 'No change' };
+}
