@@ -3,7 +3,7 @@
 import React from 'react';
 import htm from 'htm';
 import { Icon, Modal } from './ui.js';
-import { readSpreadsheet, planSchedule, rowPeople, scheduleEffect } from './schedule-import.js';
+import { readSpreadsheet, planSchedule, rowPeople, scheduleEffect, ALL_DAY } from './schedule-import.js';
 
 const html = htm.bind(React.createElement);
 const hm = m => { const h = Math.floor(m / 60) % 24, mm = m % 60; return (h % 12 || 12) + ':' + String(mm).padStart(2, '0') + (h < 12 ? ' AM' : ' PM'); };
@@ -11,7 +11,7 @@ const toInput = m => String(Math.floor(m / 60) % 24).padStart(2, '0') + ':' + St
 const fromInput = v => { const [h, m] = v.split(':').map(Number); return h * 60 + m; };
 const dayText = iso => iso ? new Date(iso + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : 'No day';
 
-export function ScheduleImport({ S, A, moments = false, people, events, activities, rooms, current, onClose }) {
+export function ScheduleImport({ S, A, moments = false, overlap = false, people, events, activities, rooms, current, onClose }) {
   const e0 = events.find(e => e.id === current.id) || {};
   const [plan, setPlan] = React.useState(null), [file, setFile] = React.useState(''), [choice, setChoice] = React.useState({}), [err, setErr] = React.useState('');
   const [busy, setBusy] = React.useState(false), [done, setDone] = React.useState(''), [extend, setExtend] = React.useState(true);
@@ -26,20 +26,25 @@ export function ScheduleImport({ S, A, moments = false, people, events, activiti
   const maxDay = Math.max(-1, ...items.filter(x => !x.skip && x.day != null).map(x => x.day));
   const days = extend && maxDay >= e0.days ? Math.min(14, maxDay + 1) : e0.days;
   const existing = activities.filter(a => a.ev === current.id);
-  const fx = items.map(it => { const ppl = rowPeople(it, choice); return { ppl, ...scheduleEffect(it, existing, S.asg || [], days, ppl) }; });
+  // Allow overlap: ticked for all-day rows (6:00 AM-10:00 PM) or when the activity already allows it, unless changed here.
+  const oldOf = it => existing.find(x => x.d === it.day && x.t.trim().toLowerCase() === it.title.toLowerCase());
+  const ovOf = it => it.ov ?? (!!oldOf(it)?.ov || (it.start === ALL_DAY[0] && it.end === ALL_DAY[1]));
+  const fx = items.map(it => { const ppl = rowPeople(it, choice), f = scheduleEffect(it, existing, S.asg || [], days, ppl), old = oldOf(it);
+    if (overlap && old && ['same', 'update'].includes(f.kind) && !!old.ov !== ovOf(it)) return { ppl, kind: 'update', text: f.kind === 'same' ? 'Updates overlap' : f.text + ', overlap' };
+    return { ppl, ...f }; });
   const ok = items.filter((x, i) => ['new', 'update', 'same'].includes(fx[i].kind));
   const tally = k => fx.filter(f => f.kind === k).length, bad = fx.some(f => f.kind === 'error');
   const roomSet = new Set(rooms.map(r => r.toLowerCase()));
   const newRooms = [...new Set(ok.map(x => x.room).filter(r => !roomSet.has(r.toLowerCase())))];
   const nameOf = id => people[id]?.name || '?';
   const save = async () => { setBusy(true); setErr('');
-    const rows = items.map((x, i) => [x, fx[i]]).filter(([, f]) => ['new', 'update', 'same'].includes(f.kind)).map(([x, f]) => ({ title: x.title, room: x.room, day: x.day, start: x.start, end: x.end, det: x.det, leads: f.ppl.leads, members: f.ppl.members }));
+    const rows = items.map((x, i) => [x, fx[i]]).filter(([, f]) => ['new', 'update', 'same'].includes(f.kind)).map(([x, f]) => ({ title: x.title, room: x.room, day: x.day, start: x.start, end: x.end, det: x.det, leads: f.ppl.leads, members: f.ppl.members, ...(overlap ? { ov: ovOf(x) } : {}) }));
     const r = await A.importSchedule(current.id, days > e0.days ? { days } : {}, rows); setBusy(false);
     if (r !== false) setDone(tally('new') + ' activities added, ' + tally('update') + ' updated' + (newRooms.length ? ', ' + newRooms.length + ' new room' + (newRooms.length === 1 ? '' : 's') : '') + '. No pushes were sent; people see their new assignments in the app.');
     else setErr('Could not import. Check the rows and try again.'); };
   const unmatched = plan ? Object.entries(plan.unmatched) : [];
   return html`<${Modal} title="Import run of show" onClose=${busy ? () => {} : onClose}><div className="rooming-import schedule-import">
-    <p className="mute">For ${e0.name}. Choose the run-of-show spreadsheet (Excel or CSV). Day headings set each row's date; columns are Start, Stop, Event, Location, Responsibilities, Team Lead, Team Members. A blank location becomes <b>Wyndham Grand Rio Mar</b>; rooms that don't exist are added. "All staff" isn't assigned to everyone: only the team lead (if one is named) is assigned. ${moments ? 'A row with a start and no stop time becomes a one-moment action; Staff needed is the number of people named (none is fine). ' : ''}Re-importing updates activities with the same day and name. No pushes are sent; 30-minute reminders are still scheduled.</p>
+    <p className="mute">For ${e0.name}. Choose the run-of-show spreadsheet (Excel or CSV). Day headings set each row's date; columns are Start, Stop, Event, Location, Responsibilities, Team Lead, Team Members. A blank location becomes <b>Wyndham Grand Rio Mar</b>; rooms that don't exist are added. "All staff" isn't assigned to everyone: only the team lead (if one is named) is assigned. ${moments ? 'A row with a start and no stop time becomes a one-moment action; Staff needed is the number of people named (none is fine). ' : ''}${overlap ? 'All-day rows (6:00 AM–10:00 PM) are set to allow overlap; change it per row. ' : ''}Re-importing updates activities with the same day and name. No pushes are sent; 30-minute reminders are still scheduled.</p>
     <label className="btn ghost file-pick"><${Icon} name="upload"/>${plan ? 'Choose a different file' : 'Choose file'}<input type="file" accept=".xlsx,.csv" onChange=${pick}/></label>
     ${err && html`<p className="connection-error" role="alert">${err}</p>`}
     ${plan && !done && html`
@@ -58,7 +63,8 @@ export function ScheduleImport({ S, A, moments = false, people, events, activiti
         <td>${f.ppl.leads.map(nameOf).join(', ') || html`<span className="mute">–</span>`}</td>
         <td>${f.ppl.members.filter(e => !f.ppl.leads.includes(e)).map(nameOf).join(', ') || html`<span className="mute">–</span>`}${x.all && html`<span className="cell-secondary">All staff: lead only</span>`}</td>
         <td>${f.text}${x.warns.map(w => html`<span key=${w} className="cell-secondary warn-text">${w}</span>`)}
-          <label className="chk"><input type="checkbox" checked=${x.skip} onChange=${e => setItem(i, { skip: e.target.checked })}/>Skip</label></td></tr>`; })}
+          <label className="chk"><input type="checkbox" checked=${x.skip} onChange=${e => setItem(i, { skip: e.target.checked })}/>Skip</label>
+          ${overlap && html`<label className="chk"><input type="checkbox" aria-label=${'Allow overlap for ' + x.title} checked=${ovOf(x)} onChange=${e => setItem(i, { ov: e.target.checked })}/>Allow overlap</label>`}</td></tr>`; })}
       </tbody></table></div>`}
     ${done && html`<p className="mute" role="status">${done}</p>`}
     <div className="dialog-actions"><button type="button" className="btn ghost" disabled=${busy} onClick=${onClose}>${done ? 'Close' : 'Cancel'}</button>
