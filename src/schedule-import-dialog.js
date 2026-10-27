@@ -11,13 +11,13 @@ const toInput = m => String(Math.floor(m / 60) % 24).padStart(2, '0') + ':' + St
 const fromInput = v => { const [h, m] = v.split(':').map(Number); return h * 60 + m; };
 const dayText = iso => iso ? new Date(iso + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : 'No day';
 
-export function ScheduleImport({ S, A, people, events, activities, rooms, current, onClose }) {
+export function ScheduleImport({ S, A, moments = false, people, events, activities, rooms, current, onClose }) {
   const e0 = events.find(e => e.id === current.id) || {};
   const [plan, setPlan] = React.useState(null), [file, setFile] = React.useState(''), [choice, setChoice] = React.useState({}), [err, setErr] = React.useState('');
   const [busy, setBusy] = React.useState(false), [done, setDone] = React.useState(''), [extend, setExtend] = React.useState(true);
   const pool = people.filter(p => p && !p.gone).sort((a, b) => a.name.localeCompare(b.name));
   const pick = async ev => { const f = ev.target.files[0]; ev.target.value = ''; if (!f) return; setErr(''); setDone('');
-    try { const { rows } = await readSpreadsheet(f); const p = planSchedule(rows, people, e0.start);
+    try { const { rows } = await readSpreadsheet(f); const p = planSchedule(rows, people, e0.start, { moments });
       if (!p.items.length) throw new Error('No activities found. The sheet needs a Start / Stop / Event header row and day headings like "THURSDAY, NOVEMBER 12".');
       setPlan(p); setFile(f.name); setChoice(Object.fromEntries(Object.entries(p.unmatched).map(([k, u]) => [k, u.e ?? null]))); }
     catch (x) { setPlan(null); setErr(x.message || 'Could not read the file.'); } };
@@ -39,7 +39,7 @@ export function ScheduleImport({ S, A, people, events, activities, rooms, curren
     else setErr('Could not import. Check the rows and try again.'); };
   const unmatched = plan ? Object.entries(plan.unmatched) : [];
   return html`<${Modal} title="Import run of show" onClose=${busy ? () => {} : onClose}><div className="rooming-import schedule-import">
-    <p className="mute">For ${e0.name}. Choose the run-of-show spreadsheet (Excel or CSV). Day headings set each row's date; columns are Start, Stop, Event, Location, Responsibilities, Team Lead, Team Members. A blank location becomes <b>Wyndham Grand Rio Mar</b>; rooms that don't exist are added. "All staff" isn't assigned to everyone: only the team lead (if one is named) is assigned. Re-importing updates activities with the same day and name. No pushes are sent; 30-minute reminders are still scheduled.</p>
+    <p className="mute">For ${e0.name}. Choose the run-of-show spreadsheet (Excel or CSV). Day headings set each row's date; columns are Start, Stop, Event, Location, Responsibilities, Team Lead, Team Members. A blank location becomes <b>Wyndham Grand Rio Mar</b>; rooms that don't exist are added. "All staff" isn't assigned to everyone: only the team lead (if one is named) is assigned. ${moments ? 'A row with a start and no stop time becomes a one-moment action; Staff needed is the number of people named (none is fine). ' : ''}Re-importing updates activities with the same day and name. No pushes are sent; 30-minute reminders are still scheduled.</p>
     <label className="btn ghost file-pick"><${Icon} name="upload"/>${plan ? 'Choose a different file' : 'Choose file'}<input type="file" accept=".xlsx,.csv" onChange=${pick}/></label>
     ${err && html`<p className="connection-error" role="alert">${err}</p>`}
     ${plan && !done && html`
@@ -52,7 +52,7 @@ export function ScheduleImport({ S, A, people, events, activities, rooms, curren
             <optgroup label="Everyone">${pool.map(p => html`<option key=${p.id} value=${p.id}>${p.name}</option>`)}</optgroup></select></label>`)}</fieldset>`}
       <div className="data-surface rooming-table"><table className="data-table"><thead><tr><th scope="col">When</th><th scope="col">Activity</th><th scope="col">Room</th><th scope="col">Lead</th><th scope="col">Team</th><th scope="col">Result</th></tr></thead><tbody>
       ${items.map((x, i) => { const f = fx[i]; return html`<tr key=${x.line} className=${'imp-' + (f.kind === 'extend' ? 'skip' : f.kind)}>
-        <td><b>${dayText(x.date)}</b>${x.allDay ? html`<span className="time-edit"><input type="time" aria-label=${'Start for ' + x.title} value=${toInput(x.start)} onChange=${e => e.target.value && setItem(i, { start: fromInput(e.target.value) })}/>–<input type="time" aria-label=${'Stop for ' + x.title} value=${toInput(x.end % 1440)} onChange=${e => e.target.value && setItem(i, { end: fromInput(e.target.value) || 1440 })}/></span>` : html`<span className="cell-secondary">${hm(x.start)}–${hm(x.end)}</span>`}</td>
+        <td><b>${dayText(x.date)}</b>${x.allDay ? html`<span className="time-edit"><input type="time" aria-label=${'Start for ' + x.title} value=${toInput(x.start)} onChange=${e => e.target.value && setItem(i, { start: fromInput(e.target.value) })}/>–<input type="time" aria-label=${'Stop for ' + x.title} value=${toInput(x.end % 1440)} onChange=${e => e.target.value && setItem(i, { end: fromInput(e.target.value) || 1440 })}/></span>` : html`<span className="cell-secondary">${x.end === x.start ? hm(x.start) + ' (no end time)' : hm(x.start) + '–' + hm(x.end)}</span>`}</td>
         <td><b>${x.title}</b>${x.det && html`<span className="cell-secondary det-preview">${x.det}</span>`}</td>
         <td><input aria-label=${'Room for ' + x.title} value=${x.room} maxLength="120" onChange=${e => setItem(i, { room: e.target.value, roomDefault: false })}/>${!roomSet.has(x.room.trim().toLowerCase()) && html`<span className="cell-secondary">New room</span>`}${x.roomDefault && html`<span className="cell-secondary">Blank in the sheet</span>`}</td>
         <td>${f.ppl.leads.map(nameOf).join(', ') || html`<span className="mute">–</span>`}</td>

@@ -17,3 +17,12 @@ test('"All staff" in Team Members assigns only the designated team lead', () => 
   assert.deepEqual(pack, { leads: [0], members: [2] });
   assert.equal(scheduleEffect(items[0], [], [], 7, breakfast).text, 'New activity');
 });
+
+test('a row with a start and no stop becomes a one-moment action when the database supports it', () => {
+  const rows = [['Start', 'Stop', 'Event', 'Location', 'Responsibilities', 'Team Lead', 'Team Members'],
+    ['FRIDAY, NOVEMBER 13'], ['9:00 AM', '', 'Close event hall doors', 'Event Hall', '', '', '']];
+  const now = planSchedule(rows, [], '2026-11-07', { moments: true }).items[0];
+  assert.deepEqual([now.start, now.end, now.allDay, now.warns], [540, 540, false, []]);
+  const old = planSchedule(rows, [], '2026-11-07').items[0];
+  assert.equal(old.allDay, true, 'older databases still get the all-day fallback');
+});
