@@ -174,7 +174,7 @@ export function createExpenses({ React, html, Modal, Icon, IconButton, people, e
            <td>${payText(x.pay)}<span className="cell-secondary">${x.reimb ? 'Reimburse' : 'No reimbursement'}</span></td><td className="notes-col">${x.notes}</td><td className="amount-col"><b>${money(x.amt)}</b></td>
            <td className="setup-actions"><div className="row-actions">${x.rp && html`<${IconButton} name="eye" label=${'View receipt for ' + catText(x.cat) + ' ' + money(x.amt)} onClick=${() => openReceipt(A, x, setMsg)}/>`}<${IconButton} name="edit" label=${'Edit ' + catText(x.cat) + ' ' + money(x.amt)} onClick=${() => setEd({ x })}/>${del === x.id ? html`<button className="btn danger" onClick=${async () => { setDel(null); await A.delExpense(x.id); }}>Confirm</button>` : html`<${IconButton} name="delete" label=${'Delete ' + catText(x.cat) + ' ' + money(x.amt)} onClick=${() => setDel(x.id)}/>`}</div></td></tr>`))}
        </section>`; })
-      : html`<div className="empty-state"><${Icon} name="receipt" size=${28}/><h3>${all.length ? 'No expenses match these filters' : 'No expenses yet'}</h3><p className="mute">Staff and contractors add expenses from their own screen.</p></div>`}
+      : html`<div className="empty-state"><${Icon} name="receipt" size=${28}/><h3>${all.length ? 'No expenses match these filters' : 'No expenses yet'}</h3><p className="mute">People add expenses from their own screen.</p></div>`}
      ${ed && html`<${ExpenseEditor} editor=${ed} A=${A} chooser=${true} onClose=${() => setEd(null)}/>`}
     </div>`;
   }

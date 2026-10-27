@@ -1,5 +1,6 @@
 // Quick reminders (Manage › Messages): admins send a short message to people working the current event (chosen
 // people, or everyone); each person gets an in-app notice and a push, and taps Acknowledge. Admins see who has.
+import { typeLabel } from './people-types.js';
 export const REMINDER_MAX = 200;
 export const QUICK_TEXTS = ['Please acknowledge your assignment in the app.', 'You\'re late for your shift: please check in.', 'Please report to the registration desk.',
   'Please check your updated schedule.', 'Please call your team lead.'];
@@ -32,7 +33,7 @@ export function createReminders({ React, html, Modal, Icon, people, events, acti
         <label className="chk"><input type="radio" name="rem-to" checked=${!all} onChange=${() => setAll(false)}/>Selected people · ${ids.size}</label></fieldset>
       ${!all && html`<fieldset className="break-people"><legend>People <span className="mute">${ids.size} selected</span></legend>
         <div className="break-people-tools"><input type="search" aria-label="Filter people" placeholder="Filter people" value=${q} onChange=${e => setQ(e.target.value)}/>${ids.size > 0 && html`<button type="button" className="btn ghost" onClick=${() => setIds(new Set())}>Clear</button>`}</div>
-        <div className="break-people-list">${pool.filter(p => (p.name + ' ' + (p.role || '')).toLowerCase().includes(q.toLowerCase())).map(p => html`<label key=${p.id} className="chk"><input type="checkbox" checked=${ids.has(p.id)} onChange=${() => toggle(p.id)}/>${p.name}<span className="mute">${[p.acct === 'admin' ? 'Admin' : p.acct === 'contractor' ? 'Contractor' : 'Staff', p.role].filter(Boolean).join(' · ')}</span></label>`)}
+        <div className="break-people-list">${pool.filter(p => (p.name + ' ' + (p.role || '')).toLowerCase().includes(q.toLowerCase())).map(p => html`<label key=${p.id} className="chk"><input type="checkbox" checked=${ids.has(p.id)} onChange=${() => toggle(p.id)}/>${p.name}<span className="mute">${[typeLabel(p.acct), p.role].filter(Boolean).join(' · ')}</span></label>`)}
           ${!pool.length && html`<p className="mute">No one is assigned to this event yet.</p>`}</div></fieldset>`}
       <div className="quick-texts" role="group" aria-label="Quick texts">${QUICK_TEXTS.map(t => html`<button type="button" key=${t} className="btn ghost quick-text" onClick=${() => setMsg(t)}>${t}</button>`)}</div>
       <label>Message<textarea rows="3" maxLength=${REMINDER_MAX} value=${msg} onChange=${e => setMsg(e.target.value)} placeholder="Short message"></textarea><span className="mute field-hint">${msg.length}/${REMINDER_MAX}</span></label>

@@ -12,6 +12,7 @@ import { createItineraries, pickupDefault, hasPickup } from './itineraries.js';
 import { createTravelInfo } from './travel-info.js';
 import { createReminders } from './reminders.js';
 import { createSessionSupport } from './session-support.js';
+import { typeLabel } from './people-types.js';
 import { getBrand, setBrand, ICON_FILES } from './branding.js';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
@@ -23,7 +24,7 @@ const LN='Rivera Shah Bell Okafor Lee Costa Nguyen Park Torres Ito Haddad Reed P
 const RL=['Demo Lead','Room Host','Registration','Hospitality','Room Host'];
 const EMPS=FN.map((f,i)=>({id:i,name:f+' '+LN[i],role:RL[i%5],acct:'staff',phone:'555-01'+(10+i),map:1}));
 [['Pat Quinn','AV Technician (Encore AV)'],['Dr. Lena Ford','Speaker'],['Vic Mercer','Entertainment'],['Jo Adler','AV Technician (Encore AV)']].forEach(([n,r])=>EMPS.push({id:EMPS.length,name:n,role:r,acct:'contractor',phone:'555-01'+(60+EMPS.length),map:0}));
-const nm=e=>EMPS[e].name+(e===0?' (Employee A)':'')+(EMPS[e].acct==='contractor'?' (contractor)':'');
+const nm=e=>EMPS[e].name+(e===0?' (Employee A)':'')+(['contractor','speaker','panelist'].includes(EMPS[e].acct)?' ('+typeLabel(EMPS[e].acct).toLowerCase()+')':'');
 const DAYS=[],DAYS_SHORT=[];
 // Day labels show the weekday and date, e.g. "Saturday, Nov 7" (short: "Sat, Nov 7").
 const dayDate=(start,i,short)=>{const [y,m,d]=String(start).split('-').map(Number);return new Date(Date.UTC(y,m-1,d+i)).toLocaleDateString('en-US',{weekday:short?'short':'long',month:'short',day:'numeric',timeZone:'UTC'})};
@@ -323,7 +324,7 @@ function AdminSession({s,S,A,coordinator=false}){
    <option value="">Move to…</option>${same.map(o=>html`<option key=${o.id} value=${o.id}>${o.r}, ${span(o)}, ${o.t}</option>`)}</select>
   ${coordinator&&need(s)&&html`<button className="btn ghost" disabled=${!!a.in||!!a.conf} onClick=${()=>A.confirm(a.id)}>Confirm present</button>`}${INFO_SUPPORT.on&&['staff','admin'].includes(EMPS[a.e].acct)&&html`<button className="btn ghost" aria-pressed=${!!a.lead} onClick=${()=>A.setLead(a.id,!a.lead)}>${a.lead?'Remove as lead':'Make team lead'}</button>`}</div></div></li>`})}</ul>
  ${!as.length&&html`<p className="mute">No one assigned yet.</p>`}
- <div className="acts"><select aria-label=${'Employee to assign to '+s.t} value=${pick} onChange=${e=>setPick(e.target.value)}><option value="">Choose staff or contractor…</option>
+ <div className="acts"><select aria-label=${'Employee to assign to '+s.t} value=${pick} onChange=${e=>setPick(e.target.value)}><option value="">Choose a person…</option>
   ${free.map(e=>html`<option key=${e.id} value=${e.id}>${nm(e.id)}</option>`)}</select>
   <button className="btn" disabled=${pick===''} onClick=${async()=>{const ok=await A.assign(+pick,s.id);if(ok!==false)setPick('')}}>Assign</button>
   ${REMINDER_SUPPORT.on&&as.length>0&&(()=>{const late=as.filter(a=>EMPS[a.e]&&!EMPS[a.e].gone&&need(s)&&(!a.ack||(!a.in&&!a.conf))),noAck=late.some(a=>!a.ack);
@@ -457,7 +458,7 @@ function App({connected}){
   addInv:o=>{if(!invv(o))return false;o=nrm(o);INV.push({...o,id:Math.max(0,...INV.map(x=>x.id))+1,ev:CUR.id});setS(s=>L({...s},'Recorded '+o.type+' from '+o.vendor+(o.inv?' (invoice '+o.inv+')':'')));say('Entry saved');return true},
   editInv:(id,o)=>{if(!invv(o))return false;o=nrm(o);const i=INV.findIndex(x=>x.id===id);INV[i]={...INV[i],...o};setS(s=>L({...s},'Updated incoming entry from '+o.vendor+(o.inv?' (invoice '+o.inv+')':'')));say('Entry saved');return true},
   delInv:id=>{const i=INV.findIndex(x=>x.id===id),e=INV[i];INV.splice(i,1);setS(s=>L({...s},'Deleted incoming entry from '+e.vendor));say('Entry deleted. Undo brings it back.');return true},
-  setEventClosed:(id,c)=>{const e=evOf(id);if(!e)return false;e.closed=!!c;setS(s=>L({...s},(c?'Closed event ':'Reopened event ')+e.name));say(c?e.name+' closed. Staff and contractors no longer see it.':e.name+' reopened');return true},
+  setEventClosed:(id,c)=>{const e=evOf(id);if(!e)return false;e.closed=!!c;setS(s=>L({...s},(c?'Closed event ':'Reopened event ')+e.name));say(c?e.name+' closed. Only admins can see it now.':e.name+' reopened');return true},
   switchEv:id=>{CUR.id=id;syncEv();setS(s=>({...s}))},
   calAdd:id=>{setS(s=>{const o=s.asg.find(a=>a.id===id);return L({...s,asg:s.asg.map(a=>a.id===id?{...a,cal:a.seq||0,pc:0}:a)},EMPS[o.e].name+' added '+SM[o.s].t+' to their calendar with a 30-minute reminder')})},
   calSkip:id=>setS(s=>({...s,asg:s.asg.map(a=>a.id===id?{...a,pc:0}:a)})),
@@ -541,7 +542,7 @@ function App({connected}){
  const push=connected&&PUSH_SUPPORT.on&&window.eventOpsRepository?.pushKey&&me!=null&&EMPS[me]&&!EMPS[me].gone?{repo:window.eventOpsRepository,refresh:connected.refresh,devices:S.push?.devices||0}:null;
  if(role!=='admin'&&evOf(CUR.id)?.closed&&openEvs.length){CUR.id=openEvs[0].id;syncEv()}
  const ul=H.length?(H[H.length-1].label||'last change'):'';
- const R=[['admin','Admin'],['staff','Staff'],['contractor','Contractor']];
+ const R=[['admin','Admin'],['staff','Staff'],['contractor','Event Staff']];
  return html`<div><${AppHeader} events=${role==='admin'?EVS.map(e=>e.closed?{...e,name:e.name+' (closed)'}:e):openEvs} current=${CUR.id} onEventChange=${A.switchEv} email=${connected?.email} role=${role} busy=${connected?.busy} error=${connected?.error} onRefresh=${connected?.refresh} onSignOut=${connected?.signOut} onChangePassword=${connected?.changePassword}>
   ${!connected&&html`<${IconButton} name="undo" label=${H.length?'Undo: '+ul:'Nothing to undo'} disabled=${!H.length} onClick=${A.undo}/>
   <div className="seg" role="group" aria-label="Demo role">${R.map(([k,l])=>html`<button key=${k} aria-pressed=${role===k} onClick=${()=>{setRole(k);const f=EMPS.find(e=>!e.gone&&e.acct===k);if(f)setMe(f.id)}}>${l}</button>`)}</div><${IconButton} name="reset" label="Reset demo" onClick=${()=>{H.length=0;setS(seed());say('Demo reset')}}/>`}

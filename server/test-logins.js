@@ -61,7 +61,7 @@ export function createTestLoginHandler({ createClient, env, uuid = randomUUID })
       const eligible = p => {
         const invite = inviteFor(p);
         return invite && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(invite.email || '') && invite.role === p.account_type
-          && ['staff', 'contractor', 'admin'].includes(p.account_type);
+          && ['staff', 'contractor', 'speaker', 'panelist', 'admin'].includes(p.account_type);
       };
       const inspect = async p => {
         const linked = profiles.find(f => f.person_id === p.id);
