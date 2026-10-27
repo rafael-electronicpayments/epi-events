@@ -79,7 +79,7 @@ export function createConnection(React, html, repository, App, hydrate) {
       } catch (e) {
         if (token === generation.current) {
           await refresh();
-          setError(e.code === '40001' ? 'Another user changed the data. Reopen the record before saving your changes.' : e.message);
+          setError(e.code === 'PT409' || e.code === '40001' ? 'Another user changed the data. Reopen the record before saving your changes.' : e.message);
         }
         return false;
       } finally { writing.current = false; setBusy(false); }
