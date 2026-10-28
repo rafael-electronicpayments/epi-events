@@ -27,7 +27,7 @@ test('roster emails provision access and reject collisions or unauthorized chang
     await assert.rejects(save(null,'staff@example.test'),/already belongs/);
     await assert.rejects(save(null,'admin@example.test'),/already belongs/);
     await assert.rejects(save(null,'invalid'),/valid email/);
-    await assert.rejects(save(person,'staff@example.test','manager'),/Choose Admin, Staff, or Contractor/);
+    await assert.rejects(save(person,'staff@example.test','manager'),/Choose Admin, Staff, Event Staff, Speaker, or Panelist/);
     await db.exec(`insert into auth.users values('${staff}','staff@example.test')`);
     assert.equal((await db.query('select role from public.profiles where user_id=$1',[staff])).rows[0].role,'staff');
     s=await save(person,'staff@example.test','contractor');

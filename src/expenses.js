@@ -1,7 +1,7 @@
 // Expense entry (staff, contractors, roster admins) and admin review/approval with an HR report.
 // Fields follow EPI's expense template: Expense, Location, Receipt ID, Date, Amount, Payment method, Reimburse, Notes.
 
-export const CATS = [['breakfast', 'Meal: Breakfast'], ['lunch', 'Meal: Lunch'], ['dinner', 'Meal: Dinner'], ['baggage', 'Baggage'], ['transportation', 'Transportation'], ['parking', 'Parking'], ['airfare', 'Airfare'], ['hotel', 'Hotel'], ['other', 'Other']];
+export const CATS = [['breakfast', 'Meal: Breakfast'], ['lunch', 'Meal: Lunch'], ['dinner', 'Meal: Dinner'], ['team_meal', 'Team Meal'], ['iso_hosting', 'ISO/Rep Hosting'], ['baggage', 'Baggage'], ['transportation', 'Transportation'], ['parking', 'Parking'], ['airfare', 'Airfare'], ['hotel', 'Hotel'], ['other', 'Other']];
 export const PAYS = [['cash', 'Cash'], ['corporate_amex', 'Corporate AMEX'], ['personal_card', 'Personal credit card'], ['guest_room', 'Billed to guest room']];
 export const RECEIPT_TYPES = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/heic': 'heic', 'image/heif': 'heif', 'application/pdf': 'pdf' };
 export const RECEIPT_MAX = 7340032; // 7 MB; the receipts bucket enforces the same limit.
@@ -50,8 +50,13 @@ export function checkExpense(o) {
   if (!/^\d{1,5}(\.\d{1,2})?$/.test(o.amt || '') || !(Number(o.amt) > 0)) return 'Enter an amount greater than zero (up to two decimals).';
   if (!PAYS.some(([k]) => k === o.pay)) return 'Choose a payment method.';
   if (o.cat === 'other' && !String(o.notes || '').trim()) return 'Add a note describing this expense.';
+  if (o.cat === 'team_meal' && !(o.att || []).length) return 'Choose who was at the team meal.';
+  if (o.cat === 'iso_hosting' && !String(o.notes || '').trim()) return 'Please add names and details to the notes.';
   return '';
 }
+
+// Notes as shown in lists and reports: a team meal names who was there first.
+export const noteText = (x, people) => [(x.att || []).length ? 'Team meal with ' + x.att.map(e => people[e]?.name || 'Unknown person').join(', ') + '.' : '', x.notes || ''].filter(Boolean).join(' ');
 
 const esc = t => String(t ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -62,12 +67,12 @@ export function hrReport({ list, people, eventName, scope, title, autoPrint = fa
     .sort((a, b) => a.p.name.localeCompare(b.p.name));
   const totals = items => ({ all: sum(items), ok: sum(items.filter(x => x.ok)), pending: sum(items.filter(x => !x.ok)), reimb: sum(items.filter(x => x.reimb)) });
   const tline = (t, cls) => `<tr class="${cls}"><td colspan="7">Total ${esc(money(t.all))} · Approved ${esc(money(t.ok))} · Not yet approved ${esc(money(t.pending))} · To reimburse ${esc(money(t.reimb))}</td><td class="r">${esc(money(t.all))}</td><td></td></tr>`;
-  const body = byPerson.map(g => `<section><h2>${esc(g.p.name)}${g.p.role ? ` <span class="m">${esc(g.p.role)}</span>` : ''}</h2><table><thead><tr><th class="d">Date</th><th>Expense</th><th>Location</th><th>Receipt ID</th><th>Payment</th><th class="c">Reimburse</th><th>Notes</th><th class="r">Amount</th><th class="s">Status</th></tr></thead><tbody>${g.items.map(x => `<tr><td class="d">${esc(dateText(x.date))}</td><td>${esc(catText(x.cat))}</td><td>${esc(x.loc)}</td><td>${esc(x.ref)}</td><td>${esc(payText(x.pay))}</td><td class="c">${x.reimb ? 'Y' : 'N'}</td><td>${esc(x.notes)}</td><td class="r">${esc(money(x.amt))}</td><td class="s ${x.ok ? 'ok' : 'pend'}">${x.ok ? 'Approved' + (x.okAt ? `<span class="by">, ${esc(x.okBy || 'an administrator')} ${esc(approvedText(x.okAt))}</span>` : '') : 'Not approved'}</td></tr>`).join('')}${tline(totals(g.items), 'sub')}</tbody></table></section>`).join('');
+  const body = byPerson.map(g => `<section><h2>${esc(g.p.name)}${g.p.role ? ` <span class="m">${esc(g.p.role)}</span>` : ''}</h2><table><thead><tr><th class="d">Date</th><th>Expense</th><th>Location</th><th>Receipt ID</th><th>Payment</th><th class="c">Reimburse</th><th>Notes</th><th class="r">Amount</th><th class="s">Status</th></tr></thead><tbody>${g.items.map(x => `<tr><td class="d">${esc(dateText(x.date))}</td><td>${esc(catText(x.cat))}</td><td>${esc(x.loc)}</td><td>${esc(x.ref)}</td><td>${esc(payText(x.pay))}</td><td class="c">${x.reimb ? 'Y' : 'N'}</td><td>${esc(noteText(x, people))}</td><td class="r">${esc(money(x.amt))}</td><td class="s ${x.ok ? 'ok' : 'pend'}">${x.ok ? 'Approved' + (x.okAt ? `<span class="by">, ${esc(x.okBy || 'an administrator')} ${esc(approvedText(x.okAt))}</span>` : '') : 'Not approved'}</td></tr>`).join('')}${tline(totals(g.items), 'sub')}</tbody></table></section>`).join('');
   const all = totals(list);
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(heading)}</title><style>@page{size:letter landscape;margin:.4in}body{font:11px/1.35 system-ui,sans-serif;color:#000;margin:16px}h1{font-size:18px;margin:0 0 2px}h2{font-size:14px;margin:18px 0 4px;break-after:avoid}.m{color:#555;font-weight:400}table{border-collapse:collapse;width:100%;table-layout:fixed}th,td{border-top:1px solid #bbb;padding:4px 5px;text-align:left;vertical-align:top;overflow-wrap:anywhere}thead th{background:#e8eeed}.d{width:11%}.c{width:7%;text-align:center}.r{width:9%;text-align:right}.s{width:17%}.by{font-weight:400;color:#000}.ok{color:#05603a;font-weight:600}.pend{color:#93370d;font-weight:600}tr.sub td{background:#f3f6f5;font-weight:600}tr{break-inside:avoid}section{break-inside:auto}.grand{margin-top:18px;padding:8px 10px;border:2px solid #0f766e;font-size:13px}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}button{font:inherit;padding:10px 16px;margin:0 0 12px;min-height:44px}@media print{body{margin:0}button{display:none}}</style></head><body><button onclick="window.print()">Print or save as PDF</button><h1>${esc(heading)}</h1><p class="m">${esc(scope)} · ${list.length} expense${list.length === 1 ? '' : 's'} · ${byPerson.length} ${byPerson.length === 1 ? 'person' : 'people'} · Printed ${esc(new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }))}</p>${body || '<p class="m">No expenses match.</p>'}${list.length ? `<p class="grand"><b>${byPerson.length === 1 ? 'Total' : 'All people'}: ${esc(money(all.all))}</b> · Approved ${esc(money(all.ok))} · Not yet approved ${esc(money(all.pending))} · To reimburse ${esc(money(all.reimb))}</p>` : ''}${autoPrint ? '<script>addEventListener("load",()=>setTimeout(()=>print(),200))</script>' : ''}</body></html>`;
 }
 
-export function createExpenses({ React, html, Modal, Icon, IconButton, people, events, current }) {
+export function createExpenses({ React, html, Modal, Icon, IconButton, people, events, current, activities = [], teamMeals = { on: true } }) {
   const { useState } = React;
   const today = () => { const d = new Date(), q = n => String(n).padStart(2, '0'); return d.getFullYear() + '-' + q(d.getMonth() + 1) + '-' + q(d.getDate()); };
   const field = (text, input, hint) => html`<label>${text}${input}${hint && html`<span className="mute field-hint">${hint}</span>`}</label>`;
@@ -88,12 +93,31 @@ export function createExpenses({ React, html, Modal, Icon, IconButton, people, e
     catch (e) { if (w) w.close(); setMsg && setMsg('Could not open the receipt.'); }
   };
 
-  function ExpenseEditor({ editor, A, onClose, chooser = false }) {
+  // Who was at a team meal: the same picker as Add lunch or break (filter, add everyone in an activity, clear).
+  function PeoplePicker({ S, initial, onDone, onClose }) {
+    const [ids, setIds] = useState(() => new Set(initial)), [q, setQ] = useState('');
+    const active = people.filter(p => p && !p.gone).sort((a, b) => a.name.localeCompare(b.name));
+    const acts = activities.filter(s => s.ev === current.id).sort((a, b) => a.d - b.d || a.a - b.a);
+    const toggle = id => setIds(v => { const n = new Set(v); n.has(id) ? n.delete(id) : n.add(id); return n; });
+    const addFrom = sid => { const s = acts.find(x => x.id === Number(sid)); if (!s) return; setIds(v => new Set([...v, ...(S?.asg || []).filter(a => a.s === s.id && people[a.e] && !people[a.e].gone).map(a => a.e)])); };
+    return html`<${Modal} title="Who was at the team meal?" onClose=${onClose}><div className="break-editor">
+      <fieldset className="break-people"><legend>People <span className="mute">${ids.size} selected</span></legend>
+        <div className="break-people-tools">${acts.length > 0 && html`<select aria-label="Add everyone assigned to an activity" value="" onChange=${e => addFrom(e.target.value)}><option value="">Add everyone in an activity…</option>${acts.map(s => html`<option key=${s.id} value=${s.id}>${s.t}, ${s.r}</option>`)}</select>`}
+          <input type="search" aria-label="Filter people" placeholder="Filter people" value=${q} onChange=${e => setQ(e.target.value)}/>${ids.size > 0 && html`<button type="button" className="btn ghost" onClick=${() => setIds(new Set())}>Clear</button>`}</div>
+        <div className="break-people-list">${active.filter(p => (p.name + ' ' + (p.role || '')).toLowerCase().includes(q.toLowerCase())).map(p => html`<label key=${p.id} className="chk"><input type="checkbox" checked=${ids.has(p.id)} onChange=${() => toggle(p.id)}/>${p.name}<span className="mute">${p.role || ''}</span></label>`)}</div>
+      </fieldset>
+      <div className="dialog-actions"><button type="button" className="btn ghost" onClick=${onClose}>Cancel</button><button type="button" className="btn" onClick=${() => onDone([...ids])}>${ids.size ? 'Done (' + ids.size + ')' : 'Done'}</button></div>
+    </div><//>`;
+  }
+
+  function ExpenseEditor({ editor, A, S, onClose, chooser = false }) {
     const x = editor.x;
     const [d, setD] = useState(() => x ? { cat: x.cat, loc: x.loc, ref: x.ref, date: x.date, amt: String(Number(x.amt).toFixed(2)), pay: x.pay, reimb: !!x.reimb, notes: x.notes }
       : { cat: 'lunch', loc: '', ref: '', date: editor.date || today(), amt: '', pay: 'personal_card', reimb: true, notes: '' });
     const [who, setWho] = useState(x ? x.e : editor.e ?? '');
     const [file, setFile] = useState(null), [err, setErr] = useState(''), [busy, setBusy] = useState(false), [shrinking, setShrinking] = useState(false);
+    const [att, setAtt] = useState(() => x?.att || []), [picking, setPicking] = useState(false);
+    const cats = CATS.filter(([k]) => teamMeals.on || !['team_meal', 'iso_hosting'].includes(k) || (x && x.cat === k));
     const set = k => e => setD(v => ({ ...v, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }));
     const pick = async e => { const f = e.target.files[0]; e.target.value = ''; if (!f) return; const t = receiptType(f);
       if (!t) { setErr('Receipts must be a photo (JPG, PNG, HEIC, WebP) or a PDF.'); return; }
@@ -104,7 +128,7 @@ export function createExpenses({ React, html, Modal, Icon, IconButton, people, e
       setShrinking(false);
       if (small) setFile({ f: small, type: 'image/jpeg', from: f.size });
       else setErr('This photo is ' + sizeText(f.size) + ' and could not be made smaller on this device. Receipts must be 7 MB or smaller. Take the photo again, or choose a smaller one.'); };
-    const submit = async e => { e.preventDefault(); const o = { ...d, amt: d.amt.trim().replace(/^\$/, '').replace(/,/g, ''), loc: d.loc.trim(), ref: d.ref.trim(), notes: d.notes.trim() };
+    const submit = async e => { e.preventDefault(); const o = { ...d, amt: d.amt.trim().replace(/^\$/, '').replace(/,/g, ''), loc: d.loc.trim(), ref: d.ref.trim(), notes: d.notes.trim(), ...(teamMeals.on ? { att: d.cat === 'team_meal' ? att : [] } : {}) };
       const m = checkExpense(o) || (chooser && !x && who === '' ? 'Choose who this expense is for.' : '') || (!file && !(x && x.rp) ? 'Attach a photo or PDF of the receipt before saving.' : ''); if (m) { setErr(m); return; }
       setBusy(true); setErr('');
       const data = file ? new Uint8Array(await file.f.arrayBuffer()) : null;
@@ -114,14 +138,18 @@ export function createExpenses({ React, html, Modal, Icon, IconButton, people, e
     return html`<${Modal} title=${x ? 'Edit expense' : 'Add expense'} onClose=${busy ? () => {} : onClose}><form className="expense-editor" onSubmit=${submit}>
       <div className="editor-fields">
        ${chooser && !x && field('Person', html`<select required value=${who} onChange=${e => setWho(e.target.value)}><option value="" disabled>Choose person</option>${active.map(p => html`<option key=${p.id} value=${p.id}>${p.name}</option>`)}</select>`)}
-       ${field('Expense', html`<select value=${d.cat} onChange=${set('cat')}>${CATS.map(([k, t]) => html`<option key=${k} value=${k}>${t}</option>`)}</select>`)}
+       ${field('Expense', html`<select value=${d.cat} onChange=${set('cat')}>${cats.map(([k, t]) => html`<option key=${k} value=${k}>${t}</option>`)}</select>`)}
+       ${d.cat === 'team_meal' && html`<div className="wide-field team-meal-people"><b>Who was at the meal <span className="required-tag">Required</span></b>
+        <p className=${att.length ? '' : 'mute'}>${att.length ? att.map(e => people[e]?.name || 'Unknown person').join(', ') : 'No one chosen yet.'}</p>
+        <button type="button" className="btn ghost" onClick=${() => setPicking(true)}><${Icon} name="people"/>${att.length ? 'Change people (' + att.length + ')' : 'Choose people'}</button></div>`}
+       ${d.cat === 'iso_hosting' && html`<p className="wide-field iso-help" role="note">Please add names and details to notes below.</p>`}
        ${field('Location', html`<input value=${d.loc} maxLength="200" placeholder="Merchant, e.g. Starbucks" onChange=${set('loc')}/>`)}
        ${field('Date', html`<input type="date" required value=${d.date} onChange=${set('date')}/>`)}
        ${field('Amount (USD)', html`<input inputMode="decimal" required value=${d.amt} placeholder="0.00" onChange=${set('amt')}/>`)}
        ${field('Receipt ID', html`<input value=${d.ref} maxLength="100" placeholder="Number printed on the receipt" onChange=${set('ref')}/>`)}
        ${field('Payment method', html`<select value=${d.pay} onChange=${set('pay')}>${PAYS.map(([k, t]) => html`<option key=${k} value=${k}>${t}</option>`)}</select>`)}
        <label className="chk"><input type="checkbox" checked=${d.reimb} onChange=${set('reimb')}/>Reimburse me for this expense</label>
-       ${field('Notes', html`<textarea rows="3" maxLength="1000" value=${d.notes} onChange=${set('notes')}></textarea>`, d.cat === 'other' ? 'Required: describe the expense (for example gas, mileage, tolls).' : ['breakfast', 'lunch', 'dinner'].includes(d.cat) ? 'List others included, or note team, ISO hosting, or personal meal.' : d.cat === 'transportation' ? 'For example: Uber from A to B, rental car.' : '')}
+       ${field('Notes', html`<textarea rows="3" maxLength="1000" value=${d.notes} onChange=${set('notes')}></textarea>`, d.cat === 'other' ? 'Required: describe the expense (for example gas, mileage, tolls).' : d.cat === 'iso_hosting' ? 'Required: the ISOs or reps hosted (names, companies) and details.' : ['breakfast', 'lunch', 'dinner'].includes(d.cat) ? 'List others included, or note team, ISO hosting, or personal meal.' : d.cat === 'transportation' ? 'For example: Uber from A to B, rental car.' : '')}
       </div>
       <div className="receipt-field"><b>Receipt <span className="required-tag">Required</span></b>
        ${shrinking ? html`<p className="mute" role="status">Making the photo smaller…</p>`
@@ -133,6 +161,7 @@ export function createExpenses({ React, html, Modal, Icon, IconButton, people, e
       </div>
       ${err && html`<p className="connection-error editor-error" role="alert">${err}</p>`}
       <div className="dialog-actions"><button type="button" className="btn ghost" disabled=${busy} onClick=${onClose}>Cancel</button><button type="submit" className="btn" disabled=${busy || shrinking}>${busy ? 'Saving…' : x ? 'Save changes' : 'Add expense'}</button></div>
+      ${picking && html`<${PeoplePicker} S=${S} initial=${att} onClose=${() => setPicking(false)} onDone=${ids => { setAtt(ids); setPicking(false); }}/>`}
     </form><//>`;
   }
 
@@ -142,14 +171,14 @@ export function createExpenses({ React, html, Modal, Icon, IconButton, people, e
     const ev = events.find(e => e.id === current.id);
     const mine = (S.expenses || []).filter(x => x.e === me && x.ev === current.id).sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
     return html`<div className="card expense-card"><div className="expense-head"><b>My expenses</b><span className="mute">${mine.length ? money(sum(mine)) + ' · ' + mine.filter(x => x.ok).length + ' of ' + mine.length + ' approved' : ev ? ev.name : ''}</span></div>
-     ${mine.length ? html`<ul className="expense-list">${mine.map(x => html`<li key=${x.id}><div className="expense-main"><b>${catText(x.cat)}${x.loc ? ' · ' + x.loc : ''}</b><span className="mute">${dateText(x.date)} · ${payText(x.pay)}${x.reimb ? ' · reimburse' : ''}</span></div>
+     ${mine.length ? html`<ul className="expense-list">${mine.map(x => html`<li key=${x.id}><div className="expense-main"><b>${catText(x.cat)}${x.loc ? ' · ' + x.loc : ''}</b><span className="mute">${dateText(x.date)} · ${payText(x.pay)}${x.reimb ? ' · reimburse' : ''}</span>${(x.att || []).length > 0 && html`<span className="mute">With ${x.att.map(e => people[e]?.name || 'Unknown person').join(', ')}</span>`}</div>
        <div className="expense-side"><b>${money(x.amt)}</b><${Status} x=${x}/></div>
        <div className="acts">${x.rp && html`<button className="btn ghost" onClick=${() => openReceipt(A, x, setMsg)}>Receipt</button>`}
         ${!x.ok && html`<button className="btn ghost" onClick=${() => setEd({ x })}>Edit</button>${confirm === x.id ? html`<button className="btn danger" onClick=${async () => { setConfirm(null); await A.delExpense(x.id); }}>Confirm delete</button><button className="btn ghost" onClick=${() => setConfirm(null)}>Keep</button>` : html`<button className="btn ghost" onClick=${() => setConfirm(x.id)}>Delete</button>`}`}</div></li>`)}</ul>`
       : html`<p className="mute">Add each expense as it happens, with a photo of the receipt. Your administrator approves them.</p>`}
      ${msg && html`<p className="mute" role="status">${msg}</p>`}
      <div className="acts"><button className="btn" onClick=${() => setEd({ x: null, e: me, date: today() })}><${Icon} name="plus"/>Add expense</button>${mine.length > 0 && html`<button className="btn ghost" onClick=${() => setMsg(printPerson(S, me))}><${Icon} name="print"/>Print my expenses</button>`}</div>
-     ${ed && html`<${ExpenseEditor} editor=${ed} A=${A} onClose=${() => setEd(null)}/>`}</div>`;
+     ${ed && html`<${ExpenseEditor} editor=${ed} A=${A} S=${S} onClose=${() => setEd(null)}/>`}</div>`;
   }
 
   // Admin review: grouped by person, tick to approve, HR report.
@@ -171,11 +200,11 @@ export function createExpenses({ React, html, Modal, Icon, IconButton, people, e
         ${table([{ text: 'Approved', className: 'approve-col' }, { text: 'Date' }, { text: 'Expense' }, { text: 'Location / receipt ID' }, { text: 'Payment' }, { text: 'Notes' }, { text: 'Amount', className: 'amount-col' }, { text: '', className: 'setup-actions' }],
           g.items.map(x => html`<tr key=${x.id}><td className="approve-col"><input type="checkbox" aria-label=${'Approve ' + catText(x.cat) + ' ' + money(x.amt) + ' for ' + g.p.name} checked=${!!x.ok} onChange=${e => A.approveExpense(x.id, e.target.checked)}/></td>
            <td>${dateText(x.date)}${x.ok && x.okAt && html`<span className="cell-secondary approved-by">Approved by ${x.okBy || 'an administrator'}, ${approvedText(x.okAt)}</span>`}</td><td>${catText(x.cat)}</td><td>${x.loc || html`<span className="mute">No location</span>`}<span className="cell-secondary">${x.ref ? 'Receipt ' + x.ref : 'No receipt ID'}</span></td>
-           <td>${payText(x.pay)}<span className="cell-secondary">${x.reimb ? 'Reimburse' : 'No reimbursement'}</span></td><td className="notes-col">${x.notes}</td><td className="amount-col"><b>${money(x.amt)}</b></td>
+           <td>${payText(x.pay)}<span className="cell-secondary">${x.reimb ? 'Reimburse' : 'No reimbursement'}</span></td><td className="notes-col">${noteText(x, people)}</td><td className="amount-col"><b>${money(x.amt)}</b></td>
            <td className="setup-actions"><div className="row-actions">${x.rp && html`<${IconButton} name="eye" label=${'View receipt for ' + catText(x.cat) + ' ' + money(x.amt)} onClick=${() => openReceipt(A, x, setMsg)}/>`}<${IconButton} name="edit" label=${'Edit ' + catText(x.cat) + ' ' + money(x.amt)} onClick=${() => setEd({ x })}/>${del === x.id ? html`<button className="btn danger" onClick=${async () => { setDel(null); await A.delExpense(x.id); }}>Confirm</button>` : html`<${IconButton} name="delete" label=${'Delete ' + catText(x.cat) + ' ' + money(x.amt)} onClick=${() => setDel(x.id)}/>`}</div></td></tr>`))}
        </section>`; })
-      : html`<div className="empty-state"><${Icon} name="receipt" size=${28}/><h3>${all.length ? 'No expenses match these filters' : 'No expenses yet'}</h3><p className="mute">Staff and contractors add expenses from their own screen.</p></div>`}
-     ${ed && html`<${ExpenseEditor} editor=${ed} A=${A} chooser=${true} onClose=${() => setEd(null)}/>`}
+      : html`<div className="empty-state"><${Icon} name="receipt" size=${28}/><h3>${all.length ? 'No expenses match these filters' : 'No expenses yet'}</h3><p className="mute">People add expenses from their own screen.</p></div>`}
+     ${ed && html`<${ExpenseEditor} editor=${ed} A=${A} S=${S} chooser=${true} onClose=${() => setEd(null)}/>`}
     </div>`;
   }
 

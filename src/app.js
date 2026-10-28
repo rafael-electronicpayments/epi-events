@@ -12,6 +12,8 @@ import { createItineraries, pickupDefault, hasPickup } from './itineraries.js';
 import { createTravelInfo } from './travel-info.js';
 import { createReminders } from './reminders.js';
 import { createSessionSupport } from './session-support.js';
+import { typeLabel } from './people-types.js';
+import { createOffsite } from './offsite.js';
 import { getBrand, setBrand, ICON_FILES } from './branding.js';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
@@ -23,7 +25,7 @@ const LN='Rivera Shah Bell Okafor Lee Costa Nguyen Park Torres Ito Haddad Reed P
 const RL=['Demo Lead','Room Host','Registration','Hospitality','Room Host'];
 const EMPS=FN.map((f,i)=>({id:i,name:f+' '+LN[i],role:RL[i%5],acct:'staff',phone:'555-01'+(10+i),map:1}));
 [['Pat Quinn','AV Technician (Encore AV)'],['Dr. Lena Ford','Speaker'],['Vic Mercer','Entertainment'],['Jo Adler','AV Technician (Encore AV)']].forEach(([n,r])=>EMPS.push({id:EMPS.length,name:n,role:r,acct:'contractor',phone:'555-01'+(60+EMPS.length),map:0}));
-const nm=e=>EMPS[e].name+(e===0?' (Employee A)':'')+(EMPS[e].acct==='contractor'?' (contractor)':'');
+const nm=e=>EMPS[e].name+(e===0?' (Employee A)':'')+(['contractor','speaker','panelist'].includes(EMPS[e].acct)?' ('+typeLabel(EMPS[e].acct).toLowerCase()+')':'');
 const DAYS=[],DAYS_SHORT=[];
 // Day labels show the weekday and date, e.g. "Saturday, Nov 7" (short: "Sat, Nov 7").
 const dayDate=(start,i,short)=>{const [y,m,d]=String(start).split('-').map(Number);return new Date(Date.UTC(y,m-1,d+i)).toLocaleDateString('en-US',{weekday:short?'short':'long',month:'short',day:'numeric',timeZone:'UTC'})};
@@ -72,6 +74,8 @@ const REMINDER_SUPPORT={on:!CONNECTED};
 const SCHEDULE_IMPORT_SUPPORT={on:!CONNECTED};
 // Optional staff numbers, one-moment actions (no end time), and Managed by (migration 20261028100000).
 const RUN_SHOW_SUPPORT={on:!CONNECTED};
+// Team Meal and ISO/Rep Hosting expense types (migration 20261030120000).
+const TEAM_MEAL_SUPPORT={on:!CONNECTED};
 // Allow overlap per activity (migration 20261028120000).
 const OVERLAP_SUPPORT={on:!CONNECTED};
 // Demo only: keep each hotel's pickup in step with the flight (the server does this for real).
@@ -125,7 +129,7 @@ const ntext=(a,p)=>p+': '+SM[a.s].t+', '+SM[a.s].r+', '+span(SM[a.s])+' ('+dayDa
 let uid=100;
 const H=[];
 const seed=()=>{const asg=SEED.map((r,i)=>({id:i+1,e:r[0],s:r[1],ack:r[2],in:r[3],conf:0,tag:r[4]}));
- return {asg,log:[],breaks:[],clocks:[],expenses:[],documents:[],flights:[],hotels:[],support:[],notes:asg.filter(a=>!a.ack).map(a=>({id:++uid,e:a.e,aid:a.id,done:0,x:ntext(a,a.tag==='new'?'New assignment':'Changed assignment')}))}};
+ return {asg,log:[],breaks:[],clocks:[],expenses:[],documents:[],flights:[],hotels:[],support:[],away:[],offsite:[],monitors:[],notes:asg.filter(a=>!a.ack).map(a=>({id:++uid,e:a.e,aid:a.id,done:0,x:ntext(a,a.tag==='new'?'New assignment':'Changed assignment')}))}};
 const clash=(asg,a)=>asg.filter(x=>x.id!==a.id&&x.e===a.e&&SM[x.s].ev===SM[a.s].ev&&SM[x.s].d===SM[a.s].d&&!SM[x.s].ov&&!SM[a.s].ov&&SM[x.s].a<SM[x.s].b&&SM[a.s].a<SM[a.s].b&&SM[x.s].a<SM[a.s].b&&SM[a.s].a<SM[x.s].b).map(x=>SM[x.s]);
 const st=a=>!need(SM[a.s])?['ok','No check-in needed']:a.in||a.conf?['ok',a.conf&&!a.in?'Confirmed by coordinator':'Checked in']:a.ack?['','Acknowledged']:['warn',(a.tag==='changed'?'Changed':'New')+', needs acknowledgment'];
 const cover=(s,asg)=>{const as=asg.filter(x=>x.s===s.id),p=need(s)?as.filter(x=>x.in||x.conf).length:as.length;
@@ -292,8 +296,9 @@ function Staff({S,A,me,canFull=false,embedded=false,push=null}){
   <button className="btn ghost" disabled=${!a.ack||!!a.in||!!a.conf} onClick=${()=>A.checkIn(a.id)}>Check in</button>`}${(!need(s)||!!a.ack)&&a.cal!==(a.seq||0)&&html`<button className="btn ghost" onClick=${()=>{A.calAdd(a.id);setShown(a.id)}}>${a.cal==null?'Add to calendar':'Update calendar'}</button>`}</div></div>`};
  return html`<div className=${embedded?'my-schedule':'wrap m'}>${!embedded&&html`<h2>Hi, ${EMPS[me].name.split(' ')[0]}</h2><p className="mute">${EMPS[me].role} · ${evOf(CUR.id).name}</p>`}
  ${push&&html`<${PushCard} push=${push}/>`}
+ ${Array.isArray(S.away)&&html`<${OFF.OffsiteCard} S=${S} A=${A} me=${me}/>`}
  ${notes.map(n=>html`<div className=${'card note'+(n.rid?' reminder-note':'')} key=${n.id} role="status">${n.rid&&html`<p className="note-kicker"><${Icon} name="bell"/> Message${n.from?' from '+n.from:''}</p>`}<b>${n.x}</b>${n.from&&!n.rid&&html`<p className="mute">${n.from}</p>`}
-  ${n.rid?html`<button className="btn" onClick=${()=>A.ackReminder(n.rid)}>Acknowledge</button>`:(()=>{const na=n.aid&&S.asg.find(a=>a.id===n.aid),ask=!!na&&need(SM[na.s]);return html`<button className="btn" onClick=${()=>ask?A.ack(n.aid):A.dismiss(n.id)}>${ask?'Acknowledge':'Got it'}</button>`})()}</div>`)}
+  ${n.oid?html`<${OFF.NoticeButton} n=${n} A=${A}/>`:n.rid?html`<button className="btn" onClick=${()=>A.ackReminder(n.rid)}>Acknowledge</button>`:(()=>{const na=n.aid&&S.asg.find(a=>a.id===n.aid),ask=!!na&&need(SM[na.s]);return html`<button className="btn" onClick=${()=>ask?A.ack(n.aid):A.dismiss(n.id)}>${ask?'Acknowledge':'Got it'}</button>`})()}</div>`)}
  ${mine.filter(a=>a.pc).map(a=>html`<div className="card note" key=${'c'+a.id} role="status"><b>${a.cal==null?'Add to your calendar?':'Update your calendar?'}</b><p className="mute">${SM[a.s].t}, ${SM[a.s].r}, ${span(SM[a.s])} (${DAYS[SM[a.s].d]}). Reminder 30 minutes before.</p><div className="acts"><button className="btn" onClick=${()=>{A.calAdd(a.id);setShown(a.id)}}>${a.cal==null?'Add to calendar':'Update calendar'}</button><button className="btn ghost" onClick=${()=>A.calSkip(a.id)}>Not now</button></div></div>`)}
  ${breaksOn(S)&&html`<div className=${'card clock-card'+(oc?' out':'')+(late?' late':'')}>${oc?html`<b>${BREAK[oc.k][1]} since ${clockTime(oc.out)}</b><p className="mute">${obr?'Scheduled until '+fmt(obr.b):'Unscheduled '+BREAK[oc.k][0].toLowerCase()}</p>${late>0&&html`<p><${Pill} k="bad">Late return · ${late} min past scheduled end<//></p>`}<div className="acts"><button className="btn" onClick=${()=>A.clockIn()}>Clock back in</button></div>`
   :html`<b>Lunch and breaks</b><p className="mute">${nextBreak?'Next: '+BREAK[nextBreak.k][0]+', '+span(nextBreak)+' today.':'Clock out whenever you step away, then clock back in when you return.'}</p><div className="acts">${['lunch','break'].map(k=>html`<button key=${k} className="btn ghost" onClick=${()=>A.clockOut(k,pick(k))}>${BREAK[k][2]}</button>`)}</div>`}</div>`}
@@ -318,12 +323,12 @@ function AdminSession({s,S,A,coordinator=false}){
  const as=S.asg.filter(x=>x.s===s.id), free=EMPS.filter(e=>!e.gone&&!as.some(x=>x.e===e.id)), same=SESS.filter(o=>o.ev===s.ev&&o.d===s.d&&o.id!==s.id);
  return html`<div className="session-panel"><${Head} s=${s} asg=${S.asg}/><${ActInfo} s=${s} S=${S} admin=${true}/>
  <ul className="rows">${as.map(a=>{const c=clash(S.asg,a),[k,l]=st(a);return html`<li key=${a.id} className="lead-actions"><${IconButton} name="delete" label=${'Remove '+EMPS[a.e].name} onClick=${()=>A.remove(a.id)}/><div>
-  <div><b>${nm(a.e)}</b>${a.lead&&html` <${Pill} k="ok">Team lead<//>`} <${Pill} k=${k}>${l}<//>${pushOff(S,a.e)&&html` <${Pill} k="warn">Notifications off<//>`} ${c.length>0&&html`<${Pill} k="bad">Overlaps ${c.map(o=>o.t).join(', ')}<//>`}${breaksDuring(S,a.e,s).map(b=>html` <${Pill} key=${'b'+b.id}>${BREAK[b.k][0]} ${span(b)}<//>`)}${(()=>{const o=openClock(S,a.e),lt=o&&lateBy(S,o);return o&&html` <${Pill} k=${lt?'bad':'warn'}>${BREAK[o.k][1]} now${lt?' · '+lt+' min late':''}<//>`})()}</div>
+  <div><b>${nm(a.e)}</b> <${OFF.Badge} S=${S} e=${a.e}/>${a.lead&&html` <${Pill} k="ok">Team lead<//>`} <${Pill} k=${k}>${l}<//>${pushOff(S,a.e)&&html` <${Pill} k="warn">Notifications off<//>`} ${c.length>0&&html`<${Pill} k="bad">Overlaps ${c.map(o=>o.t).join(', ')}<//>`}${breaksDuring(S,a.e,s).map(b=>html` <${Pill} key=${'b'+b.id}>${BREAK[b.k][0]} ${span(b)}<//>`)}${(()=>{const o=openClock(S,a.e),lt=o&&lateBy(S,o);return o&&html` <${Pill} k=${lt?'bad':'warn'}>${BREAK[o.k][1]} now${lt?' · '+lt+' min late':''}<//>`})()}</div>
   <div className="acts"><select aria-label=${'Move '+EMPS[a.e].name} value="" onChange=${ev=>ev.target.value&&A.move(a.id,+ev.target.value)}>
    <option value="">Move to…</option>${same.map(o=>html`<option key=${o.id} value=${o.id}>${o.r}, ${span(o)}, ${o.t}</option>`)}</select>
   ${coordinator&&need(s)&&html`<button className="btn ghost" disabled=${!!a.in||!!a.conf} onClick=${()=>A.confirm(a.id)}>Confirm present</button>`}${INFO_SUPPORT.on&&['staff','admin'].includes(EMPS[a.e].acct)&&html`<button className="btn ghost" aria-pressed=${!!a.lead} onClick=${()=>A.setLead(a.id,!a.lead)}>${a.lead?'Remove as lead':'Make team lead'}</button>`}</div></div></li>`})}</ul>
  ${!as.length&&html`<p className="mute">No one assigned yet.</p>`}
- <div className="acts"><select aria-label=${'Employee to assign to '+s.t} value=${pick} onChange=${e=>setPick(e.target.value)}><option value="">Choose staff or contractor…</option>
+ <div className="acts"><select aria-label=${'Employee to assign to '+s.t} value=${pick} onChange=${e=>setPick(e.target.value)}><option value="">Choose a person…</option>
   ${free.map(e=>html`<option key=${e.id} value=${e.id}>${nm(e.id)}</option>`)}</select>
   <button className="btn" disabled=${pick===''} onClick=${async()=>{const ok=await A.assign(+pick,s.id);if(ok!==false)setPick('')}}>Assign</button>
   ${REMINDER_SUPPORT.on&&as.length>0&&(()=>{const late=as.filter(a=>EMPS[a.e]&&!EMPS[a.e].gone&&need(s)&&(!a.ack||(!a.in&&!a.conf))),noAck=late.some(a=>!a.ack);
@@ -357,14 +362,15 @@ function Grid({S}){
  <//>`})}</tbody></table></div>
  ${!rows.length&&html`<p className="mute">No activities yet for this event.</p>`}
  <h3 style=${{marginTop:16}}>Staff colors</h3><div className="legend">${used.map(e=>html`<span key=${e}><i className="sw" style=${{background:col(e,1)}}></i>${EMPS[e].name}</span>`)}</div></div>`}
-const EXP=createExpenses({React,html,Modal,Icon,IconButton,people:EMPS,events:EVS,current:CUR});
+const EXP=createExpenses({React,html,Modal,Icon,IconButton,people:EMPS,events:EVS,current:CUR,activities:SESS,teamMeals:TEAM_MEAL_SUPPORT});
 const AppSettings=createAppSettings({React,html,Icon});
 const ITIN=createItineraries({React,html,Modal,Icon,people:EMPS,events:EVS,activities:SESS,current:CUR,demo:!CONNECTED});
 const TINFO=createTravelInfo({React,html,Icon,events:EVS,current:CUR,demo:!CONNECTED});
 const REM=createReminders({React,html,Modal,Icon,people:EMPS,events:EVS,activities:SESS,current:CUR});
 const SUP=createSessionSupport({React,html,Modal,Icon,people:EMPS,events:EVS,current:CUR});
+const OFF=createOffsite({React,html,Modal,Icon,people:EMPS,events:EVS,current:CUR});
 const DOCS=createDocuments({React,html,Modal,Icon,people:EMPS,events:EVS,activities:SESS,current:CUR});
-const Admin=createAdminWorkspace({people:EMPS,events:EVS,rooms:ROOMS,activities:SESS,current:CUR,days:DAYS,daysShort:DAYS_SHORT,cover,clash,span,evEnd,evStatus,need,roomAck:ROOM_ACK,ackSupport:ACK_SUPPORT,BREAK,breaksOn,breaksDuring,openClock,lateBy,liveNow,clockTime,breakOf,todayIndex,breakExport,floorSupport:FLOOR_SUPPORT,closeSupport:CLOSE_SUPPORT,pushSupport:PUSH_SUPPORT,infoSupport:INFO_SUPPORT,eventInfoSupport:EVENT_INFO_SUPPORT,brandSupport:BRAND_SUPPORT,itinSupport:ITIN_SUPPORT,travelInfoSupport:TRAVEL_INFO_SUPPORT,remindersSupport:REMINDER_SUPPORT,scheduleImportSupport:SCHEDULE_IMPORT_SUPPORT,runShowSupport:RUN_SHOW_SUPPORT,overlapSupport:OVERLAP_SUPPORT,staffText,logoSupport:LOGO_SUPPORT,splashSupport:SPLASH_SUPPORT,prepLogo,prepSplash,imageUrl,hrPdf:(list,scope)=>{const url=URL.createObjectURL(new Blob([hrReport({list,people:EMPS,eventName:evOf(CUR.id).name,scope,autoPrint:true})],{type:'text/html'})),w=window.open(url,'_blank');setTimeout(()=>URL.revokeObjectURL(url),60000);return w?'':'Your browser blocked the report window. Allow pop-ups for this site and try again.'},connected:CONNECTED},{AdminSession,Grid,Floorplans,Incoming,Staff,ExpensesAdmin:EXP.ExpensesAdmin,EventLogo,Splash,DocumentsAdmin:DOCS.DocumentsAdmin,AppSettings,ItinerariesAdmin:ITIN.ItinerariesAdmin,TravelInfoAdmin:TINFO.TravelInfoAdmin,MessagesAdmin:REM.MessagesAdmin,SupportAdmin:SUP.SupportAdmin});
+const Admin=createAdminWorkspace({people:EMPS,events:EVS,rooms:ROOMS,activities:SESS,current:CUR,days:DAYS,daysShort:DAYS_SHORT,cover,clash,span,evEnd,evStatus,need,roomAck:ROOM_ACK,ackSupport:ACK_SUPPORT,BREAK,breaksOn,breaksDuring,openClock,lateBy,liveNow,clockTime,breakOf,todayIndex,breakExport,floorSupport:FLOOR_SUPPORT,closeSupport:CLOSE_SUPPORT,pushSupport:PUSH_SUPPORT,infoSupport:INFO_SUPPORT,eventInfoSupport:EVENT_INFO_SUPPORT,brandSupport:BRAND_SUPPORT,itinSupport:ITIN_SUPPORT,travelInfoSupport:TRAVEL_INFO_SUPPORT,remindersSupport:REMINDER_SUPPORT,scheduleImportSupport:SCHEDULE_IMPORT_SUPPORT,runShowSupport:RUN_SHOW_SUPPORT,overlapSupport:OVERLAP_SUPPORT,staffText,logoSupport:LOGO_SUPPORT,splashSupport:SPLASH_SUPPORT,prepLogo,prepSplash,imageUrl,hrPdf:(list,scope)=>{const url=URL.createObjectURL(new Blob([hrReport({list,people:EMPS,eventName:evOf(CUR.id).name,scope,autoPrint:true})],{type:'text/html'})),w=window.open(url,'_blank');setTimeout(()=>URL.revokeObjectURL(url),60000);return w?'':'Your browser blocked the report window. Allow pop-ups for this site and try again.'},connected:CONNECTED},{AdminSession,Grid,Floorplans,Incoming,Staff,ExpensesAdmin:EXP.ExpensesAdmin,EventLogo,Splash,DocumentsAdmin:DOCS.DocumentsAdmin,AppSettings,ItinerariesAdmin:ITIN.ItinerariesAdmin,TravelInfoAdmin:TINFO.TravelInfoAdmin,MessagesAdmin:REM.MessagesAdmin,SupportAdmin:SUP.SupportAdmin,OffsiteNotices:OFF.OffsiteNotices,OffsiteReports:OFF.OffsiteReports,OffsiteBadge:OFF.Badge});
 function App({connected}){
  const [demoS,setS]=useState(()=>connected?connected.snapshot:seed()),[demoRole,setRole]=useState('admin'),[demoMe,setMe]=useState(0),[toast,setToast]=useState('');
  const S=connected?connected.snapshot:demoS,role=connected?connected.snapshot.role:demoRole,me=connected?connected.snapshot.me:demoMe;
@@ -398,8 +404,8 @@ function App({connected}){
   delRoom:r=>{if(SESS.some(s=>s.r===r)){say('Move or delete its activities first');return false}ROOMS.splice(ROOMS.indexOf(r),1);setS(s=>L({...s},'Deleted room '+r));say(r+' deleted');return true},
   editSession:(id,t,r,d,a,b,n,q,info)=>{if(isInfo(q)){info=q;q=undefined}if(!t){say('Enter an activity name');return false}if(!(b>a||b===a&&RUN_SHOW_SUPPORT.on)){say('End time must be after start time');return false}if(!(n>=(RUN_SHOW_SUPPORT.on?0:1))){say('Staff needed must be at least 1');return false}const o=SM[id],f=desc(o),ch=o.t!==t||o.r!==r||o.d!==+d||o.a!==a||o.b!==b;Object.assign(o,{t,r,d:+d,a,b,n},q===undefined?{}:{q},isInfo(info)?{det:info.det,nt:info.nt,...('by' in info?{m:info.by||undefined}:{}),...('ov' in info?{ov:info.ov||undefined}:{})}:{});setS(s=>L(ch?bump(s,id,f):s,'Updated activity '+t+' in '+r+', '+DAYS[o.d]+', '+span(o)));say(ch?'Saved. Assigned staff notified.':'Saved');return true},
   delSession:id=>{const o=SM[id],txt=ntext({s:id},'Cancelled');setS(s=>{const g=s.asg.filter(a=>a.s===id);return L({...s,asg:s.asg.filter(a=>a.s!==id),notes:[...s.notes.filter(n=>!g.some(a=>a.id===n.aid)),...g.map(a=>({id:++uid,e:a.e,aid:null,done:0,x:txt+(a.cal!=null?'. Delete it from your calendar.':'')}))]},'Deleted activity '+o.t+' ('+g.length+' staff notified)')});SESS.splice(SESS.indexOf(o),1);delete SM[id];say(o.t+' deleted');return true},
-  addEvent:o=>{if(!evv(o))return false;const id=Math.max(0,...EVS.map(e=>e.id))+1;EVS.push({id,name:o.n,start:o.b,days:Math.floor(o.d),...('venue' in o?{venue:o.venue,addr:o.addr,notes:o.notes}:{}),...('staffFlights' in o?{staffFlights:!!o.staffFlights,staffHotels:!!o.staffHotels}:{})});CUR.id=id;syncEv();setS(s=>L({...s},'Created event '+o.n));say(o.n+' created and opened');return true},
-  editEvent:(id,o)=>{if(!evv(o))return false;const n=Math.floor(o.d),bad=SESS.find(s=>s.ev===id&&s.d>=n);if(bad){say('Move or delete activities on '+dayDate(evOf(id).start,bad.d)+' first');return false}Object.assign(evOf(id),{name:o.n,start:o.b,days:n},'venue' in o?{venue:o.venue,addr:o.addr,notes:o.notes}:{},'staffFlights' in o?{staffFlights:!!o.staffFlights,staffHotels:!!o.staffHotels}:{});if(id===CUR.id)syncEv();setS(s=>L({...s},'Updated event '+o.n));say('Saved');return true},
+  addEvent:o=>{if(!evv(o))return false;const id=Math.max(0,...EVS.map(e=>e.id))+1;EVS.push({id,name:o.n,start:o.b,days:Math.floor(o.d),...('venue' in o?{venue:o.venue,addr:o.addr,notes:o.notes}:{}),...('staffFlights' in o?{staffFlights:!!o.staffFlights,staffHotels:!!o.staffHotels}:{})});CUR.id=id;syncEv();setS(s=>L({...s,...('mon' in o?{monitors:[...(s.monitors||[]).filter(m=>m.ev!==id),...o.mon.map(e=>({ev:id,e}))]}:{})},'Created event '+o.n));say(o.n+' created and opened');return true},
+  editEvent:(id,o)=>{if(!evv(o))return false;const n=Math.floor(o.d),bad=SESS.find(s=>s.ev===id&&s.d>=n);if(bad){say('Move or delete activities on '+dayDate(evOf(id).start,bad.d)+' first');return false}Object.assign(evOf(id),{name:o.n,start:o.b,days:n},'venue' in o?{venue:o.venue,addr:o.addr,notes:o.notes}:{},'staffFlights' in o?{staffFlights:!!o.staffFlights,staffHotels:!!o.staffHotels}:{});if(id===CUR.id)syncEv();setS(s=>L({...s,...('mon' in o?{monitors:[...(s.monitors||[]).filter(m=>m.ev!==id),...o.mon.map(e=>({ev:id,e}))]}:{})},'Updated event '+o.n));say('Saved');return true},
   delEvent:id=>{if(EVS.length<2){say('At least one event must remain');return false}const e=evOf(id),ids=SESS.filter(s=>s.ev===id).map(s=>s.id);setS(s=>{const g=s.asg.filter(a=>ids.includes(a.s));return L({...s,asg:s.asg.filter(a=>!ids.includes(a.s)),notes:[...s.notes.filter(n=>!g.some(a=>a.id===n.aid)),...[...new Set(g.map(a=>a.e))].map(x=>({id:++uid,e:x,aid:null,done:0,x:'Event removed: '+e.name}))]},'Deleted event '+e.name+' with '+ids.length+' activities')});for(let i=SESS.length-1;i>=0;i--)if(ids.includes(SESS[i].id)){delete SM[SESS[i].id];SESS.splice(i,1)}for(let i=FP.length-1;i>=0;i--)if(FP[i].ev===id)FP.splice(i,1);for(let i=INV.length-1;i>=0;i--)if(INV[i].ev===id)INV.splice(i,1);EVS.splice(EVS.indexOf(e),1);if(CUR.id===id){CUR.id=EVS[0].id;syncEv()}say(e.name+' deleted');return true},
   saveFlight:(ev,who,o,file)=>{const t=who;if(file){const p=t+'/'+uuid()+'.'+RECEIPT_TYPES[file.type];RECEIPTS[p]={data:file.data,type:file.type};o={...o,rp:p,rt:file.type}}setS(s=>{const list=s.flights||[],old=list.find(x=>x.ev===ev&&x.e===t),row={...(old||{id:Math.max(0,...list.map(x=>x.id))+1,ev,e:t,mine:true}),...o,inFlight:(o.inFlight||'').toUpperCase(),outFlight:(o.outFlight||'').toUpperCase(),cost:Number(o.cost||0),bags:Number(o.bags||0),addExp:!!o.addExpense};const ex=demoTravelExpenses(s,row,'flight',o);const flights=old?list.map(x=>x===old?{...row,...ex.ids}:x):[...list,{...row,...ex.ids}];return L({...s,expenses:ex.expenses,flights,hotels:demoPickups(s.hotels,flights)},(old?'Updated ':'Added ')+'flight for '+EMPS[t].name)});say('Flight saved');return true},
   delFlight:id=>{setS(s=>{const f=(s.flights||[]).find(x=>x.id===id);const flights=(s.flights||[]).filter(x=>x.id!==id);return L({...s,expenses:(s.expenses||[]).filter(x=>!f||(x.id!==f.exp&&x.id!==f.bagExp)),flights,hotels:demoPickups(s.hotels,flights)},'Removed a flight')});say('Flight removed');return true},
@@ -424,6 +430,14 @@ function App({connected}){
   sendReminder:(ev,ids,text)=>{const to=[...new Set(ids)].filter(e=>EMPS[e]&&!EMPS[e].gone);if(!to.length||!text.trim()){say('Choose who to send it to');return false}
    setS(s=>{const id=Math.max(0,...(s.reminders||[]).map(r=>r.id))+1,from=EMPS[me]?.name||'An administrator';return L({...s,reminders:[{id,ev,x:text.trim(),from,at:new Date().toISOString(),to:to.map(e=>({e,ack:null}))},...(s.reminders||[])],notes:[...s.notes,...to.map(e=>({id:++uid,e,aid:null,done:0,x:text.trim(),rid:id,from}))]},'Sent a reminder to '+to.length+(to.length===1?' person':' people'))});say('Reminder sent to '+to.length);return true},
   ackReminder:rid=>{setS(s=>Lg({...s,reminders:(s.reminders||[]).map(r=>r.id===rid?{...r,to:r.to.map(t=>t.e===me&&!t.ack?{...t,ack:new Date().toISOString()}:t)}:r),notes:s.notes.map(n=>n.rid===rid&&n.e===me?{...n,done:1}:n)},EMPS[me].name+' acknowledged a reminder'));return true},
+  // Offsite check-out (demo): the same rules as the database, in memory.
+  goOffsite:(ev,why)=>{if(!why){say('Enter the reason');return false}if((S.away||[]).some(a=>a.e===me)){say('Already offsite');return false}
+   setS(s=>{const id=Math.max(0,...(s.offsite||[]).map(l=>l.id))+1,now=new Date().toISOString(),mon=(s.monitors||[]).filter(m=>m.ev===ev).map(m=>m.e),to=(mon.length?mon:EMPS.filter(p=>p&&!p.gone&&p.acct==='admin').map(p=>p.id)).filter(e=>e!==me);
+    return L({...s,away:[...(s.away||[]),{e:me,ev,since:now}],offsite:[{id,ev,e:me,out:now,why,back:null,note:'',oa:null,oat:null},...(s.offsite||[])],notes:[...s.notes,...to.map(e=>({id:++uid,e,aid:null,done:0,oid:id,ok:'out',x:'Offsite: '+EMPS[me].name+' left. Reason: '+why}))]},EMPS[me].name+' went offsite')});say('Checked out as offsite');return true},
+  goOnsite:note=>{const l=(S.offsite||[]).find(x=>x.e===me&&!x.back);if(!l){say('Not offsite');return false}
+   setS(s=>{const now=new Date().toISOString(),to=[...new Set(s.notes.filter(n=>n.oid===l.id&&n.ok==='out').map(n=>n.e))];
+    return L({...s,away:(s.away||[]).filter(a=>a.e!==me),offsite:s.offsite.map(x=>x.id===l.id?{...x,back:now,note}:x),notes:[...s.notes,...to.map(e=>({id:++uid,e,aid:null,done:0,oid:l.id,ok:'back',x:'Back onsite: '+EMPS[me].name+' returned.'+(note?' Note: '+note:'')}))]},EMPS[me].name+' is back onsite')});say('Checked back in');return true},
+  ackOffsite:id=>{setS(s=>L({...s,offsite:(s.offsite||[]).map(x=>x.id===id&&!x.oat?{...x,oa:EMPS[me]?.name||'Demo admin',oat:new Date().toISOString()}:x),notes:s.notes.map(n=>n.oid===id&&n.ok==='out'?{...n,done:1}:n)},'Acknowledged an offsite check-out'));return true},
   // Session Support (demo): the same rules as the database, in memory.
   importSupport:(ev,rows)=>{setS(s=>{let list=[...(s.support||[])];const notes=[...s.notes],used=new Set();
    rows.forEach(r=>{let o=list.find(x=>!used.has(x.id)&&x.ev===ev&&x.d===r.d&&x.a===r.a&&x.t.trim().toLowerCase()===r.t.toLowerCase());
@@ -457,7 +471,7 @@ function App({connected}){
   addInv:o=>{if(!invv(o))return false;o=nrm(o);INV.push({...o,id:Math.max(0,...INV.map(x=>x.id))+1,ev:CUR.id});setS(s=>L({...s},'Recorded '+o.type+' from '+o.vendor+(o.inv?' (invoice '+o.inv+')':'')));say('Entry saved');return true},
   editInv:(id,o)=>{if(!invv(o))return false;o=nrm(o);const i=INV.findIndex(x=>x.id===id);INV[i]={...INV[i],...o};setS(s=>L({...s},'Updated incoming entry from '+o.vendor+(o.inv?' (invoice '+o.inv+')':'')));say('Entry saved');return true},
   delInv:id=>{const i=INV.findIndex(x=>x.id===id),e=INV[i];INV.splice(i,1);setS(s=>L({...s},'Deleted incoming entry from '+e.vendor));say('Entry deleted. Undo brings it back.');return true},
-  setEventClosed:(id,c)=>{const e=evOf(id);if(!e)return false;e.closed=!!c;setS(s=>L({...s},(c?'Closed event ':'Reopened event ')+e.name));say(c?e.name+' closed. Staff and contractors no longer see it.':e.name+' reopened');return true},
+  setEventClosed:(id,c)=>{const e=evOf(id);if(!e)return false;e.closed=!!c;setS(s=>L({...s},(c?'Closed event ':'Reopened event ')+e.name));say(c?e.name+' closed. Only admins can see it now.':e.name+' reopened');return true},
   switchEv:id=>{CUR.id=id;syncEv();setS(s=>({...s}))},
   calAdd:id=>{setS(s=>{const o=s.asg.find(a=>a.id===id);return L({...s,asg:s.asg.map(a=>a.id===id?{...a,cal:a.seq||0,pc:0}:a)},EMPS[o.e].name+' added '+SM[o.s].t+' to their calendar with a 30-minute reminder')})},
   calSkip:id=>setS(s=>({...s,asg:s.asg.map(a=>a.id===id?{...a,pc:0}:a)})),
@@ -468,7 +482,7 @@ function App({connected}){
   clockIn:()=>{const c=openClock(S,me);if(!c){say('Not clocked out');return false}setS(s=>Lg({...s,clocks:s.clocks.map(x=>x.id===c.id?{...x,in:new Date().toISOString()}:x)},EMPS[me].name+' clocked back in'));say('Clocked back in');return true},
   saveExpense:(id,o,file,drop)=>{const list=S.expenses||[],old=id!=null?list.find(x=>x.id===id):null,owner=old?old.e:(o.e??me);if(owner==null||!EMPS[owner]){say('Choose a person');return false}
    let rp=old&&old.rp&&!drop?old.rp:null,rt=rp?old.rt:null;if(file){rp=owner+'/'+uuid()+'.'+RECEIPT_TYPES[file.type];rt=file.type;RECEIPTS[rp]=file}
-   const rec={cat:o.cat,loc:o.loc,ref:o.ref,date:o.date,amt:Number(o.amt).toFixed(2),pay:o.pay,reimb:!!o.reimb,notes:o.notes,rp,rt};
+   const rec={cat:o.cat,loc:o.loc,ref:o.ref,date:o.date,amt:Number(o.amt).toFixed(2),pay:o.pay,reimb:!!o.reimb,notes:o.notes,rp,rt,att:o.cat==='team_meal'&&(o.att||[]).length?[...o.att]:undefined};
    setS(s=>{const l=s.expenses||[];if(old)return L({...s,expenses:l.map(x=>x.id===id?{...x,...rec}:x)},'Updated expense for '+EMPS[owner].name);const nid=Math.max(0,...l.map(x=>x.id))+1;return L({...s,expenses:[...l,{id:nid,e:owner,ev:CUR.id,ok:false,okAt:null,...rec}]},'Added expense for '+EMPS[owner].name)});say(old?'Expense saved':'Expense added');return true},
   delExpense:id=>{const x=(S.expenses||[]).find(y=>y.id===id);setS(s=>L({...s,expenses:s.expenses.filter(y=>y.id!==id)},'Deleted expense'+(x&&EMPS[x.e]?' for '+EMPS[x.e].name:'')));say('Expense deleted');return true},
   approveExpense:(id,ok)=>{setS(s=>L({...s,expenses:s.expenses.map(x=>x.id===id?{...x,ok:!!ok,okAt:ok?new Date().toISOString():null,okBy:ok?'Demo admin':null}:x)},(ok?'Approved':'Unapproved')+' expense'));return true},
@@ -500,7 +514,7 @@ function App({connected}){
   A.saveExpense=async(id,o,file,drop)=>{const old=id!=null?(S.expenses||[]).find(x=>x.id===id):null,owner=old?old.e:(o.e??me);
    let rp=old&&old.rp&&!drop?old.rp:null,rt=rp?old.rt:null,up=null;
    if(file){if(owner==null){say('Choose a person');return false}up=owner+'/'+uuid()+'.'+RECEIPT_TYPES[file.type];try{await repo.receiptUpload(up,file.data,file.type)}catch(e){say('Receipt upload failed: '+(e&&e.message||'try again'));return false}RECEIPT_CACHE[up]={data:file.data,type:file.type};rp=up;rt=file.type}
-   const body={cat:o.cat,loc:o.loc,ref:o.ref,date:o.date,amt:o.amt,pay:o.pay,reimb:!!o.reimb,notes:o.notes,rp,rt,...(!old&&o.e!=null?{e:o.e}:{})};
+   const body={cat:o.cat,loc:o.loc,ref:o.ref,date:o.date,amt:o.amt,pay:o.pay,reimb:!!o.reimb,notes:o.notes,rp,rt,...(!old&&o.e!=null?{e:o.e}:{}),...(o.att?{att:o.att}:{})};
    const ok=await cmd(old?'editExpense':'addExpense',old?[id,body]:[CUR.id,body]);
    if(!ok){if(up){delete RECEIPT_CACHE[up];repo.receiptRemove(up).catch(()=>{})}return false}
    if(old&&old.rp&&old.rp!==rp){delete RECEIPT_CACHE[old.rp];repo.receiptRemove(old.rp).catch(()=>{})}say(old?'Expense saved':'Expense added');return true};
@@ -541,7 +555,7 @@ function App({connected}){
  const push=connected&&PUSH_SUPPORT.on&&window.eventOpsRepository?.pushKey&&me!=null&&EMPS[me]&&!EMPS[me].gone?{repo:window.eventOpsRepository,refresh:connected.refresh,devices:S.push?.devices||0}:null;
  if(role!=='admin'&&evOf(CUR.id)?.closed&&openEvs.length){CUR.id=openEvs[0].id;syncEv()}
  const ul=H.length?(H[H.length-1].label||'last change'):'';
- const R=[['admin','Admin'],['staff','Staff'],['contractor','Contractor']];
+ const R=[['admin','Admin'],['staff','Staff'],['contractor','Event Staff']];
  return html`<div><${AppHeader} events=${role==='admin'?EVS.map(e=>e.closed?{...e,name:e.name+' (closed)'}:e):openEvs} current=${CUR.id} onEventChange=${A.switchEv} email=${connected?.email} role=${role} busy=${connected?.busy} error=${connected?.error} onRefresh=${connected?.refresh} onSignOut=${connected?.signOut} onChangePassword=${connected?.changePassword}>
   ${!connected&&html`<${IconButton} name="undo" label=${H.length?'Undo: '+ul:'Nothing to undo'} disabled=${!H.length} onClick=${A.undo}/>
   <div className="seg" role="group" aria-label="Demo role">${R.map(([k,l])=>html`<button key=${k} aria-pressed=${role===k} onClick=${()=>{setRole(k);const f=EMPS.find(e=>!e.gone&&e.acct===k);if(f)setMe(f.id)}}>${l}</button>`)}</div><${IconButton} name="reset" label="Reset demo" onClick=${()=>{H.length=0;setS(seed());say('Demo reset')}}/>`}
@@ -557,7 +571,7 @@ function hydrate(data){
  data.activities.forEach(s=>{s.q=data.actAck&&Object.hasOwn(data.actAck,s.id)?data.actAck[s.id]:null});
  SESS.splice(0,SESS.length,...data.activities);Object.keys(SM).forEach(k=>delete SM[k]);SESS.forEach(s=>{SM[s.id]=s});
  FP.length=0;INV.length=0;H.length=0;
- PUSH_SUPPORT.on=!!data.push;INFO_SUPPORT.on=data.activityInfo===true;EVENT_INFO_SUPPORT.on=data.eventInfo===true;BRAND_SUPPORT.on=!!data.branding;ITIN_SUPPORT.on=data.itineraries===true;TRAVEL_INFO_SUPPORT.on=data.travelInfo===true;REMINDER_SUPPORT.on=Array.isArray(data.reminders);SCHEDULE_IMPORT_SUPPORT.on=data.scheduleImport===true;RUN_SHOW_SUPPORT.on=data.runOfShow===true;OVERLAP_SUPPORT.on=data.overlapOption===true;LOGO_SUPPORT.on=data.logos===true;SPLASH_SUPPORT.on=data.splashes===true;FLOOR_SUPPORT.on=Array.isArray(data.floorplans);if(FLOOR_SUPPORT.on)FP.push(...data.floorplans.map(f=>({id:f.id,ev:f.ev,name:f.name,size:f.size,path:f.path})));
+ PUSH_SUPPORT.on=!!data.push;INFO_SUPPORT.on=data.activityInfo===true;EVENT_INFO_SUPPORT.on=data.eventInfo===true;BRAND_SUPPORT.on=!!data.branding;ITIN_SUPPORT.on=data.itineraries===true;TRAVEL_INFO_SUPPORT.on=data.travelInfo===true;REMINDER_SUPPORT.on=Array.isArray(data.reminders);SCHEDULE_IMPORT_SUPPORT.on=data.scheduleImport===true;RUN_SHOW_SUPPORT.on=data.runOfShow===true;TEAM_MEAL_SUPPORT.on=data.teamMeals===true;OVERLAP_SUPPORT.on=data.overlapOption===true;LOGO_SUPPORT.on=data.logos===true;SPLASH_SUPPORT.on=data.splashes===true;FLOOR_SUPPORT.on=Array.isArray(data.floorplans);if(FLOOR_SUPPORT.on)FP.push(...data.floorplans.map(f=>({id:f.id,ev:f.ev,name:f.name,size:f.size,path:f.path})));
  if(EVS.length){if(!evOf(CUR.id))CUR.id=EVS[0].id;syncEv()}
 }
 const Root=CONNECTED?createConnection(React,html,window.eventOpsRepository,App,hydrate):App;

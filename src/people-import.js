@@ -1,3 +1,4 @@
+import { typeFromText } from './people-types.js';
 // Reads a roster spreadsheet (.xlsx or .csv) in the browser and turns it into People changes.
 // Nothing is uploaded: the file is parsed locally and only the chosen rows are saved, one person at a time.
 
@@ -145,8 +146,8 @@ export function planImport(rows, people) {
     const { phone, ok } = cleanPhone(get(cols.phone));
     if (!ok) notes.push('Check phone number');
     const rawType = get(cols.type).toLowerCase();
-    let acct = ['admin', 'staff', 'contractor'].includes(rawType) ? rawType : 'staff';
-    if (rawType && acct !== rawType) notes.push('Unknown type "' + get(cols.type) + '", using Staff');
+    const acct = typeFromText(rawType) || 'staff';
+    if (rawType && !typeFromText(rawType)) notes.push('Unknown type "' + get(cols.type) + '", using Staff');
     const match = (email && active.find(p => (p.email || '').toLowerCase() === email))
       || active.filter(p => key(p.name) === key(name)).length === 1 && active.find(p => key(p.name) === key(name)) || null;
     const person = {
