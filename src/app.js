@@ -260,10 +260,14 @@ const breakExport={
  pdf:S=>{const url=URL.createObjectURL(new Blob([breaksDoc(S,true)],{type:'text/html'})),w=window.open(url,'_blank');setTimeout(()=>URL.revokeObjectURL(url),60000);return w?'':'Your browser blocked the print window. Allow pop-ups for this site and try again.'},
  xlsx:async S=>{try{const d=window.claude&&await window.claude.use('downloads');if(!d)return 'Saving is not available here.';await d.save({filename:slug(evOf(CUR.id).name)+'-lunches-and-breaks.xlsx',data:xlsx('Lunches and breaks',breaksSheet(S),[20,20,24,22,8,10,10,40])});return 'Excel file saved.'}catch(e){return e&&e.code==='declined'?'Download canceled.':'Could not save the file.'}}
 };
+// Saves an HTML file: in a Claude preview through its downloads, otherwise as a normal browser download.
+const saveHtml=async(filename,data)=>{const d=window.claude&&await window.claude.use('downloads').catch(()=>null);
+ if(d){await d.save({filename,data});return}
+ const url=URL.createObjectURL(new Blob([data],{type:'text/html'})),a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000)};
 function MyExport({S,me,day}){
  const [msg,setMsg]=useState('');
  const name=()=>slug(evOf(CUR.id).name)+'-'+slug(EMPS[me].name)+'-'+(day==null?'all-days':slug(DAYS_SHORT[day]))+'.html';
- const save=async()=>{try{const d=window.claude&&await window.claude.use('downloads');if(!d){setMsg('Saving is not available here.');return}await d.save({filename:name(),data:myDoc(S,me,day)});setMsg('Saved. Open the file to view or print it.')}catch(e){setMsg(e&&e.code==='declined'?'Download canceled.':'Could not save the file.')}};
+ const save=async()=>{try{await saveHtml(name(),myDoc(S,me,day));setMsg('Saved. Open the file to view or print it.')}catch(e){setMsg(e&&e.code==='declined'?'Download canceled.':'Could not save the file.')}};
  const print=()=>{const url=URL.createObjectURL(new Blob([myDoc(S,me,day,true)],{type:'text/html'})),w=window.open(url,'_blank');setTimeout(()=>URL.revokeObjectURL(url),60000);setMsg(w?'':'Your browser blocked the print window. Allow pop-ups or use Download.')};
  const label=day==null?'all days':DAYS_SHORT[day];
  return html`<div className="acts my-export"><button className="btn ghost" onClick=${print} aria-label=${'Print my schedule, '+label}><${Icon} name="print"/>Print</button><button className="btn ghost" onClick=${save} aria-label=${'Download my schedule, '+label}><${Icon} name="download"/>Download</button><span className="mute">My assignments, ${label}</span>${msg&&html`<p className="mute" role="status" style=${{flexBasis:'100%',margin:0}}>${msg}</p>`}</div>`}
@@ -340,27 +344,32 @@ const bump=(s,sid,from)=>{const ids=s.asg.filter(a=>a.s===sid).map(a=>a.id);
  notes:[...s.notes.filter(n=>!ids.includes(n.aid)),...s.asg.filter(a=>ids.includes(a.id)).map(a=>({id:++uid,e:a.e,aid:a.id,done:0,x:ntext(a,'Changed assignment'),from}))]}};
 const col=(e,al)=>`hsl(${(e*137.508)%360} 65% ${e%2?40:52}% / ${al})`;
 const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-function schedDoc(S){
- const rows=SESS.filter(s=>s.ev===CUR.id).sort((x,y)=>ROOMS.indexOf(x.r)-ROOMS.indexOf(y.r)||x.d-y.d||x.a-y.a);
+// The staff schedule grid, for the whole event (day null) or one day of it.
+const gridRows=day=>SESS.filter(s=>s.ev===CUR.id&&(day==null||s.d===day)).sort((x,y)=>day==null?ROOMS.indexOf(x.r)-ROOMS.indexOf(y.r)||x.d-y.d||x.a-y.a:x.a-y.a||ROOMS.indexOf(x.r)-ROOMS.indexOf(y.r)||x.b-y.b);
+function schedDoc(S,day=null,autoPrint=false){
+ const rows=gridRows(day),cols=day==null?DAYS.map((_,i)=>i):[day];
  const body=rows.map(s=>{const c=cover(s,S.asg);
-  return `<tr class="p"><th>${esc(s.t)}<br><small>${esc(s.r)} · ${span(s)}</small></th>${DAYS.map((_,d)=>`<td>${d===s.d?`<b>${c.l}</b>${s.n?` · ${c.as.length} of ${s.n} staffed`:c.as.length?` · ${c.as.length} assigned`:''}`:''}</td>`).join('')}</tr>`
-  +c.as.map(a=>`<tr><th class="k"><i style="background:${col(a.e,1)}"></i>${esc(nm(a.e))}</th>${DAYS.map((_,d)=>`<td>${d===s.d?`<div class="c" style="background:${col(a.e,.22)};border-color:${col(a.e,1)}">${esc(st(a)[1])}${clash(S.asg,a).length?' · Overlap':''}</div>`:''}</td>`).join('')}</tr>`).join('')}).join('');
- return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${esc(evOf(CUR.id).name)} staff schedule</title><style>@page{size:letter landscape;margin:.4in}body{font:11px/1.35 system-ui,sans-serif;color:#000;margin:12px}table{border-collapse:collapse;width:100%}th,td{border-top:1px solid #999;padding:3px 6px;text-align:left;vertical-align:top;font-weight:400}tr.p th,tr.p td{background:#e8eeed}tr.p th{font-weight:700}th.k{padding-left:20px;font-weight:600}i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:-1px}.c{border-left:5px solid;border-radius:4px;padding:2px 5px;font-size:10px}thead th{font-weight:700;background:#d9e2e0}tr{break-inside:avoid}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}button{font:inherit;padding:8px 14px;margin:0 0 8px}@media print{body{margin:0}button{display:none}}</style></head><body><button onclick="window.print()">Print (Letter, landscape)</button><h2>${esc(evOf(CUR.id).name)} staff schedule</h2><table><thead><tr><th>Activity and staff</th>${DAYS.map(x=>`<th>${x}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></body></html>`}
+  return `<tr class="p"><th>${esc(s.t)}<br><small>${esc(s.r)} · ${span(s)}</small></th>${cols.map(d=>`<td>${d===s.d?`<b>${c.l}</b>${s.n?` · ${c.as.length} of ${s.n} staffed`:c.as.length?` · ${c.as.length} assigned`:''}`:''}</td>`).join('')}</tr>`
+  +c.as.map(a=>`<tr><th class="k"><i style="background:${col(a.e,1)}"></i>${esc(nm(a.e))}</th>${cols.map(d=>`<td>${d===s.d?`<div class="c" style="background:${col(a.e,.22)};border-color:${col(a.e,1)}">${esc(st(a)[1])}${clash(S.asg,a).length?' · Overlap':''}</div>`:''}</td>`).join('')}</tr>`).join('')}).join('');
+ return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${esc(evOf(CUR.id).name)} staff schedule</title><style>@page{size:letter landscape;margin:.4in}body{font:11px/1.35 system-ui,sans-serif;color:#000;margin:12px}table{border-collapse:collapse;width:100%}th,td{border-top:1px solid #999;padding:3px 6px;text-align:left;vertical-align:top;font-weight:400}tr.p th,tr.p td{background:#e8eeed}tr.p th{font-weight:700}th.k{padding-left:20px;font-weight:600}i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:-1px}.c{border-left:5px solid;border-radius:4px;padding:2px 5px;font-size:10px}thead th{font-weight:700;background:#d9e2e0}tr{break-inside:avoid}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}button{font:inherit;padding:8px 14px;margin:0 0 8px}@media print{body{margin:0}button{display:none}}</style></head><body><button onclick="window.print()">Print (Letter, landscape)</button><h2>${esc(evOf(CUR.id).name)} staff schedule${day==null?'':': '+esc(DAYS[day])}</h2><table><thead><tr><th>Activity and staff</th>${cols.map(d=>`<th>${DAYS[d]}</th>`).join('')}</tr></thead><tbody>${body||`<tr><td colspan="${cols.length+1}">No activities${day==null?'':' on this day'}.</td></tr>`}</tbody></table>${autoPrint?'<script>addEventListener("load",()=>setTimeout(()=>print(),200))</script>':''}</body></html>`}
 function Grid({S}){
- const [shut,setShut]=useState({}),[msg,setMsg]=useState('');
- const save=async()=>{try{const d=window.claude&&await window.claude.use('downloads');if(!d){setMsg('Saving is not available here.');return}await d.save({filename:'impact27-schedule.html',data:schedDoc(S)});setMsg('Saved. Open the file and click Print.')}catch(e){setMsg(e&&e.code==='declined'?'Download canceled.':'Could not save the file.')}};
- const rows=SESS.filter(s=>s.ev===CUR.id).sort((x,y)=>ROOMS.indexOf(x.r)-ROOMS.indexOf(y.r)||x.d-y.d||x.a-y.a);
- const used=[...new Set(S.asg.filter(a=>SM[a.s].ev===CUR.id).map(a=>a.e))].sort((x,y)=>x-y);
- return html`<div><div className="acts noprint"><button className="btn" onClick=${save}>Download printable schedule</button></div>
- <p className="mute noprint">The download is a Letter, landscape, color file with every activity expanded. Open it and click Print. ${msg}</p>
- <h2 className="onlyprint">${evOf(CUR.id).name} staff schedule</h2><div className="gridwrap"><table className="sg"><thead><tr><th scope="col">Activity and staff</th>${DAYS.map(x=>html`<th scope="col" key=${x}>${x}</th>`)}</tr></thead>
+ const [shut,setShut]=useState({}),[msg,setMsg]=useState(''),[day0,setDay]=useState(null),day=day0!=null&&day0<DAYS.length?day0:null;
+ const label=day==null?'full event':DAYS_SHORT[day],file=()=>slug(evOf(CUR.id).name)+'-schedule-'+(day==null?'full-event':slug(DAYS_SHORT[day]))+'.html';
+ const save=async()=>{try{await saveHtml(file(),schedDoc(S,day));setMsg('Saved. Open the file and click Print.')}catch(e){setMsg(e&&e.code==='declined'?'Download canceled.':'Could not save the file.')}};
+ const print=()=>{const url=URL.createObjectURL(new Blob([schedDoc(S,day,true)],{type:'text/html'})),w=window.open(url,'_blank');setTimeout(()=>URL.revokeObjectURL(url),60000);setMsg(w?'':'Your browser blocked the print window. Allow pop-ups or use Download.')};
+ const rows=gridRows(day),cols=day==null?DAYS.map((_,i)=>i):[day];
+ const used=[...new Set(S.asg.filter(a=>SM[a.s].ev===CUR.id&&(day==null||SM[a.s].d===day)).map(a=>a.e))].sort((x,y)=>x-y);
+ return html`<div><div className="seg grid-days noprint" role="group" aria-label="Show"><button type="button" aria-pressed=${day==null} onClick=${()=>setDay(null)}>Full event</button>${DAYS_SHORT.map((x,i)=>html`<button type="button" key=${i} aria-pressed=${day===i} onClick=${()=>setDay(i)}>${x}</button>`)}</div>
+ <div className="acts noprint"><button className="btn" onClick=${save}><${Icon} name="download"/>Download ${label}</button><button className="btn ghost" onClick=${print}><${Icon} name="print"/>Print or PDF</button></div>
+ <p className="mute noprint">${day==null?'Every day of the event, one column per day.':'Only '+DAYS[day]+', in time order.'} The download is a Letter, landscape, color file with every activity expanded; open it and click Print. ${msg}</p>
+ <h2 className="onlyprint">${evOf(CUR.id).name} staff schedule${day==null?'':': '+DAYS[day]}</h2><div className="gridwrap"><table className="sg"><thead><tr><th scope="col">Activity and staff</th>${cols.map(d=>html`<th scope="col" key=${d}>${DAYS[d]}</th>`)}</tr></thead>
  <tbody>${rows.map(s=>{const c=cover(s,S.asg),open=!shut[s.id];return html`<${React.Fragment} key=${s.id}>
   <tr className="par"><th scope="row"><button className="tgl" aria-expanded=${open} onClick=${()=>setShut(q=>({...q,[s.id]:open}))}>${open?'▾':'▸'} <b>${s.t}</b></button><div className="mute">${s.r} · ${span(s)}</div></th>
-   ${DAYS.map((_,d)=>html`<td key=${d}>${d===s.d&&html`<${Pill} k=${c.k}>${c.l}<//> <span className="mute">${s.n?c.as.length+' of '+s.n+' staffed':c.as.length?c.as.length+' assigned':''}</span>`}</td>`)}</tr>
+   ${cols.map(d=>html`<td key=${d}>${d===s.d&&html`<${Pill} k=${c.k}>${c.l}<//> <span className="mute">${s.n?c.as.length+' of '+s.n+' staffed':c.as.length?c.as.length+' assigned':''}</span>`}</td>`)}</tr>
   ${open&&c.as.map(a=>{const l=st(a)[1],cl=clash(S.asg,a);return html`<tr key=${a.id}><th scope="row" className="kid"><i className="sw" style=${{background:col(a.e,1)}}></i>${nm(a.e)}</th>
-   ${DAYS.map((_,d)=>html`<td key=${d}>${d===s.d&&html`<div className="chip" style=${{background:col(a.e,.22),borderLeftColor:col(a.e,1)}}>${l}${cl.length>0&&' · Overlap'}</div>`}</td>`)}</tr>`})}
+   ${cols.map(d=>html`<td key=${d}>${d===s.d&&html`<div className="chip" style=${{background:col(a.e,.22),borderLeftColor:col(a.e,1)}}>${l}${cl.length>0&&' · Overlap'}</div>`}</td>`)}</tr>`})}
  <//>`})}</tbody></table></div>
- ${!rows.length&&html`<p className="mute">No activities yet for this event.</p>`}
+ ${!rows.length&&html`<p className="mute">${day==null?'No activities yet for this event.':'No activities on '+DAYS[day]+'.'}</p>`}
  <h3 style=${{marginTop:16}}>Staff colors</h3><div className="legend">${used.map(e=>html`<span key=${e}><i className="sw" style=${{background:col(e,1)}}></i>${EMPS[e].name}</span>`)}</div></div>`}
 const EXP=createExpenses({React,html,Modal,Icon,IconButton,people:EMPS,events:EVS,current:CUR,activities:SESS,teamMeals:TEAM_MEAL_SUPPORT});
 const AppSettings=createAppSettings({React,html,Icon});

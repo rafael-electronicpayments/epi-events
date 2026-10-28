@@ -271,7 +271,7 @@ export function createAdminWorkspace(m,components){
     <button aria-pressed=${filter==='overlap'} onClick=${()=>setFilter('overlap')}><b>${overlapPeople.size}</b>people with overlaps</button>
     <button aria-pressed=${filter==='unack'} onClick=${()=>setFilter('unack')}><b>${unack}</b>awaiting acknowledgment</button>
    </div>
-   <div className="view-toolbar"><div className="seg day-tabs" role="group" aria-label="Event day">${(m.daysShort||days).map((d,i)=>html`<button key=${d} aria-pressed=${dayIndex===i} onClick=${()=>{setDay(i);setSelected(null);}}>${d}</button>`)}</div>
+   <div className="view-toolbar">${view==='schedule'&&mode==='grid'?html`<span></span>`:html`<div className="seg day-tabs" role="group" aria-label="Event day">${(m.daysShort||days).map((d,i)=>html`<button key=${d} aria-pressed=${dayIndex===i} onClick=${()=>{setDay(i);setSelected(null);}}>${d}</button>`)}</div>`}
     ${view==='schedule'&&html`<div className="seg view-switch" role="group" aria-label="Schedule view"><button aria-label="List view" title="List view" aria-pressed=${mode==='list'} onClick=${()=>setMode('list')}><${Icon} name="list"/></button><button aria-label="Schedule grid" title="Schedule grid" aria-pressed=${mode==='grid'} onClick=${()=>setMode('grid')}><${Icon} name="grid"/></button></div>`}
    </div>
    ${view==='schedule'&&mode==='grid'?html`<${Grid} S=${S}/>`:html`<div className=${'schedule-work '+(currentActivity?'with-detail':'')}><div>
