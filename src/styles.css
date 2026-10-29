@@ -382,3 +382,5 @@ body:has(dialog[open]) .app-error{display:none}
 .offsite-pill{margin-left:6px;vertical-align:middle}
 .offsite-reports{display:flex;flex-direction:column;gap:12px}
 .grid-days{margin-bottom:10px}
+/* Phone schedule list: time first and bold, then the activity, then the room */
+@media(max-width:640px){.activity-link .act-title{font-weight:500}.activity-link b.mobile-time{font-size:14px}}
