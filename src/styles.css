@@ -384,3 +384,44 @@ body:has(dialog[open]) .app-error{display:none}
 .grid-days{margin-bottom:10px}
 /* Phone schedule list: time first and bold, then the activity, then the room */
 @media(max-width:640px){.activity-link .act-title{font-weight:500}.activity-link b.mobile-time{font-size:14px}}
+/* Attendees */
+.attendee-access{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:18px;padding:12px 14px;border:1px solid var(--line);border-radius:8px}
+.attendee-access .heading-actions{display:flex;gap:8px;flex-wrap:wrap}
+.attendee-toolbar{margin-bottom:8px}.attendee-toolbar .heading-actions{margin-left:auto;display:flex;gap:8px}
+.attendee-count{font-size:12px;margin:0 0 10px}
+.attendee-table td:nth-child(3),.attendee-table td:nth-child(5){min-width:160px}
+.attendee-list.compact .attendee-table{max-height:60dvh;overflow:auto}
+.attendee-viewers .search-field{margin:6px 0 4px}.attendee-viewers .search-field input{width:100%}
+.viewer-list{max-height:45dvh;overflow:auto;border:1px solid var(--line);border-radius:6px;padding:4px 10px;margin-bottom:8px}
+.viewer-row{display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}.viewer-row:last-child{border-bottom:0}.viewer-row>span{display:flex;flex-direction:column}
+.attendee-card b svg{vertical-align:-3px}
+@media(max-width:640px){
+ .attendee-toolbar select{flex:1 1 100%}.attendee-toolbar .heading-actions{margin-left:0}
+ .attendee-table table,.attendee-table tbody,.attendee-table tr,.attendee-table td{display:block}
+ .attendee-table thead{display:none}
+ .attendee-table tr{padding:10px 2px;border-bottom:1px solid var(--line)}
+ .attendee-table td{padding:2px 0!important;border:0!important;min-width:0!important}
+ .attendee-table td:nth-child(1),.attendee-table td:nth-child(2){display:inline;font-size:14px}
+ .attendee-table td:nth-child(1)::after{content:' '}
+ .attendee-table td:nth-child(n+3)::before{content:attr(data-label) ': ';color:var(--mute)}
+ .attendee-table td.empty-table::before{content:none}
+}
+/* Schedule search */
+.view-toolbar .sched-search{flex:1 1 220px;max-width:340px}.view-toolbar .sched-search input{width:100%}
+.sched-search{margin-bottom:10px;min-height:44px}.sched-search input{width:100%;min-height:42px}
+.view-toolbar .sched-search{margin-bottom:0}.sched-search-note{font-size:12px}
+@media(max-width:640px){.view-toolbar{flex-wrap:wrap}.view-toolbar .sched-search{max-width:none;flex:1 1 100%;order:3}}
+.monitor-row{display:flex;flex-wrap:wrap;align-items:center;gap:4px 18px}.monitor-contact{font-size:13px}.monitor-contact .cell-secondary{margin-left:6px}
+.note-bulk{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 10px}.note-bulk .btn{min-height:44px}
+/* Staff locator */
+.locator .people-toolbar{margin-bottom:8px}.locator-count{font-size:12px;margin:0 0 10px}
+.locator-table tr.locator-live td{background:var(--okb,rgba(46,125,50,.08))}
+.locator-card b svg{vertical-align:-3px}
+@media(max-width:640px){
+ .locator-table table,.locator-table tbody,.locator-table tr,.locator-table td{display:block}
+ .locator-table thead{display:none}
+ .locator-table tr{padding:10px 2px;border-bottom:1px solid var(--line)}
+ .locator-table td{padding:2px 0!important;border:0!important;min-width:0!important}
+ .locator-table td:nth-child(n+2)::before{content:attr(data-label) ': ';color:var(--mute)}
+ .locator-table td.empty-table::before{content:none}
+}
