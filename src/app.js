@@ -3,6 +3,7 @@ import { createAdminWorkspace } from './admin-workspace.js';
 import { AppHeader, Icon, IconButton, Modal } from './ui.js';
 import { createExpenses, hrReport, RECEIPT_TYPES } from './expenses.js';
 import { xlsx } from './xlsx-writer.js';
+import { createAttendees } from './attendees.js';
 import { PushCard, onOpenAssignment } from './push.js';
 import { createEventLogo, createImageUrls, prepLogo, prepSplash } from './event-logo.js';
 import { Splash } from './splash.js';
@@ -98,6 +99,11 @@ const demoCompanion=(list,ev,who,text,cid)=>{let hs=[...list];const h=hs.find(x=
  return hs};
 const demoSync=(hs,ev,who)=>{const h=hs.find(x=>x.ev===ev&&x.e===who);if(!h||h.companionId==null)return hs;return hs.map(x=>x.ev===ev&&x.e===h.companionId&&x.companionId===who?{...x,name:h.name,conf:h.conf,in:h.in,out:h.out,by:h.by,byEvent:h.byEvent,paid:h.paid}:x)};
 const demoRemoveHotel=(hs,h)=>{hs=hs.filter(x=>x!==h);if(h.companionId==null)return hs;const p=hs.find(x=>x.ev===h.ev&&x.e===h.companionId&&x.companionId===h.e);if(!p)return hs;return h.primary!==false&&p.primary===false?hs.filter(x=>x!==p):hs.map(x=>x===p?{...x,companion:'',companionId:null,primary:true}:x)};
+// Demo only: a made-up attendee list (no real people).
+const demoAttendees=()=>{const F=['Avery','Jordan','Riley','Morgan','Casey','Quinn','Harper','Rowan','Skyler','Emerson','Reese','Parker','Dakota','Finley','Sawyer','Blake'],Ln=['Hollis','Marlowe','Quill','Fenwick','Ashby','Larkin','Delacroix','Pembrook','Vance','Whitlock','Oakes','Brightwater'],
+ C=['Northwind Payments','Bluefin Merchant Group','Cedar Ridge Processing','Summit Card Services','Lantern POS',''],T=['Attendee','Attendee','Attendee','EPI Staff','Event Staff','Sponsor','Sponsor Guest'];
+ const out=[];for(let i=0;i<40;i++){const f=F[i%F.length],l=Ln[(i*5)%Ln.length],rt=T[i%T.length],o={id:i+1,ev:EVS[0]?EVS[0].id:1,f,l,c:C[i%C.length],st:'Accepted',rt,g:''};
+  o.g=rt==='Sponsor Guest'&&out.length?out[out.length-1].l+', '+out[out.length-1].f:l+', '+f;out.push(o)}return out};
 const leadsOf=(S,s)=>s.leads?s.leads.map(l=>({e:l.e,n:l.n})):S.asg.filter(a=>a.s===s.id&&a.lead&&EMPS[a.e]&&!EMPS[a.e].gone).map(a=>({e:a.e,n:EMPS[a.e].name}));
 // Event images: the logo (next to module headings) and the welcome splash (after signing in).
 // Demo keeps bytes on the event; connected databases need the matching migrations (snapshot 'logos' / 'splashes').
@@ -129,7 +135,7 @@ const ntext=(a,p)=>p+': '+SM[a.s].t+', '+SM[a.s].r+', '+span(SM[a.s])+' ('+dayDa
 let uid=100;
 const H=[];
 const seed=()=>{const asg=SEED.map((r,i)=>({id:i+1,e:r[0],s:r[1],ack:r[2],in:r[3],conf:0,tag:r[4]}));
- return {asg,log:[],breaks:[],clocks:[],expenses:[],documents:[],flights:[],hotels:[],support:[],away:[],offsite:[],monitors:[],notes:asg.filter(a=>!a.ack).map(a=>({id:++uid,e:a.e,aid:a.id,done:0,x:ntext(a,a.tag==='new'?'New assignment':'Changed assignment')}))}};
+ return {asg,log:[],breaks:[],clocks:[],expenses:[],documents:[],flights:[],hotels:[],support:[],away:[],offsite:[],monitors:[],attendees:demoAttendees(),attViewers:[],notes:asg.filter(a=>!a.ack).map(a=>({id:++uid,e:a.e,aid:a.id,done:0,x:ntext(a,a.tag==='new'?'New assignment':'Changed assignment')}))}};
 const clash=(asg,a)=>asg.filter(x=>x.id!==a.id&&x.e===a.e&&SM[x.s].ev===SM[a.s].ev&&SM[x.s].d===SM[a.s].d&&!SM[x.s].ov&&!SM[a.s].ov&&SM[x.s].a<SM[x.s].b&&SM[a.s].a<SM[a.s].b&&SM[x.s].a<SM[a.s].b&&SM[a.s].a<SM[x.s].b).map(x=>SM[x.s]);
 const st=a=>!need(SM[a.s])?['ok','No check-in needed']:a.in||a.conf?['ok',a.conf&&!a.in?'Confirmed by coordinator':'Checked in']:a.ack?['','Acknowledged']:['warn',(a.tag==='changed'?'Changed':'New')+', needs acknowledgment'];
 const cover=(s,asg)=>{const as=asg.filter(x=>x.s===s.id),p=need(s)?as.filter(x=>x.in||x.conf).length:as.length;
@@ -313,6 +319,7 @@ function Staff({S,A,me,canFull=false,embedded=false,push=null}){
  ${TRAVEL_INFO_SUPPORT.on&&ITIN_SUPPORT.on&&html`<${TINFO.TravelInfoCards} S=${S} me=${me}/>`}
  ${!embedded&&Array.isArray(S.documents)&&html`<${DOCS.DocumentList} S=${S} A=${A} me=${me}/>`}
  ${Array.isArray(S.support)&&html`<${SUP.MySupport} S=${S} me=${me}/>`}
+ ${Array.isArray(S.attendees)&&html`<${ATT.AttendeeCard} S=${S} me=${me}/>`}
  <h2>Next assignment</h2>${next?html`<${Card} a=${next} cls="next"/>`:html`<p className="mute">Nothing coming up. Your admin will notify you of new assignments.</p>`}
  <h2>${full?'Full schedule':'My schedule'}</h2>
  ${canFull&&html`<div className="seg" role="group" aria-label="Schedule view" style=${{marginBottom:8}}><button aria-pressed=${!full} onClick=${()=>setView('mine')}>My schedule</button><button aria-pressed=${full} onClick=${()=>setView('full')}>Full schedule</button></div>`}
@@ -378,8 +385,9 @@ const TINFO=createTravelInfo({React,html,Icon,events:EVS,current:CUR,demo:!CONNE
 const REM=createReminders({React,html,Modal,Icon,people:EMPS,events:EVS,activities:SESS,current:CUR});
 const SUP=createSessionSupport({React,html,Modal,Icon,people:EMPS,events:EVS,current:CUR});
 const OFF=createOffsite({React,html,Modal,Icon,people:EMPS,events:EVS,current:CUR});
+const ATT=createAttendees({React,html,Modal,Icon,people:EMPS,events:EVS,current:CUR});
 const DOCS=createDocuments({React,html,Modal,Icon,people:EMPS,events:EVS,activities:SESS,current:CUR});
-const Admin=createAdminWorkspace({people:EMPS,events:EVS,rooms:ROOMS,activities:SESS,current:CUR,days:DAYS,daysShort:DAYS_SHORT,cover,clash,span,evEnd,evStatus,need,roomAck:ROOM_ACK,ackSupport:ACK_SUPPORT,BREAK,breaksOn,breaksDuring,openClock,lateBy,liveNow,clockTime,breakOf,todayIndex,breakExport,floorSupport:FLOOR_SUPPORT,closeSupport:CLOSE_SUPPORT,pushSupport:PUSH_SUPPORT,infoSupport:INFO_SUPPORT,eventInfoSupport:EVENT_INFO_SUPPORT,brandSupport:BRAND_SUPPORT,itinSupport:ITIN_SUPPORT,travelInfoSupport:TRAVEL_INFO_SUPPORT,remindersSupport:REMINDER_SUPPORT,scheduleImportSupport:SCHEDULE_IMPORT_SUPPORT,runShowSupport:RUN_SHOW_SUPPORT,overlapSupport:OVERLAP_SUPPORT,staffText,logoSupport:LOGO_SUPPORT,splashSupport:SPLASH_SUPPORT,prepLogo,prepSplash,imageUrl,hrPdf:(list,scope)=>{const url=URL.createObjectURL(new Blob([hrReport({list,people:EMPS,eventName:evOf(CUR.id).name,scope,autoPrint:true})],{type:'text/html'})),w=window.open(url,'_blank');setTimeout(()=>URL.revokeObjectURL(url),60000);return w?'':'Your browser blocked the report window. Allow pop-ups for this site and try again.'},connected:CONNECTED},{AdminSession,Grid,Floorplans,Incoming,Staff,ExpensesAdmin:EXP.ExpensesAdmin,EventLogo,Splash,DocumentsAdmin:DOCS.DocumentsAdmin,AppSettings,ItinerariesAdmin:ITIN.ItinerariesAdmin,TravelInfoAdmin:TINFO.TravelInfoAdmin,MessagesAdmin:REM.MessagesAdmin,SupportAdmin:SUP.SupportAdmin,OffsiteNotices:OFF.OffsiteNotices,OffsiteReports:OFF.OffsiteReports,OffsiteBadge:OFF.Badge});
+const Admin=createAdminWorkspace({people:EMPS,events:EVS,rooms:ROOMS,activities:SESS,current:CUR,days:DAYS,daysShort:DAYS_SHORT,cover,clash,span,evEnd,evStatus,need,roomAck:ROOM_ACK,ackSupport:ACK_SUPPORT,BREAK,breaksOn,breaksDuring,openClock,lateBy,liveNow,clockTime,breakOf,todayIndex,breakExport,floorSupport:FLOOR_SUPPORT,closeSupport:CLOSE_SUPPORT,pushSupport:PUSH_SUPPORT,infoSupport:INFO_SUPPORT,eventInfoSupport:EVENT_INFO_SUPPORT,brandSupport:BRAND_SUPPORT,itinSupport:ITIN_SUPPORT,travelInfoSupport:TRAVEL_INFO_SUPPORT,remindersSupport:REMINDER_SUPPORT,scheduleImportSupport:SCHEDULE_IMPORT_SUPPORT,runShowSupport:RUN_SHOW_SUPPORT,overlapSupport:OVERLAP_SUPPORT,staffText,logoSupport:LOGO_SUPPORT,splashSupport:SPLASH_SUPPORT,prepLogo,prepSplash,imageUrl,hrPdf:(list,scope)=>{const url=URL.createObjectURL(new Blob([hrReport({list,people:EMPS,eventName:evOf(CUR.id).name,scope,autoPrint:true})],{type:'text/html'})),w=window.open(url,'_blank');setTimeout(()=>URL.revokeObjectURL(url),60000);return w?'':'Your browser blocked the report window. Allow pop-ups for this site and try again.'},connected:CONNECTED},{AdminSession,Grid,Floorplans,Incoming,Staff,ExpensesAdmin:EXP.ExpensesAdmin,EventLogo,Splash,DocumentsAdmin:DOCS.DocumentsAdmin,AppSettings,ItinerariesAdmin:ITIN.ItinerariesAdmin,TravelInfoAdmin:TINFO.TravelInfoAdmin,MessagesAdmin:REM.MessagesAdmin,SupportAdmin:SUP.SupportAdmin,OffsiteNotices:OFF.OffsiteNotices,OffsiteReports:OFF.OffsiteReports,OffsiteBadge:OFF.Badge,AttendeesAdmin:ATT.AttendeesAdmin});
 function App({connected}){
  const [demoS,setS]=useState(()=>connected?connected.snapshot:seed()),[demoRole,setRole]=useState('admin'),[demoMe,setMe]=useState(0),[toast,setToast]=useState('');
  const S=connected?connected.snapshot:demoS,role=connected?connected.snapshot.role:demoRole,me=connected?connected.snapshot.me:demoMe;
@@ -448,6 +456,15 @@ function App({connected}){
     return L({...s,away:(s.away||[]).filter(a=>a.e!==me),offsite:s.offsite.map(x=>x.id===l.id?{...x,back:now,note}:x),notes:[...s.notes,...to.map(e=>({id:++uid,e,aid:null,done:0,oid:l.id,ok:'back',x:'Back onsite: '+EMPS[me].name+' returned.'+(note?' Note: '+note:'')}))]},EMPS[me].name+' is back onsite')});say('Checked back in');return true},
   ackOffsite:id=>{setS(s=>L({...s,offsite:(s.offsite||[]).map(x=>x.id===id&&!x.oat?{...x,oa:EMPS[me]?.name||'Demo admin',oat:new Date().toISOString()}:x),notes:s.notes.map(n=>n.oid===id&&n.ok==='out'?{...n,done:1}:n)},'Acknowledged an offsite check-out'));return true},
   // Session Support (demo): the same rules as the database, in memory.
+  // Attendees (demo): the same matching as the database. Exact first and last name (ignoring capitals and spaces);
+  // name and company first, then name only. Nobody is removed.
+  importAttendees:(ev,rows)=>{setS(s=>{let list=[...(s.attendees||[])];const k=(f,l)=>String(f).trim().toLowerCase()+'|'+String(l).trim().toLowerCase(),used=new Set(),hit=rows.map(()=>null);
+   const pass=t=>rows.forEach((r,i)=>{if(hit[i])return;const m=list.filter(a=>a.ev===ev&&!used.has(a.id)&&k(a.f,a.l)===k(r.f,r.l)&&t(a,r)).sort((a,b)=>a.id-b.id)[0];if(m){used.add(m.id);hit[i]=m.id}});
+   pass((a,r)=>String(a.c).trim().toLowerCase()===String(r.c).trim().toLowerCase());pass(()=>true);let n=0,u=0;
+   rows.forEach((r,i)=>{const o={f:r.f,l:r.l,c:r.c||'',st:r.st||'',g:r.g||'',rt:r.rt||''};if(hit[i]){u++;list=list.map(a=>a.id===hit[i]?{...a,...o}:a)}else{n++;const id=Math.max(0,...list.map(a=>a.id))+1;used.add(id);list.push({id,ev,...o})}});
+   return L({...s,attendees:list},'Imported attendees ('+n+' added, '+u+' updated)')});return true},
+  setAttendeeViewers:(ev,ids)=>{setS(s=>{const before=new Set((s.attViewers||[]).filter(v=>v.ev===ev).map(v=>v.e)),after=[...new Set(ids)].filter(e=>EMPS[e]&&!EMPS[e].gone&&EMPS[e].acct!=='admin');
+   return L({...s,attViewers:[...(s.attViewers||[]).filter(v=>v.ev!==ev),...after.map(e=>({ev,e}))],notes:[...s.notes,...after.filter(e=>!before.has(e)).map(e=>({id:++uid,e,aid:null,done:0,x:'You can now view the attendee list for '+evOf(ev).name+'.'}))]},'Changed who can view attendees')});say('Saved');return true},
   importSupport:(ev,rows)=>{setS(s=>{let list=[...(s.support||[])];const notes=[...s.notes],used=new Set();
    rows.forEach(r=>{let o=list.find(x=>!used.has(x.id)&&x.ev===ev&&x.d===r.d&&x.a===r.a&&x.t.trim().toLowerCase()===r.t.toLowerCase());
     const ppl=(r.ppl||[]).filter(p=>EMPS[p.e]&&!EMPS[p.e].gone).map(p=>({...p,n:EMPS[p.e].name})),before=new Set(o?o.ppl.map(p=>p.e):[]);
