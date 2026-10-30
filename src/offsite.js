@@ -38,13 +38,15 @@ export function createOffsite({ React, html, Modal, Icon, people, events, curren
     const p = people[me], away = awayOf(S, me), [open, setOpen] = useState(false), [txt, setTxt] = useState(''), [err, setErr] = useState(''), [busy, setBusy] = useState(false);
     if (!p || !OFFSITE_TYPES.includes(p.acct) || !Array.isArray(S.away)) return null;
     const mine = away && (S.offsite || []).find(l => l.e === me && !l.back);
+    const ct = (S.offsiteContact || []).find(x => x.ev === current.id)
+      || (m => m && people[m.e] ? { n: people[m.e].name, ph: people[m.e].phone || '' } : null)((S.monitors || []).find(x => x.ev === current.id && x.c));
     const go = async e => { e.preventDefault(); setErr('');
       if (!away && !txt.trim()) { setErr('Enter the reason you\'re leaving the property.'); return; }
       setBusy(true); const r = away ? await A.goOnsite(txt.trim()) : await A.goOffsite(current.id, txt.trim()); setBusy(false);
       if (r !== false) { setOpen(false); setTxt(''); } else setErr('Could not save. Try again.'); };
     return html`<div className=${'card offsite-card' + (away ? ' away' : '')}>
       ${away ? html`<b>You're offsite</b><p className="mute">Since ${time(away.since)}${mine ? ' · ' + mine.why : ''}${mine && mine.oa ? ' · acknowledged by ' + mine.oa : ''}</p>`
-        : html`<b>Leaving the property?</b><p className="mute">Check out with your monitor before you go, and check back in when you return.</p>`}
+        : html`<b>Leaving the property?</b><p className="mute">Check out with ${ct ? html`<b>${ct.n}</b>${ct.ph ? html` (<a href=${'tel:' + ct.ph.replace(/[^\d+]/g, '')}>${ct.ph}</a>)` : ''}` : 'your monitor'} before you go, and check back in when you return.</p>`}
       ${open ? html`<form className="offsite-form" onSubmit=${go}>
           <label>${away ? 'Note (optional)' : 'Reason'}<textarea rows="2" maxLength="300" required=${!away} value=${txt} placeholder=${away ? 'Anything your monitor should know' : 'For example: pharmacy run, back by 3 PM'} onChange=${e => setTxt(e.target.value)}></textarea></label>
           ${err && html`<p className="connection-error" role="alert">${err}</p>`}

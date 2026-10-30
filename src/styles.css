@@ -406,3 +406,22 @@ body:has(dialog[open]) .app-error{display:none}
  .attendee-table td:nth-child(n+3)::before{content:attr(data-label) ': ';color:var(--mute)}
  .attendee-table td.empty-table::before{content:none}
 }
+/* Schedule search */
+.view-toolbar .sched-search{flex:1 1 220px;max-width:340px}.view-toolbar .sched-search input{width:100%}
+.sched-search{margin-bottom:10px;min-height:44px}.sched-search input{width:100%;min-height:42px}
+.view-toolbar .sched-search{margin-bottom:0}.sched-search-note{font-size:12px}
+@media(max-width:640px){.view-toolbar{flex-wrap:wrap}.view-toolbar .sched-search{max-width:none;flex:1 1 100%;order:3}}
+.monitor-row{display:flex;flex-wrap:wrap;align-items:center;gap:4px 18px}.monitor-contact{font-size:13px}.monitor-contact .cell-secondary{margin-left:6px}
+.note-bulk{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 10px}.note-bulk .btn{min-height:44px}
+/* Staff locator */
+.locator .people-toolbar{margin-bottom:8px}.locator-count{font-size:12px;margin:0 0 10px}
+.locator-table tr.locator-live td{background:var(--okb,rgba(46,125,50,.08))}
+.locator-card b svg{vertical-align:-3px}
+@media(max-width:640px){
+ .locator-table table,.locator-table tbody,.locator-table tr,.locator-table td{display:block}
+ .locator-table thead{display:none}
+ .locator-table tr{padding:10px 2px;border-bottom:1px solid var(--line)}
+ .locator-table td{padding:2px 0!important;border:0!important;min-width:0!important}
+ .locator-table td:nth-child(n+2)::before{content:attr(data-label) ': ';color:var(--mute)}
+ .locator-table td.empty-table::before{content:none}
+}

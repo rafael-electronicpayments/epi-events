@@ -28,7 +28,7 @@ test('offsite check-out: staff leave and return, monitors are told and acknowled
     // Event with Bre (2) as the only monitor; a staff person can't be a monitor.
     let data = await command('addEvent', [{ n: 'IMPACT26', b: '2026-11-05', d: 9, tz: 'America/Puerto_Rico', mon: [2, 0] }]);
     assert.equal(data.offsiteSupport, true);
-    assert.deepEqual(data.monitors, [{ ev: 1, e: 2 }]);
+    assert.deepEqual(data.monitors, [{ ev: 1, e: 2, c: false }]);
     assert.equal(data.events[0].name, 'IMPACT26');
     await db.exec(`insert into public.push_subscriptions(person_id, endpoint, p256dh, auth) values(2, 'https://fcm.googleapis.com/fcm/send/x', '${'k'.repeat(30)}', 'authauth1')`);
     await db.exec(`insert into public.access_invites(email,role,person_id) values('alex@example.test','staff',0),('pat@example.test','contractor',1);
