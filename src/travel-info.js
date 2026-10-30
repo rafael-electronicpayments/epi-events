@@ -1,4 +1,4 @@
-// Arrival and departure instructions per event (Event › Arrival & departure info): formatted text that admins write
+// Arrival and departure instructions per event (Event › Airport Shuttle): formatted text that admins write
 // or paste from Word, shown to people on their phone as an Arrival card and a Departure card. Only a small set of
 // formatting is kept (bold, italic, underline, highlight, lists, links); everything else is removed, both when saving
 // and every time it is shown.
@@ -141,7 +141,7 @@ export function createTravelInfo({ React, html, Icon, events, current, demo = fa
     };
     const who = (n, way) => n + (n === 1 ? ' person has' : ' people have') + ' a car service or group shuttle ' + way + ' and will see this.';
     return html`<div className="travel-info-admin">
-      <p className="mute">Instructions for ${e0.name}. Write them here or paste from Word; bold, italic, underline, highlight, lists, and links are kept. Each traveler's own pickup time is added to the top of their Departure card automatically.</p>
+      <p className="mute">Instructions for ${e0.name}. Write them here or paste from Word; bold, italic, underline, highlight, lists, and links are kept. Each traveler's own pickup time is added to the top of their Airport Shuttle: Departure card automatically.</p>
       <div className="travel-info-grid">
         <${RichText} key=${'a' + ev} label="Arrivals" value=${e0.arrInfo || ''} onChange=${setArr} hint=${'Shown to people whose airport-to-hotel transfer is a car service or group shuttle. ' + who(nIn, 'from the airport')}/>
         <${RichText} key=${'d' + ev} label="Departures" value=${e0.depInfo || ''} onChange=${setDep} hint=${'Shown to people whose hotel-to-airport transfer is a car service or group shuttle. ' + who(nOut, 'to the airport')}/>
@@ -158,8 +158,8 @@ export function createTravelInfo({ React, html, Icon, events, current, demo = fa
     const f = (S.flights || []).find(x => x.ev === ev && x.e === me);
     const arr = hasPickup(h.tIn) && plainText(e0.arrInfo) ? cleanHtml(e0.arrInfo, { phones: true }) : '';
     const dep = hasPickup(h.tOut) && plainText(e0.depInfo) ? cleanHtml(e0.depInfo, { phones: true }) : '';
-    return html`${arr && html`<div className="card travel-info-card"><b><${Icon} name="plane-landing"/> Arrival instructions</b><div className="rich-text" dangerouslySetInnerHTML=${{ __html: arr }}></div></div>`}
-      ${dep && html`<div className="card travel-info-card"><b><${Icon} name="plane-takeoff"/> Departure instructions</b>
+    return html`${arr && html`<div className="card travel-info-card"><b><${Icon} name="plane-landing"/> Airport Shuttle: Arrival</b><div className="rich-text" dangerouslySetInnerHTML=${{ __html: arr }}></div></div>`}
+      ${dep && html`<div className="card travel-info-card"><b><${Icon} name="plane-takeoff"/> Airport Shuttle: Departure</b>
         ${h.pickup && html`<p className="pickup-banner"><b>Your pickup: ${whenText(h.pickup, e0.tz)}</b> at the hotel (${rideText(h.tOut)}).${f && f.outDepart ? ' Flight ' + (f.outFlight ? f.outFlight + ' ' : '') + 'departs ' + whenText(f.outDepart, e0.tz) + '.' : ''}</p>`}
         <div className="rich-text" dangerouslySetInnerHTML=${{ __html: dep }}></div></div>`}`;
   }
