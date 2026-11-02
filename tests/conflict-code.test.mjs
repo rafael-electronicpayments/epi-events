@@ -24,7 +24,8 @@ test('revision conflicts raise PT409, never 40001', async () => {
     const rev = (await db.query('select public.ops_snapshot() as d')).rows[0].d.revision;
     await db.query("select public.ops_command('addRoom', '[\"Lobby\"]'::jsonb, $1)", [rev]);
     for (const [action, args] of [['addRoom', ['Hall']], ['pushTest', [0]], ['sendReminder', [1, [0], 'Hi']], ['importSupport', [1, []]]]) {
-      await assert.rejects(db.query('select public.ops_command($1, $2::jsonb, $3)', [action, JSON.stringify(args), rev]),
+      // The outer ops_command now rebases stale saves (20261103100000); the inner chain's own check must be PT409.
+      await assert.rejects(db.query('select ops_private.ops_command_v28($1, $2::jsonb, $3)', [action, JSON.stringify(args), rev]),
         e => e.code === 'PT409' && /Another user changed the data/.test(e.message), action);
     }
     // Running the fix again changes nothing.

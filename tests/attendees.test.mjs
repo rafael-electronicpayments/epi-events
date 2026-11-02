@@ -113,6 +113,7 @@ test('attendees: import adds and updates (never removes), viewers per event see 
 
     // Stale revision is PT409.
     await as(admin);
-    await assert.rejects(db.query('select public.ops_command($1,$2::jsonb,$3)', ['importAttendees', JSON.stringify([1, [r('A', 'B', '')]]), 0]), e => e.code === 'PT409');
+    // Stale saves now go through the outer ops_command (record-level checks, 20261103100000); the inner chain still refuses with PT409.
+    await assert.rejects(db.query('select ops_private.ops_command_v28($1,$2::jsonb,$3)', ['importAttendees', JSON.stringify([1, [r('A', 'B', '')]]), 0]), e => e.code === 'PT409');
   } finally { await db.close(); }
 });

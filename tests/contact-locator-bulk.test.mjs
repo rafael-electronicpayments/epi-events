@@ -107,6 +107,7 @@ test('offsite contact, staff locator access, acknowledge all and got it all', as
     const alexNote = (await db.query("insert into public.notifications(person_id, message) values(0, 'For Alex') returning id")).rows[0].id;
     await command('dismissAll', [[alexNote]]);
     assert.equal((await db.query('select done from public.notifications where id = $1', [alexNote])).rows[0].done, false);
-    await assert.rejects(db.query('select public.ops_command($1,$2::jsonb,$3)', ['dismissAll', JSON.stringify([[alexNote]]), 0]), e => e.code === 'PT409');
+    // Stale saves now go through the outer ops_command (record-level checks, 20261103100000); the inner chain still refuses with PT409.
+    await assert.rejects(db.query('select ops_private.ops_command_v28($1,$2::jsonb,$3)', ['dismissAll', JSON.stringify([[alexNote]]), 0]), e => e.code === 'PT409');
   } finally { await db.close(); }
 });

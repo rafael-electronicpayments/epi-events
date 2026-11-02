@@ -35,7 +35,8 @@ test('roster emails provision access and reject collisions or unauthorized chang
     assert.equal((await db.query('select role from public.profiles where user_id=$1',[staff])).rows[0].role,'contractor');
     const old=s.revision;
     s=await save(person,'staff@example.test','staff');
-    await assert.rejects(save(person,'new@example.test','staff',old),/Another user changed/);
+    // Editing the same person on an older revision after someone else changed them is refused (20261103100000).
+    await assert.rejects(save(person,'new@example.test','staff',old),e=>e.code==='PT409'&&/Someone else changed this person/.test(e.message));
     await db.exec(`select set_config('request.jwt.claim.sub','${staff}',false); set role authenticated;`);
     await assert.rejects(save(person,'stolen@example.test'),/Administrator access/);
     await assert.rejects(db.exec('select ops_private.ops_snapshot_base()'),/permission denied/);
