@@ -90,6 +90,7 @@ test('offsite contact, staff locator access, acknowledge all and got it all', as
     assert.deepEqual([a.length, r.length], [2, 2]);
     data = await command('ackAll', [{ a: [...a, 9999], r, o: [] }]);
     assert.ok(data.asg.filter(x => x.e === 0).every(x => x.ack === 1));
+    assert.ok(Array.isArray(data.people) && data.people.length > 0, 'ackAll returns the full snapshot');
     assert.equal(data.notes.filter(n => n.e === 0 && !n.done && (n.aid || n.rid)).length, 0);
     assert.equal((await db.query("select count(*)::int n from public.reminder_recipients where person_id = 0 and acked_at is not null")).rows[0].n, 2);
     // Someone else's assignment can't be acknowledged this way.

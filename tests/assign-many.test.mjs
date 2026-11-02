@@ -32,6 +32,9 @@ test('assignMany: many people at once, each through the single assign; repeats a
     await command('assign', [0, sid]);
     data = await command('assignMany', [[0, 1, 2, 3, 1], sid]);
     assert.deepEqual(data.asg.filter(a => a.s === sid).map(a => a.e).sort(), [0, 1, 2]);
+    assert.ok(Array.isArray(data.people) && data.people.length >= 3, 'the final snapshot is the full one');
+    assert.equal((await snapshot()).assignMany, true, 'the bulk setting does not leak into later snapshots');
+    assert.equal((await db.query("select current_setting('ops.bulk', true) as v")).rows[0].v || '', '', 'setting is cleared');
     assert.equal((await db.query("select count(*)::int n from public.notifications where message like 'New assignment%'")).rows[0].n, 3, 'one notice each');
     assert.ok((await db.query("select 1 from public.activity_log where action = 'assignMany' and details->>'assigned' = '2'")).rows.length);
     await assert.rejects(command('assignMany', [[], sid]), /at least one/);
