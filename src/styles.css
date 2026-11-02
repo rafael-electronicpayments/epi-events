@@ -425,3 +425,11 @@ body:has(dialog[open]) .app-error{display:none}
  .locator-table td:nth-child(n+2)::before{content:attr(data-label) ': ';color:var(--mute)}
  .locator-table td.empty-table::before{content:none}
 }
+/* Add people to an activity */
+.add-people-act{display:flex;flex-direction:column;gap:2px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;margin-bottom:12px}
+.add-people-types{border:0;padding:0;margin:0 0 10px;display:flex;flex-wrap:wrap;gap:4px 18px}.add-people-types legend{font-size:12px;font-weight:600;margin-bottom:4px}
+.add-people-list{max-height:min(48dvh,420px);overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:0 14px;border:1px solid var(--line);border-radius:6px;padding:4px 10px}
+.add-person{align-items:flex-start;padding:7px 0;gap:10px}.add-person>span{display:flex;flex-direction:column}.add-person input{margin-top:3px}
+.add-people-actions{align-items:center}.add-people-actions>.mute{margin-right:auto;font-size:12px}
+@media(max-width:640px){.add-people-actions{flex-wrap:wrap}.add-people-actions>.mute{flex-basis:100%}}
+@media(max-width:640px){.add-people-list{max-height:36dvh}.add-people-act{padding:8px 10px}}

@@ -336,6 +336,34 @@ function Staff({S,A,me,canFull=false,embedded=false,push=null}){
   ${full?html`${dayActs(i).map(s=>html`<${FullCard} key=${s.id} s=${s}/>`)}${!dayActs(i).length&&html`<p className="mute">${qWords(fq).length?'No activity or person matches "'+fq+'" on '+DAYS[i]+'.':'No activities on '+DAYS[i]+'.'}</p>`}`
    :html`${dayItems(i).map(x=>x.br?html`<${BreakCard} key=${'b'+x.br.id} b=${x.br}/>`:html`<${Card} key=${x.a.id} a=${x.a}/>`)}${!dayItems(i).length&&html`<p className="mute">No assignments on ${DAYS[i]}.</p>`}`}</div>`)}
  ${Array.isArray(S.expenses)&&html`<h2>Expenses</h2><${EXP.ExpenseSection} S=${S} A=${A} me=${me}/>`}</div>`}
+// Add people to an activity: a dialog (the activity stays in view behind it) with Select all by type, search, and
+// who is busy at that time (another activity, a lunch or break, or offsite). Everyone chosen is assigned at once.
+const TYPE_ORDER=[['staff','Staff'],['contractor','Event Staff'],['speaker','Speakers'],['panelist','Panelists'],['admin','Admins']];
+function AddPeople({s,S,A,onClose}){
+ const [ids,setIds]=useState(new Set()),[q,setQ]=useState(''),[type,setType]=useState(''),[busy,setBusy]=useState(false),[err,setErr]=useState('');
+ const as=S.asg.filter(x=>x.s===s.id),free=EMPS.filter(e=>e&&!e.gone&&!as.some(x=>x.e===e.id)).sort((x,y)=>x.name.localeCompare(y.name));
+ const why=e=>{const c=clash(S.asg,{id:0,e:e.id,s:s.id});const br=breaksDuring(S,e.id,s);return [...c.map(o=>'In '+o.t+' '+span(o)),...br.map(b=>BREAK[b.k][0]+' '+span(b)),...((S.away||[]).some(a=>a.e===e.id)?['Offsite now']:[])]};
+ const words=q.toLowerCase().split(/\s+/).filter(Boolean);
+ const shown=free.filter(e=>(!type||e.acct===type)&&words.every(w=>(e.name+' '+(e.role||'')).toLowerCase().includes(w)));
+ const groups=TYPE_ORDER.map(([k,l])=>[k,l,free.filter(e=>e.acct===k)]).filter(g=>g[2].length);
+ const toggle=id=>setIds(v=>{const n=new Set(v);n.has(id)?n.delete(id):n.add(id);return n});
+ const setMany=(list,on)=>setIds(v=>{const n=new Set(v);list.forEach(e=>on?n.add(e.id):n.delete(e.id));return n});
+ const all=list=>list.length>0&&list.every(e=>ids.has(e.id));
+ const need=s.n?Math.max(0,s.n-as.length):0,clashes=free.filter(e=>ids.has(e.id)&&why(e).length).length;
+ const save=async()=>{setBusy(true);setErr('');const r=await A.assignMany([...ids],s.id);setBusy(false);if(r!==false)onClose();else setErr('Could not assign. Try again.')};
+ return html`<${Modal} title="Add people" onClose=${busy?()=>{}:onClose}><div className="add-people">
+  <div className="add-people-act"><b>${s.t}</b><span className="mute">${s.r} · ${DAYS[s.d]} · ${span(s)}</span><span className="mute">${as.length} assigned${s.n?' of '+s.n+' needed':''}${need?' · '+need+' still needed':''}</span></div>
+  <fieldset className="add-people-types"><legend>Select all by type</legend>${groups.map(([k,l,list])=>html`<label key=${k} className="chk"><input type="checkbox" checked=${all(list)} onChange=${e=>setMany(list,e.target.checked)}/>${l} <span className="mute">${list.length}</span></label>`)}</fieldset>
+  <div className="break-people-tools"><input type="search" aria-label="Search people" placeholder="Search name or title" value=${q} onChange=${e=>setQ(e.target.value)}/>
+   <select aria-label="Show type" value=${type} onChange=${e=>setType(e.target.value)}><option value="">All types</option>${groups.map(([k,l])=>html`<option key=${k} value=${k}>${l}</option>`)}</select>
+   ${shown.length>0&&html`<button type="button" className="btn ghost" onClick=${()=>setMany(shown,!all(shown))}>${all(shown)?'Clear shown':'Select shown ('+shown.length+')'}</button>`}</div>
+  <div className="add-people-list">${shown.map(e=>{const w=why(e);return html`<label key=${e.id} className=${'chk add-person'+(w.length?' busy':'')}><input type="checkbox" checked=${ids.has(e.id)} onChange=${()=>toggle(e.id)}/>
+   <span><b>${e.name}</b><span className="cell-secondary">${typeLabel(e.acct)}${e.role?' · '+e.role:''}</span>${w.length>0&&html`<span className="cell-secondary warn-text">${w.join('; ')}</span>`}</span></label>`})}
+   ${!shown.length&&html`<p className="mute">${free.length?'No one matches.':'Everyone is already assigned.'}</p>`}</div>
+  ${err&&html`<p className="connection-error" role="alert">${err}</p>`}
+  <div className="dialog-actions add-people-actions"><span className="mute">${ids.size} selected${clashes?' · '+clashes+' busy at this time':''}</span><button type="button" className="btn ghost" disabled=${busy} onClick=${onClose}>Cancel</button><button type="button" className="btn" disabled=${busy||!ids.size} onClick=${save}>${busy?'Assigning…':ids.size?'Assign '+ids.size+(ids.size===1?' person':' people'):'Assign'}</button></div>
+ </div><//>`;
+}
 function AdminSession({s,S,A,coordinator=false}){
  const [pick,setPick]=useState(''),[remind,setRemind]=useState(false);
  const as=S.asg.filter(x=>x.s===s.id), free=EMPS.filter(e=>!e.gone&&!as.some(x=>x.e===e.id)), same=SESS.filter(o=>o.ev===s.ev&&o.d===s.d&&o.id!==s.id);
@@ -346,9 +374,8 @@ function AdminSession({s,S,A,coordinator=false}){
    <option value="">Move to…</option>${same.map(o=>html`<option key=${o.id} value=${o.id}>${o.r}, ${span(o)}, ${o.t}</option>`)}</select>
   ${coordinator&&need(s)&&html`<button className="btn ghost" disabled=${!!a.in||!!a.conf} onClick=${()=>A.confirm(a.id)}>Confirm present</button>`}${INFO_SUPPORT.on&&['staff','admin'].includes(EMPS[a.e].acct)&&html`<button className="btn ghost" aria-pressed=${!!a.lead} onClick=${()=>A.setLead(a.id,!a.lead)}>${a.lead?'Remove as lead':'Make team lead'}</button>`}</div></div></li>`})}</ul>
  ${!as.length&&html`<p className="mute">No one assigned yet.</p>`}
- <div className="acts"><select aria-label=${'Employee to assign to '+s.t} value=${pick} onChange=${e=>setPick(e.target.value)}><option value="">Choose a person…</option>
-  ${free.map(e=>html`<option key=${e.id} value=${e.id}>${nm(e.id)}</option>`)}</select>
-  <button className="btn" disabled=${pick===''} onClick=${async()=>{const ok=await A.assign(+pick,s.id);if(ok!==false)setPick('')}}>Assign</button>
+ <div className="acts"><button type="button" className="btn" disabled=${!free.length} onClick=${()=>setPick('open')}><${Icon} name="plus"/>Add people</button>
+  ${pick==='open'&&html`<${AddPeople} s=${s} S=${S} A=${A} onClose=${()=>setPick('')}/>`}
   ${REMINDER_SUPPORT.on&&as.length>0&&(()=>{const late=as.filter(a=>EMPS[a.e]&&!EMPS[a.e].gone&&need(s)&&(!a.ack||(!a.in&&!a.conf))),noAck=late.some(a=>!a.ack);
    return html`<button className="btn ghost" onClick=${()=>setRemind(true)}><${Icon} name="bell"/>${late.length?'Remind '+late.length+(noAck?' not acknowledged':' not checked in'):'Message team'}</button>
    ${remind&&html`<${REM.SendReminder} S=${S} A=${A} preselect=${(late.length?late:as).map(a=>a.e)} title=${'Remind: '+s.t} text=${late.length?(noAck?'Please acknowledge your assignment: '+s.t+' ('+s.r+', '+span(s)+').':'You\'re due at '+s.t+' ('+s.r+', '+span(s)+'): please check in.'):''} onClose=${()=>setRemind(false)}/>`}`})()}</div></div>`}
@@ -417,6 +444,10 @@ function App({connected}){
  const invv=o=>{const L=o.lines,m=!o.vendor?'Enter a vendor name':!o.date?'Choose a date':!L.length?'Add at least one line item':L.some(l=>!l.d)?'Every line item needs a description':L.some(l=>!(l.q>0))?'Quantity must be more than 0':L.some(l=>l.c<0||l.w<0)?'Cost and weight cannot be negative':L.some(l=>l.sb&&!sbn(l.sb))?'Schedule B code needs 10 digits':'';if(m)say(m);return !m};
  const nrm=o=>({...o,amt:o.amt==null?ltot(o.lines):o.amt,lines:o.lines.map(l=>({...l,sb:sbn(l.sb)}))});
  const A={
+  // Several people at once (Add people). Already-assigned people are skipped.
+  assignMany:(ids,sid)=>{const todo=[...new Set(ids)].filter(e=>EMPS[e]&&!EMPS[e].gone);setS(s=>{let asg=[...s.asg],notes=[...s.notes];
+   todo.filter(e=>!asg.some(a=>a.s===sid&&a.e===e)).forEach(e=>{const a={id:++uid,e,s:sid,ack:0,in:0,conf:0,tag:'new'};asg.push(a);notes.push({id:++uid,e,aid:a.id,done:0,x:ntext(a,'New assignment')})});
+   return L({...s,asg,notes},'Assigned '+todo.length+' people to '+SM[sid].r+' ('+SM[sid].t+', '+span(SM[sid])+')')});say(todo.length+(todo.length===1?' person':' people')+' assigned and notified');return true},
   assign:(e,sid)=>{const c=clash(S.asg,{id:0,e,s:sid});if(c.length)say('Overlap: '+EMPS[e].name+' is already in '+c[0].t+' at '+span(c[0]));else say(EMPS[e].name.split(' ')[0]+' notified of new assignment');
    setS(s=>{const a={id:++uid,e,s:sid,ack:0,in:0,conf:0,tag:'new'};return L({...s,asg:[...s.asg,a],notes:[...s.notes,{id:++uid,e,aid:a.id,done:0,x:ntext(a,'New assignment')}]},'Assigned '+EMPS[e].name+' to '+SM[sid].r+' ('+SM[sid].t+', '+span(SM[sid])+')')})},
   move:(id,sid)=>{say('Change published. Employee notified.');setS(s=>{const o=s.asg.find(a=>a.id===id),old=SM[o.s],n={...o,s:sid,ack:0,in:0,conf:0,tag:'changed',seq:(o.seq||0)+1,pc:0};
@@ -565,6 +596,7 @@ function App({connected}){
    if(!ok){if(up){delete RECEIPT_CACHE[up];repo.receiptRemove(up).catch(()=>{})}return false}
    if(old&&old.rp&&old.rp!==rp){delete RECEIPT_CACHE[old.rp];repo.receiptRemove(old.rp).catch(()=>{})}say(old?'Expense saved':'Expense added');return true};
   A.delExpense=async id=>{const old=(S.expenses||[]).find(x=>x.id===id),ok=await cmd('delExpense',[id]);if(ok&&old&&old.rp){delete RECEIPT_CACHE[old.rp];repo.receiptRemove(old.rp).catch(()=>{})}if(ok)say('Expense deleted');return ok};
+  A.assignMany=async(ids,sid)=>{if(S.assignMany)return cmd('assignMany',[ids,sid]);for(const e of ids){const ok=await cmd('assign',[e,sid]);if(!ok)return false}return true};
   A.pushTest=async id=>{const ok=await cmd('pushTest',[id]);if(ok)say('Test notification queued. It should arrive within a minute.');return ok};
   A.setEventLogo=async(ev,logo)=>{const old=evOf(ev)?.logo;let path=null;
    if(logo){path=ev+'/'+uuid()+(logo.type==='image/webp'?'.webp':'.png');try{await repo.logoUpload(path,logo.data,logo.type)}catch(e){say('Logo upload failed: '+(e&&e.message||'try again'));return false}LOGO_CACHE[path]=logo.data}
