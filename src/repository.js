@@ -74,6 +74,8 @@ export function createRepository(client, { testLoginsEnabled = false, testLoginE
     },
     signOut: () => result(client.auth.signOut()),
     load: () => call(() => client.rpc('ops_snapshot')),
+    // Cheap change check for polling: the data's revision number only (migration 20261102140000).
+    revision: () => call(() => client.rpc('ops_revision')),
     // App settings branding (public: shown before sign-in). Older databases don't have it; callers fall back.
     branding: () => call(() => client.rpc('app_branding')),
     appIconUpload: (path, blob) => call(() => client.storage.from('app-icons').upload(path, blob, { contentType: 'image/png', upsert: false })),
