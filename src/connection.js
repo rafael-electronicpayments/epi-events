@@ -55,7 +55,27 @@ export function createConnection(React, html, repository, App, hydrate) {
     useEffect(() => {
       if (!session) return;
       refresh();
-      const timer = setInterval(() => { if (!writing.current) refresh(); }, 10000);
+      // Every 10 seconds ask only whether anything changed (a tiny query) and load the full data when it did, or at
+      // least every 2 minutes. Databases without ops_revision get the full load every time, as before.
+      let lastFull = Date.now(), cheap = typeof repository.revision === 'function';
+      let polling = false;
+      const poll = async () => {
+        if (writing.current || polling) return;  // never pile up requests when the server is slow
+        polling = true;
+        try {
+        if (cheap && current.current && Date.now() - lastFull < 120000) {
+          try {
+            const rev = await repository.revision();
+            if (typeof rev === 'number' && rev === current.current.revision) return;
+          } catch (e) {
+            if (e && (e.code === 'PGRST202' || e.code === '42883' || /ops_revision/.test(e.message || ''))) cheap = false;
+          }
+        }
+        lastFull = Date.now();
+        await refresh();
+        } finally { polling = false; }
+      };
+      const timer = setInterval(poll, 10000);
       const focus = () => { if (!writing.current) refresh(); };
       // Phones and tablets don't always fire "focus" when the app comes back from sleep or the background, or
       // when Wi-Fi returns; reload then too (the sign-in token is renewed first if it ran out meanwhile).
