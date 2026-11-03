@@ -100,12 +100,14 @@ export function createRepository(client, { testLoginsEnabled = false, testLoginE
     receiptUpload: (path, data, type) => call(() => client.storage.from('receipts').upload(path, new Blob([data], { type }), { contentType: type, upsert: false })),
     receiptFile: async path => new Uint8Array(await (await call(() => client.storage.from('receipts').download(path))).arrayBuffer()),
     receiptRemove: path => call(() => client.storage.from('receipts').remove([path])),
-    command: (action, args, revision) => action === 'addStaff' || action === 'editStaff'
-      ? call(() => client.rpc('ops_save_person', {
+    // light: the save returns only {light, revision} instead of the whole data set (databases whose snapshot says
+    // lightSaves, migration 20261103100000); the caller then loads the data with load().
+    command: (action, args, revision, light = false) => action === 'addStaff' || action === 'editStaff'
+      ? call(() => client.rpc(light ? 'ops_save_person_light' : 'ops_save_person', {
         target_person_id: action === 'editStaff' ? args[0] : null,
         person: action === 'editStaff' ? args[1] : args[0],
         expected_revision: revision
       }))
-      : call(() => client.rpc('ops_command', { action, args, expected_revision: revision }))
+      : call(() => client.rpc(light ? 'ops_command_light' : 'ops_command', { action, args, expected_revision: revision }))
   };
 }

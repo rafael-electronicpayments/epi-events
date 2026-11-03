@@ -93,13 +93,21 @@ export function createConnection(React, html, repository, App, hydrate) {
       setBusy(true); setError('');
       const token = generation.current;
       try {
-        const data = await repository.command(action, args, expectedRevision ?? current.current.revision);
-        if (token === generation.current) accept(data);
+        // Light saves (lightSaves databases) return only the new revision; the data is then loaded with a separate
+        // read that holds no lock, instead of being rebuilt inside the save.
+        const light = !!current.current.lightSaves;
+        const data = await repository.command(action, args, expectedRevision ?? current.current.revision, light);
+        if (token === generation.current) {
+          if (data && data.light) await refresh();
+          else accept(data);
+        }
         return token === generation.current;
       } catch (e) {
         if (token === generation.current) {
           await refresh();
-          setError(e.code === 'PT409' || e.code === '40001' ? 'Another user changed the data. Reopen the record before saving your changes.' : e.message);
+          const conflict = e.code === 'PT409' || e.code === '40001';
+          setError(conflict && /^Someone else changed/.test(e.message || '') ? e.message
+            : conflict ? 'Another user changed the data. Reopen the record before saving your changes.' : e.message);
         }
         return false;
       } finally { writing.current = false; setBusy(false); }
