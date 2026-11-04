@@ -1,6 +1,13 @@
 // Expense entry (staff, contractors, roster admins) and admin review/approval with an HR report.
 // Fields follow EPI's expense template: Expense, Location, Receipt ID, Date, Amount, Payment method, Reimburse, Notes.
 
+// Per diem limits for personal meals, per event (migration 20261103120000; snapshot "perDiem": [{ev, b, l, d}]).
+export const MEAL_LIMIT_KEYS = { breakfast: 'b', lunch: 'l', dinner: 'd' };
+export function mealLimit(S, ev, cat) {
+  const k = MEAL_LIMIT_KEYS[cat], row = k && (S?.perDiem || []).find(x => x.ev === ev);
+  const v = row ? row[k] : null;
+  return v == null || v === '' || isNaN(Number(v)) ? null : Number(v);
+}
 export const CATS = [['breakfast', 'Meal: Breakfast'], ['lunch', 'Meal: Lunch'], ['dinner', 'Meal: Dinner'], ['team_meal', 'Team Meal'], ['iso_hosting', 'ISO/Rep Hosting'], ['baggage', 'Baggage'], ['transportation', 'Transportation'], ['parking', 'Parking'], ['airfare', 'Airfare'], ['hotel', 'Hotel'], ['other', 'Other']];
 export const PAYS = [['cash', 'Cash'], ['corporate_amex', 'Corporate AMEX'], ['personal_card', 'Personal credit card'], ['guest_room', 'Billed to guest room']];
 export const RECEIPT_TYPES = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/heic': 'heic', 'image/heif': 'heif', 'application/pdf': 'pdf' };
@@ -135,6 +142,10 @@ export function createExpenses({ React, html, Modal, Icon, IconButton, people, e
       const r = await A.saveExpense(x ? x.id : null, chooser && !x ? { ...o, e: Number(who) } : o, data ? { data, type: file.type } : null, false);
       setBusy(false); if (r !== false) onClose(); else setErr('Could not save. Check the values and try again.'); };
     const active = people.filter(p => p && !p.gone).sort((a, b) => a.name.localeCompare(b.name));
+    // Option C: the meal's per diem limit under the amount, and how much over it is (still allowed; the approver decides).
+    const limit = mealLimit(S, x ? x.ev : current.id, d.cat), amtNum = Number(String(d.amt).trim().replace(/^\$/, '').replace(/,/g, ''));
+    const over = limit != null && d.amt.trim() !== '' && amtNum > limit ? Math.round((amtNum - limit) * 100) / 100 : 0;
+    const mealName = { breakfast: 'breakfast', lunch: 'lunch', dinner: 'dinner' }[d.cat];
     return html`<${Modal} title=${x ? 'Edit expense' : 'Add expense'} onClose=${busy ? () => {} : onClose}><form className="expense-editor" onSubmit=${submit}>
       <div className="editor-fields">
        ${chooser && !x && field('Person', html`<select required value=${who} onChange=${e => setWho(e.target.value)}><option value="" disabled>Choose person</option>${active.map(p => html`<option key=${p.id} value=${p.id}>${p.name}</option>`)}</select>`)}
@@ -145,7 +156,8 @@ export function createExpenses({ React, html, Modal, Icon, IconButton, people, e
        ${d.cat === 'iso_hosting' && html`<p className="wide-field iso-help" role="note">Please add names and details to notes below.</p>`}
        ${field('Location', html`<input value=${d.loc} maxLength="200" placeholder="Merchant, e.g. Starbucks" onChange=${set('loc')}/>`)}
        ${field('Date', html`<input type="date" required value=${d.date} onChange=${set('date')}/>`)}
-       ${field('Amount (USD)', html`<input inputMode="decimal" required value=${d.amt} placeholder="0.00" onChange=${set('amt')}/>`)}
+       ${field('Amount (USD)', html`<input inputMode="decimal" required value=${d.amt} placeholder="0.00" onChange=${set('amt')}/>`, limit != null ? 'Limit for ' + mealName + ': ' + money(limit) + ' per person' : undefined)}
+       ${over > 0 && html`<p className="wide-field over-limit" role="note">This is ${money(over)} over the ${money(limit)} ${mealName} limit. You can still submit it; add a note for your approver.</p>`}
        ${field('Receipt ID', html`<input value=${d.ref} maxLength="100" placeholder="Number printed on the receipt" onChange=${set('ref')}/>`)}
        ${field('Payment method', html`<select value=${d.pay} onChange=${set('pay')}>${PAYS.map(([k, t]) => html`<option key=${k} value=${k}>${t}</option>`)}</select>`)}
        <label className="chk"><input type="checkbox" checked=${d.reimb} onChange=${set('reimb')}/>Reimburse me for this expense</label>
