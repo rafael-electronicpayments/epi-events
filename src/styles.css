@@ -433,3 +433,9 @@ body:has(dialog[open]) .app-error{display:none}
 .add-people-actions{align-items:center}.add-people-actions>.mute{margin-right:auto;font-size:12px}
 @media(max-width:640px){.add-people-actions{flex-wrap:wrap}.add-people-actions>.mute{flex-basis:100%}}
 @media(max-width:640px){.add-people-list{max-height:36dvh}.add-people-act{padding:8px 10px}}
+
+/* Per diem limits (Event setup) and the over-limit note in the expense form */
+.per-diem-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px 14px}
+.per-diem-grid label{display:grid;gap:4px;font-size:13px}
+.money-input{position:relative;display:block}.money-input>span{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--mute)}.money-input input{padding-left:22px;width:100%;font-variant-numeric:tabular-nums}
+.over-limit{margin:0;font-size:13px;font-weight:600;color:var(--warn);background:var(--warnb);border-radius:6px;padding:8px 10px}
