@@ -12,6 +12,9 @@ const low = v => text(v).toLowerCase();
 const esc = t => String(t ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 export const FIELDS = [['f', 'First Name', 100], ['l', 'Last Name', 100], ['c', 'Company Name', 200], ['st', 'Invitee Status', 60], ['g', 'Primary Registrant (Guest of)', 200], ['rt', 'Registration Type', 60]];
 export const HEAD = FIELDS.map(x => x[1]);
+// Invitee statuses an admin can choose when editing (imports may bring others; they are kept until changed).
+export const STATUSES = ['Accepted', 'Canceled', 'Pending', 'Denied'];
+export const isAccepted = a => low(a.st) === 'accepted';
 
 // Column positions by meaning, so small header changes ("Company", "Reg Type", "Guest Of") still work.
 export function attendeeColumns(header) {
@@ -73,7 +76,7 @@ export function filterAttendees(list, { q = '', rt = '', st = '', kind = '' } = 
 }
 
 export function attendeeDoc(title, rows, sub, autoPrint = false) {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>@page{size:letter landscape;margin:.4in}body{font:11px/1.35 system-ui,sans-serif;color:#000;margin:16px}h1{font-size:18px;margin:0 0 2px}.m{color:#555;margin:0 0 12px}table{border-collapse:collapse;width:100%}th,td{border-top:1px solid #bbb;padding:4px 6px;text-align:left;vertical-align:top;overflow-wrap:anywhere}thead th{background:#e8eeed;border-top:0}tr{break-inside:avoid}thead{display:table-header-group}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}button{font:inherit;padding:10px 16px;margin:0 0 12px;min-height:44px}@media print{body{margin:0}button{display:none}}</style></head><body><button onclick="window.print()">Print or save as PDF</button><h1>${esc(title)}</h1><p class="m">${esc(sub)} · Printed ${esc(new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }))}</p>${rows.length ? `<table><thead><tr>${HEAD.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr>${r.map(c => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>` : '<p class="m">No attendees match.</p>'}${autoPrint ? '<script>addEventListener("load",()=>setTimeout(()=>print(),200))</script>' : ''}</body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>@page{size:letter landscape;margin:.4in}body{font:11px/1.35 system-ui,sans-serif;color:#000;margin:16px}h1{font-size:18px;margin:0 0 2px}.m{color:#555;margin:0 0 12px}table{border-collapse:collapse;width:100%}th,td{border-top:1px solid #bbb;padding:4px 6px;text-align:left;vertical-align:top;overflow-wrap:anywhere}thead th{background:#e8eeed;border-top:0}tr{break-inside:avoid}thead{display:table-header-group}tr.na td{color:#b3261e;background:#fce1de}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}button{font:inherit;padding:10px 16px;margin:0 0 12px;min-height:44px}@media print{body{margin:0}button{display:none}}</style></head><body><button onclick="window.print()">Print or save as PDF</button><h1>${esc(title)}</h1><p class="m">${esc(sub)} · Printed ${esc(new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }))}</p>${rows.length ? `<table><thead><tr>${HEAD.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(r => { const ok = low(r[3]) === 'accepted'; return `<tr${ok ? '' : ' class="na"'}>${r.map((c, i) => `<td>${i === 3 && ok ? `<b>${esc(c)}</b>` : esc(c)}</td>`).join('')}</tr>`; }).join('')}</tbody></table>` : '<p class="m">No attendees match.</p>'}${autoPrint ? '<script>addEventListener("load",()=>setTimeout(()=>print(),200))</script>' : ''}</body></html>`;
 }
 
 export function createAttendees({ React, html, Modal, Icon, people, events, current }) {
@@ -84,7 +87,7 @@ export function createAttendees({ React, html, Modal, Icon, people, events, curr
   const plural = (n, w) => n + ' ' + w + (n === 1 ? '' : 's');
 
   // Search, filters, the table, and PDF / Excel of what's shown. Used by admins and by staff who can view the list.
-  function AttendeeList({ S, compact }) {
+  function AttendeeList({ S, compact, onEdit }) {
     const ev = evOf(current.id), all = listOf(S);
     const [f, setF] = useState({ q: '', rt: '', st: '', kind: '' }), [msg, setMsg] = useState('');
     const set = k => e => setF(o => ({ ...o, [k]: e.target.value }));
@@ -111,9 +114,9 @@ export function createAttendees({ React, html, Modal, Icon, people, events, curr
       </div>
       <p className="mute attendee-count" role="status">${filtered ? 'Showing ' + shown.length + ' of ' + plural(all.length, 'attendee') : plural(all.length, 'attendee')}${!filtered && counts.length > 1 ? ' · ' + counts.map(([t, n]) => t + ' ' + n).join(' · ') : ''}${filtered ? '. PDF and Excel include only these.' : ''}</p>
       ${msg && html`<p className="mute export-msg" role="status">${msg}</p>`}
-      <div className="data-surface attendee-table"><table className="data-table"><thead><tr>${HEAD.map(h => html`<th key=${h} scope="col">${h}</th>`)}</tr></thead><tbody>
-        ${shown.length ? shown.map(a => html`<tr key=${a.id}>${FIELDS.map(([k, label], j) => html`<td key=${k} data-label=${label}>${j < 2 ? html`<b>${a[k]}</b>` : a[k] || html`<span className="mute">–</span>`}</td>`)}</tr>`)
-          : html`<tr><td colSpan=${HEAD.length} className="empty-table">${all.length ? 'No attendees match.' : 'No attendees yet.'}</td></tr>`}
+      <div className="data-surface attendee-table"><table className="data-table"><thead><tr>${HEAD.map(h => html`<th key=${h} scope="col">${h}</th>`)}${onEdit && html`<th scope="col"><span className="sr-only">Edit</span></th>`}</tr></thead><tbody>
+        ${shown.length ? shown.map(a => html`<tr key=${a.id} className=${isAccepted(a) ? '' : 'attendee-not-accepted'}>${FIELDS.map(([k, label], j) => html`<td key=${k} data-label=${label}>${j < 2 || (k === 'st' && isAccepted(a)) ? html`<b>${a[k]}</b>` : a[k] || html`<span className="mute">–</span>`}</td>`)}${onEdit && html`<td className="attendee-edit"><button type="button" className="btn ghost icon-button" aria-label=${'Edit ' + a.f + ' ' + a.l} title="Edit" onClick=${() => onEdit(a)}><${Icon} name="edit"/></button></td>`}</tr>`)
+          : html`<tr><td colSpan=${HEAD.length + (onEdit ? 1 : 0)} className="empty-table">${all.length ? 'No attendees match.' : 'No attendees yet.'}</td></tr>`}
       </tbody></table></div>
     </div>`;
   }
@@ -172,16 +175,39 @@ export function createAttendees({ React, html, Modal, Icon, people, events, curr
     </div><//>`;
   }
 
+  // Admins: edit one attendee. Invitee Status is a dropdown of the four statuses (an imported status not in the
+  // list stays available until it is changed).
+  function AttendeeEditor({ a, A, onClose }) {
+    const [d, setD] = useState({ f: a.f, l: a.l, c: a.c || '', st: a.st || 'Accepted', g: a.g || '', rt: a.rt || '' });
+    const [busy, setBusy] = useState(false), [err, setErr] = useState('');
+    const set = k => e => setD(v => ({ ...v, [k]: e.target.value }));
+    const opts = STATUSES.includes(d.st) || !a.st ? STATUSES : [a.st, ...STATUSES];
+    const save = async e => { e.preventDefault(); setErr('');
+      const o = Object.fromEntries(Object.entries(d).map(([k, v]) => [k, text(v)]));
+      if (!o.f || !o.l) { setErr('Enter a first and last name.'); return; }
+      setBusy(true); const r = await A.editAttendee(a.id, o); setBusy(false);
+      if (r !== false) onClose(); else setErr('Could not save. Try again.'); };
+    const field = (k, label, max) => html`<label>${label}<input id=${'att-' + k} value=${d[k]} maxLength=${max} required=${k === 'f' || k === 'l'} onChange=${set(k)}/></label>`;
+    return html`<${Modal} title=${'Edit ' + a.f + ' ' + a.l} onClose=${busy ? () => {} : onClose}><form onSubmit=${save}><div className="editor-fields">
+      ${field('f', 'First Name', 100)}${field('l', 'Last Name', 100)}${field('c', 'Company Name', 200)}
+      <label>Invitee Status<select id="att-st" value=${d.st} onChange=${set('st')}>${opts.map(o => html`<option key=${o} value=${o}>${o}</option>`)}</select></label>
+      ${field('g', 'Primary Registrant (Guest of)', 200)}${field('rt', 'Registration Type', 60)}
+      </div>${err && html`<p className="connection-error editor-error" role="alert">${err}</p>`}
+      <p className="mute field-hint">A later import updates this person again if their name is in the file.</p>
+      <div className="dialog-actions"><button type="button" className="btn ghost" disabled=${busy} onClick=${onClose}>Cancel</button><button type="submit" className="btn" disabled=${busy}>${busy ? 'Saving…' : 'Save changes'}</button></div></form><//>`;
+  }
+
   // Admin page.
   function AttendeesAdmin({ S, A }) {
     const all = listOf(S), viewers = (S.attViewers || []).filter(v => v.ev === current.id).map(v => people[v.e]).filter(p => p && !p.gone);
-    const [importing, setImporting] = useState(false), [picking, setPicking] = useState(false);
+    const [importing, setImporting] = useState(false), [picking, setPicking] = useState(false), [editing, setEditing] = useState(null);
     return html`<div className="attendees-page">
       <div className="attendee-access"><span><b>Who can view:</b> ${viewers.length ? 'Admins and ' + viewers.map(p => p.name).join(', ') : 'Admins only'}</span>
         <span className="heading-actions"><button type="button" className="btn ghost" onClick=${() => setPicking(true)}><${Icon} name="people"/>Who can view</button><button type="button" className="btn" onClick=${() => setImporting(true)}><${Icon} name="upload"/>Import list</button></span></div>
-      ${all.length ? html`<${AttendeeList} S=${S}/>` : html`<div className="empty-state"><${Icon} name="contact" size=${28}/><h3>No attendees yet</h3><p className="mute">Import the registration report. Importing again later updates people already on the list and adds new ones.</p><button className="btn" onClick=${() => setImporting(true)}><${Icon} name="upload"/>Import list</button></div>`}
+      ${all.length ? html`<${AttendeeList} S=${S} onEdit=${S.attendeeEdit ? setEditing : null}/>` : html`<div className="empty-state"><${Icon} name="contact" size=${28}/><h3>No attendees yet</h3><p className="mute">Import the registration report. Importing again later updates people already on the list and adds new ones.</p><button className="btn" onClick=${() => setImporting(true)}><${Icon} name="upload"/>Import list</button></div>`}
       ${importing && html`<${Importer} S=${S} A=${A} onClose=${() => setImporting(false)}/>`}
       ${picking && html`<${Viewers} S=${S} A=${A} onClose=${() => setPicking(false)}/>`}
+      ${editing && html`<${AttendeeEditor} a=${editing} A=${A} onClose=${() => setEditing(null)}/>`}
     </div>`;
   }
 

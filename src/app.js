@@ -136,7 +136,7 @@ const ntext=(a,p)=>p+': '+SM[a.s].t+', '+SM[a.s].r+', '+span(SM[a.s])+' ('+dayDa
 let uid=100;
 const H=[];
 const seed=()=>{const asg=SEED.map((r,i)=>({id:i+1,e:r[0],s:r[1],ack:r[2],in:r[3],conf:0,tag:r[4]}));
- return {asg,log:[],breaks:[],clocks:[],expenses:[],documents:[],flights:[],hotels:[],support:[],away:[],offsite:[],monitors:[],perDiem:EVS.map(e=>({ev:e.id,b:30,l:40,d:60})),locatorSupport:true,locViewers:[],attendees:demoAttendees(),attViewers:[],notes:asg.filter(a=>!a.ack).map(a=>({id:++uid,e:a.e,aid:a.id,done:0,x:ntext(a,a.tag==='new'?'New assignment':'Changed assignment')}))}};
+ return {asg,log:[],breaks:[],clocks:[],expenses:[],documents:[],flights:[],hotels:[],support:[],away:[],offsite:[],monitors:[],perDiem:EVS.map(e=>({ev:e.id,b:30,l:40,d:60})),locatorSupport:true,locViewers:[],attendees:demoAttendees(),attViewers:[],attendeeEdit:true,notes:asg.filter(a=>!a.ack).map(a=>({id:++uid,e:a.e,aid:a.id,done:0,x:ntext(a,a.tag==='new'?'New assignment':'Changed assignment')}))}};
 const clash=(asg,a)=>asg.filter(x=>x.id!==a.id&&x.e===a.e&&SM[x.s].ev===SM[a.s].ev&&SM[x.s].d===SM[a.s].d&&!SM[x.s].ov&&!SM[a.s].ov&&SM[x.s].a<SM[x.s].b&&SM[a.s].a<SM[a.s].b&&SM[x.s].a<SM[a.s].b&&SM[a.s].a<SM[x.s].b).map(x=>SM[x.s]);
 const st=a=>!need(SM[a.s])?['ok','No check-in needed']:a.in||a.conf?['ok',a.conf&&!a.in?'Confirmed by coordinator':'Checked in']:a.ack?['','Acknowledged']:['warn',(a.tag==='changed'?'Changed':'New')+', needs acknowledgment'];
 const cover=(s,asg)=>{const as=asg.filter(x=>x.s===s.id),p=need(s)?as.filter(x=>x.in||x.conf).length:as.length;
@@ -514,6 +514,7 @@ function App({connected}){
    return L({...s,attendees:list},'Imported attendees ('+n+' added, '+u+' updated)')});return true},
   setLocatorViewers:(ev,ids)=>{setS(s=>{const before=new Set((s.locViewers||[]).filter(v=>v.ev===ev).map(v=>v.e)),after=[...new Set(ids)].filter(e=>EMPS[e]&&!EMPS[e].gone&&EMPS[e].acct!=='admin');
    return L({...s,locViewers:[...(s.locViewers||[]).filter(v=>v.ev!==ev),...after.map(e=>({ev,e}))],notes:[...s.notes,...after.filter(e=>!before.has(e)).map(e=>({id:++uid,e,aid:null,done:0,x:'You can now see where staff are assigned for '+evOf(ev).name+' (Staff locator).'}))]},'Changed who can use the staff locator')});say('Saved');return true},
+  editAttendee:(id,o)=>{if(!o.f||!o.l){say('Enter a first and last name');return false}setS(s=>L({...s,attendees:(s.attendees||[]).map(a=>a.id===id?{...a,...o}:a)},'Updated attendee '+o.f+' '+o.l));say('Saved');return true},
   setAttendeeViewers:(ev,ids)=>{setS(s=>{const before=new Set((s.attViewers||[]).filter(v=>v.ev===ev).map(v=>v.e)),after=[...new Set(ids)].filter(e=>EMPS[e]&&!EMPS[e].gone&&EMPS[e].acct!=='admin');
    return L({...s,attViewers:[...(s.attViewers||[]).filter(v=>v.ev!==ev),...after.map(e=>({ev,e}))],notes:[...s.notes,...after.filter(e=>!before.has(e)).map(e=>({id:++uid,e,aid:null,done:0,x:'You can now view the attendee list for '+evOf(ev).name+'.'}))]},'Changed who can view attendees')});say('Saved');return true},
   importSupport:(ev,rows)=>{setS(s=>{let list=[...(s.support||[])];const notes=[...s.notes],used=new Set();
